@@ -14,6 +14,8 @@ pub struct UserRegion {
 pub enum ScanError {
     #[error("file not found: {0}")]
     FileNotFound(PathBuf),
+    #[error("I/O error: {0}")]
+    IoError(String),
     #[error("failed to parse C source: {0}")]
     ParseError(String),
     #[error("mismatched USER CODE BEGIN/END for tag '{0}'")]
@@ -60,8 +62,10 @@ fn parse_comment_marker(text: &str) -> Option<MarkerType> {
 }
 
 pub fn scan_file(path: &Path) -> Result<Vec<UserRegion>, ScanError> {
-    let content = fs::read_to_string(path)
-        .map_err(|_| ScanError::FileNotFound(path.to_path_buf()))?;
+    let content = fs::read_to_string(path).map_err(|err| match err.kind() {
+        std::io::ErrorKind::NotFound => ScanError::FileNotFound(path.to_path_buf()),
+        _ => ScanError::IoError(err.to_string()),
+    })?;
     scan_source(path, &content)
 }
 
@@ -147,6 +151,13 @@ pub fn scan_source(path: &Path, source: &str) -> Result<Vec<UserRegion>, ScanErr
 mod tests {
     use super::*;
     use std::path::Path;
+
+    #[test]
+    fn test_file_not_found_error() {
+        let path = Path::new("non_existent_file_12345.c");
+        let res = scan_file(path);
+        assert!(matches!(res, Err(ScanError::FileNotFound(ref p)) if p == path));
+    }
 
     #[test]
     fn test_single_well_formed_region() {
