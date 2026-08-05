@@ -8,6 +8,8 @@ pub struct UserRegion {
     pub file: PathBuf,
     pub byte_range: (usize, usize), // content strictly between BEGIN and END markers
     pub line_range: (usize, usize), // display only, never used for write-back
+    pub begin_marker_range: (usize, usize), // byte span of the "/* USER CODE BEGIN <TAG> */" comment itself
+    pub end_marker_range: (usize, usize), // byte span of the "/* USER CODE END <TAG> */" comment itself
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -28,6 +30,7 @@ struct OpenMarker {
     tag: String,
     end_byte: usize,
     start_line: usize,
+    begin_marker_range: (usize, usize),
 }
 
 enum MarkerType {
@@ -96,6 +99,7 @@ pub fn scan_source(path: &Path, source: &str) -> Result<Vec<UserRegion>, ScanErr
                             tag,
                             end_byte: node.end_byte(),
                             start_line: node.start_position().row + 1,
+                            begin_marker_range: (node.start_byte(), node.end_byte()),
                         });
                     }
                     MarkerType::End(tag) => match open_stack.pop() {
@@ -105,11 +109,14 @@ pub fn scan_source(path: &Path, source: &str) -> Result<Vec<UserRegion>, ScanErr
                             }
                             let byte_range = (open.end_byte, node.start_byte());
                             let line_range = (open.start_line, node.end_position().row + 1);
+                            let end_marker_range = (node.start_byte(), node.end_byte());
                             regions.push(UserRegion {
                                 tag,
                                 file: path.to_path_buf(),
                                 byte_range,
                                 line_range,
+                                begin_marker_range: open.begin_marker_range,
+                                end_marker_range,
                             });
                         }
                         None => {
@@ -147,6 +154,34 @@ pub fn scan_source(path: &Path, source: &str) -> Result<Vec<UserRegion>, ScanErr
     Ok(regions)
 }
 
+/// Finds the implicit loop body user code region between `USER CODE END WHILE` and the next region's `USER CODE BEGIN`.
+///
+/// CubeMX's generated main loop structure places the main loop body between `/* USER CODE END WHILE */`
+/// and `/* USER CODE BEGIN 3 */` (or whichever region immediately follows `WHILE`).
+///
+/// Note: For this synthetic region, `begin_marker_range` and `end_marker_range` are both set to `(0, 0)`
+/// because it is an implicit gap region bounded by adjacent markers rather than possessing its own dedicated BEGIN/END marker comments.
+pub fn find_loop_body_gap(regions: &[UserRegion]) -> Option<UserRegion> {
+    let while_idx = regions.iter().position(|r| r.tag == "WHILE")?;
+    let while_region = regions.get(while_idx)?;
+    let next_region = regions.get(while_idx + 1)?;
+
+    let byte_range = (
+        while_region.end_marker_range.1,
+        next_region.begin_marker_range.0,
+    );
+    let line_range = (while_region.line_range.1, next_region.line_range.0);
+
+    Some(UserRegion {
+        tag: "__loop_body__".to_string(),
+        file: while_region.file.clone(),
+        byte_range,
+        line_range,
+        begin_marker_range: (0, 0),
+        end_marker_range: (0, 0),
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -171,7 +206,19 @@ int my_var = 42;
         assert_eq!(regions.len(), 1);
         assert_eq!(regions[0].tag, "PV");
         assert_eq!(regions[0].file, path);
-        assert_eq!(&source[regions[0].byte_range.0..regions[0].byte_range.1], "\nint my_var = 42;\n");
+        assert_eq!(
+            &source[regions[0].byte_range.0..regions[0].byte_range.1],
+            "\nint my_var = 42;\n"
+        );
+
+        assert_eq!(
+            &source[regions[0].begin_marker_range.0..regions[0].begin_marker_range.1],
+            "/* USER CODE BEGIN PV */"
+        );
+        assert_eq!(
+            &source[regions[0].end_marker_range.0..regions[0].end_marker_range.1],
+            "/* USER CODE END PV */"
+        );
     }
 
     #[test]
@@ -189,10 +236,16 @@ static int x = 0;
         let regions = scan_source(path, source).unwrap();
         assert_eq!(regions.len(), 2);
         assert_eq!(regions[0].tag, "Includes");
-        assert_eq!(&source[regions[0].byte_range.0..regions[0].byte_range.1], "\n#include <stdio.h>\n");
+        assert_eq!(
+            &source[regions[0].byte_range.0..regions[0].byte_range.1],
+            "\n#include <stdio.h>\n"
+        );
 
         assert_eq!(regions[1].tag, "PV");
-        assert_eq!(&source[regions[1].byte_range.0..regions[1].byte_range.1], "\nstatic int x = 0;\n");
+        assert_eq!(
+            &source[regions[1].byte_range.0..regions[1].byte_range.1],
+            "\nstatic int x = 0;\n"
+        );
     }
 
     #[test]
@@ -255,5 +308,78 @@ const char* e = "USER CODE END PV";
         let regions = scan_source(path, source).unwrap();
         assert_eq!(regions.len(), 1);
         assert_eq!(regions[0].tag, "PV");
+    }
+
+    #[test]
+    fn test_find_loop_body_gap_realistic() {
+        let source = r#"
+  /* USER CODE BEGIN WHILE */
+  while (1)
+  {
+    /* USER CODE END WHILE */
+
+    /* USER CODE BEGIN 3 */
+  }
+  /* USER CODE END 3 */
+"#;
+        let path = Path::new("main.c");
+        let regions = scan_source(path, source).unwrap();
+        let gap = find_loop_body_gap(&regions).unwrap();
+
+        assert_eq!(gap.tag, "__loop_body__");
+        assert_eq!(gap.begin_marker_range, (0, 0));
+        assert_eq!(gap.end_marker_range, (0, 0));
+
+        let gap_text = &source[gap.byte_range.0..gap.byte_range.1];
+        assert_eq!(gap_text, "\n\n    ");
+    }
+
+    #[test]
+    fn test_find_loop_body_gap_with_user_code() {
+        let source = r#"
+  /* USER CODE BEGIN WHILE */
+  while (1)
+  {
+    /* USER CODE END WHILE */
+    HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_5);
+    HAL_Delay(500);
+    /* USER CODE BEGIN 3 */
+  }
+  /* USER CODE END 3 */
+"#;
+        let path = Path::new("main.c");
+        let regions = scan_source(path, source).unwrap();
+        let gap = find_loop_body_gap(&regions).unwrap();
+
+        assert_eq!(gap.tag, "__loop_body__");
+        let gap_text = &source[gap.byte_range.0..gap.byte_range.1];
+        assert_eq!(
+            gap_text,
+            "\n    HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_5);\n    HAL_Delay(500);\n    "
+        );
+    }
+
+    #[test]
+    fn test_find_loop_body_gap_no_while_tag() {
+        let source = r#"
+/* USER CODE BEGIN PV */
+int x = 0;
+/* USER CODE END PV */
+"#;
+        let path = Path::new("main.c");
+        let regions = scan_source(path, source).unwrap();
+        assert!(find_loop_body_gap(&regions).is_none());
+    }
+
+    #[test]
+    fn test_find_loop_body_gap_while_is_last_region() {
+        let source = r#"
+/* USER CODE BEGIN WHILE */
+while (1) {
+/* USER CODE END WHILE */
+"#;
+        let path = Path::new("main.c");
+        let regions = scan_source(path, source).unwrap();
+        assert!(find_loop_body_gap(&regions).is_none());
     }
 }

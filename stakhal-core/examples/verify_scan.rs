@@ -9,7 +9,7 @@ use std::path::Path;
 use std::process;
 
 use stakhal_core::ioc::parse_ioc;
-use stakhal_core::source::scan_file;
+use stakhal_core::source::{find_loop_body_gap, scan_file};
 
 fn main() {
     let args: Vec<String> = env::args().collect();
@@ -85,5 +85,24 @@ fn main() {
             end_line,
             escaped_preview
         );
+    }
+
+    if let Some(gap) = find_loop_body_gap(&regions) {
+        let (start, end) = gap.byte_range;
+        let (start_line, end_line) = gap.line_range;
+        let slice = if start <= end && end <= source_content.len() {
+            &source_content[start..end]
+        } else {
+            ""
+        };
+        let preview: String = slice.chars().take(40).collect();
+        let escaped_preview = preview.replace('\n', "\\n").replace('\r', "\\r");
+
+        println!(
+            "\n[LOOP BODY] Tag: '{}' | Bytes: {:?} | Lines: {}-{} | Preview: \"{}\"",
+            gap.tag, gap.byte_range, start_line, end_line, escaped_preview
+        );
+    } else {
+        println!("\n[LOOP BODY] Implicit loop body gap not detected.");
     }
 }
