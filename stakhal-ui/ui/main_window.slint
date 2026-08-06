@@ -34,6 +34,8 @@ export component MainWindow inherits Window {
     in property <[RegionItem]> regions: [];
 
     callback load_clicked();
+    callback browse_ioc_clicked();
+    callback browse_main_c_clicked();
 
     VerticalLayout {
         padding: 16px;
@@ -70,9 +72,17 @@ export component MainWindow inherits Window {
                             color: #a6adc8;
                         }
 
-                        LineEdit {
-                            text <=> root.ioc_path;
-                            placeholder-text: "/path/to/project.ioc";
+                        HorizontalLayout {
+                            spacing: 6px;
+                            LineEdit {
+                                text <=> root.ioc_path;
+                                placeholder-text: "/path/to/project.ioc";
+                                horizontal-stretch: 1;
+                            }
+                            Button {
+                                text: "Browse";
+                                clicked => { root.browse_ioc_clicked(); }
+                            }
                         }
                     }
 
@@ -86,9 +96,17 @@ export component MainWindow inherits Window {
                             color: #a6adc8;
                         }
 
-                        LineEdit {
-                            text <=> root.main_c_path;
-                            placeholder-text: "/path/to/Core/Src/main.c";
+                        HorizontalLayout {
+                            spacing: 6px;
+                            LineEdit {
+                                text <=> root.main_c_path;
+                                placeholder-text: "/path/to/Core/Src/main.c";
+                                horizontal-stretch: 1;
+                            }
+                            Button {
+                                text: "Browse";
+                                clicked => { root.browse_main_c_clicked(); }
+                            }
                         }
                     }
 
