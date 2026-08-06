@@ -1,0 +1,344 @@
+import { Button, LineEdit, ScrollView } from "std-widgets.slint";
+
+export struct PeripheralItem {
+    name: string,
+    mode: string,
+    param_count: string,
+}
+
+export struct RegionItem {
+    tag: string,
+    byte_range: string,
+    line_range: string,
+    is_implicit: bool,
+}
+
+export component MainWindow inherits Window {
+    title: "StakHAL - STM32 Project Viewer";
+    preferred-width: 900px;
+    preferred-height: 650px;
+    background: #1e1e2e;
+
+    in-out property <string> ioc_path: "/path/to/project.ioc";
+    in-out property <string> main_c_path: "/path/to/Core/Src/main.c";
+
+    in property <string> mcu_family: "";
+    in property <string> mcu_name: "";
+    in property <string> project_name: "";
+    in property <bool> project_loaded: false;
+
+    in property <bool> has_error: false;
+    in property <string> error_message: "";
+
+    in property <[PeripheralItem]> peripherals: [];
+    in property <[RegionItem]> regions: [];
+
+    callback load_clicked();
+
+    VerticalLayout {
+        padding: 16px;
+        spacing: 12px;
+
+        // Top Control Panel (Paths & Load Button)
+        Rectangle {
+            background: #252538;
+            border-radius: 8px;
+            border-width: 1px;
+            border-color: #3b3b54;
+
+            VerticalLayout {
+                padding: 12px;
+                spacing: 10px;
+
+                Text {
+                    text: "Project Path Configuration";
+                    font-size: 14px;
+                    font-weight: 700;
+                    color: #cdd6f4;
+                }
+
+                HorizontalLayout {
+                    spacing: 10px;
+
+                    VerticalLayout {
+                        spacing: 4px;
+                        horizontal-stretch: 1;
+
+                        Text {
+                            text: ".ioc File Path:";
+                            font-size: 11px;
+                            color: #a6adc8;
+                        }
+
+                        LineEdit {
+                            text <=> root.ioc_path;
+                            placeholder-text: "/path/to/project.ioc";
+                        }
+                    }
+
+                    VerticalLayout {
+                        spacing: 4px;
+                        horizontal-stretch: 1;
+
+                        Text {
+                            text: "main.c File Path:";
+                            font-size: 11px;
+                            color: #a6adc8;
+                        }
+
+                        LineEdit {
+                            text <=> root.main_c_path;
+                            placeholder-text: "/path/to/Core/Src/main.c";
+                        }
+                    }
+
+                    VerticalLayout {
+                        alignment: end;
+
+                        Button {
+                            text: "Load Project";
+                            primary: true;
+                            clicked => { root.load_clicked(); }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Error Banner
+        if root.has_error : Rectangle {
+            background: #45171e;
+            border-radius: 6px;
+            border-width: 1px;
+            border-color: #f38ba8;
+
+            HorizontalLayout {
+                padding: 10px;
+                spacing: 10px;
+
+                Text {
+                    text: "Error:";
+                    font-size: 13px;
+                    font-weight: 700;
+                    color: #f38ba8;
+                }
+
+                Text {
+                    text: root.error_message;
+                    font-size: 12px;
+                    color: #f38ba8;
+                    wrap: word-wrap;
+                    horizontal-stretch: 1;
+                }
+            }
+        }
+
+        // Header Info Area
+        Rectangle {
+            background: #252538;
+            border-radius: 6px;
+
+            HorizontalLayout {
+                padding: 12px;
+                spacing: 24px;
+
+                HorizontalLayout {
+                    spacing: 6px;
+                    Text { text: "Project:"; font-size: 13px; font-weight: 700; color: #89b4fa; }
+                    Text { text: root.project_loaded ? root.project_name : "—"; font-size: 13px; color: #cdd6f4; }
+                }
+
+                HorizontalLayout {
+                    spacing: 6px;
+                    Text { text: "MCU Family:"; font-size: 13px; font-weight: 700; color: #89b4fa; }
+                    Text { text: root.project_loaded ? root.mcu_family : "—"; font-size: 13px; color: #cdd6f4; }
+                }
+
+                HorizontalLayout {
+                    spacing: 6px;
+                    Text { text: "MCU Name:"; font-size: 13px; font-weight: 700; color: #89b4fa; }
+                    Text { text: root.project_loaded ? root.mcu_name : "—"; font-size: 13px; color: #cdd6f4; }
+                }
+            }
+        }
+
+        // Content Area (Peripherals & User Regions)
+        HorizontalLayout {
+            spacing: 12px;
+            vertical-stretch: 1;
+
+            // Left Section: Peripherals
+            Rectangle {
+                background: #181825;
+                border-radius: 8px;
+                border-width: 1px;
+                border-color: #313244;
+                horizontal-stretch: 1;
+
+                VerticalLayout {
+                    padding: 12px;
+                    spacing: 8px;
+
+                    Text {
+                        text: "Peripherals (" + root.peripherals.length + ")";
+                        font-size: 14px;
+                        font-weight: 700;
+                        color: #a6e3a1;
+                    }
+
+                    Rectangle {
+                        height: 1px;
+                        background: #313244;
+                    }
+
+                    ScrollView {
+                        VerticalLayout {
+                            alignment: start;
+                            spacing: 4px;
+
+                            if root.peripherals.length == 0 : Text {
+                                text: root.project_loaded ? "No peripherals configured." : "Load a project to view peripherals.";
+                                font-size: 12px;
+                                color: #6c7086;
+                            }
+
+                            for item in root.peripherals : Rectangle {
+                                background: #252538;
+                                border-radius: 4px;
+                                height: 36px;
+
+                                HorizontalLayout {
+                                    padding-left: 10px;
+                                    padding-right: 10px;
+
+                                    Text {
+                                        text: item.name;
+                                        font-size: 12px;
+                                        font-weight: 700;
+                                        color: #cdd6f4;
+                                        vertical-alignment: center;
+                                        horizontal-stretch: 1;
+                                    }
+
+                                    Text {
+                                        text: "Mode: " + item.mode;
+                                        font-size: 11px;
+                                        color: #bac2de;
+                                        vertical-alignment: center;
+                                        horizontal-stretch: 1;
+                                    }
+
+                                    Text {
+                                        text: "Params: " + item.param_count;
+                                        font-size: 11px;
+                                        color: #a6adc8;
+                                        vertical-alignment: center;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Right Section: User Regions
+            Rectangle {
+                background: #181825;
+                border-radius: 8px;
+                border-width: 1px;
+                border-color: #313244;
+                horizontal-stretch: 2;
+
+                VerticalLayout {
+                    padding: 12px;
+                    spacing: 8px;
+
+                    Text {
+                        text: "User Regions (" + root.regions.length + ")";
+                        font-size: 14px;
+                        font-weight: 700;
+                        color: #f9e2af;
+                    }
+
+                    Rectangle {
+                        height: 1px;
+                        background: #313244;
+                    }
+
+                    ScrollView {
+                        VerticalLayout {
+                            alignment: start;
+                            spacing: 4px;
+
+                            if root.regions.length == 0 : Text {
+                                text: root.project_loaded ? "No user regions found." : "Load a project to view regions.";
+                                font-size: 12px;
+                                color: #6c7086;
+                            }
+
+                            for item in root.regions : Rectangle {
+                                background: item.is_implicit ? #453a1a : #252538;
+                                border-color: item.is_implicit ? #f9e2af : #313244;
+                                border-width: item.is_implicit ? 1px : 0px;
+                                border-radius: 4px;
+                                height: 38px;
+
+                                HorizontalLayout {
+                                    padding-left: 10px;
+                                    padding-right: 10px;
+                                    spacing: 12px;
+
+                                    HorizontalLayout {
+                                        spacing: 6px;
+                                        width: 180px;
+
+                                        Text {
+                                            text: item.tag;
+                                            font-size: 12px;
+                                            font-weight: 700;
+                                            color: item.is_implicit ? #f9e2af : #89b4fa;
+                                            vertical-alignment: center;
+                                            overflow: elide;
+                                        }
+
+                                        if item.is_implicit : Rectangle {
+                                            background: #f9e2af;
+                                            border-radius: 3px;
+                                            width: 55px;
+                                            height: 16px;
+
+                                            Text {
+                                                text: "[implicit]";
+                                                font-size: 9px;
+                                                font-weight: 700;
+                                                color: #11111b;
+                                                horizontal-alignment: center;
+                                                vertical-alignment: center;
+                                            }
+                                        }
+                                    }
+
+                                    Text {
+                                        text: "Bytes: " + item.byte_range;
+                                        font-size: 11px;
+                                        color: #bac2de;
+                                        vertical-alignment: center;
+                                        horizontal-stretch: 1;
+                                    }
+
+                                    Text {
+                                        text: "Lines: " + item.line_range;
+                                        font-size: 11px;
+                                        color: #a6adc8;
+                                        vertical-alignment: center;
+                                        horizontal-stretch: 1;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
