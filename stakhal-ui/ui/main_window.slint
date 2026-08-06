@@ -17,7 +17,7 @@ export component MainWindow inherits Window {
     title: "StakHAL - STM32 Project Viewer";
     preferred-width: 900px;
     preferred-height: 650px;
-    background: #1e1e2e;
+    background: #121212;
 
     in-out property <string> ioc_path: "/path/to/project.ioc";
     in-out property <string> main_c_path: "/path/to/Core/Src/main.c";
@@ -43,10 +43,10 @@ export component MainWindow inherits Window {
 
         // Top Control Panel (Paths & Load Button)
         Rectangle {
-            background: #252538;
+            background: #1e1e1e;
             border-radius: 8px;
             border-width: 1px;
-            border-color: #3b3b54;
+            border-color: #333333;
 
             VerticalLayout {
                 padding: 12px;
@@ -56,7 +56,7 @@ export component MainWindow inherits Window {
                     text: "Project Path Configuration";
                     font-size: 14px;
                     font-weight: 700;
-                    color: #cdd6f4;
+                    color: #eeeeee;
                 }
 
                 HorizontalLayout {
@@ -69,7 +69,7 @@ export component MainWindow inherits Window {
                         Text {
                             text: ".ioc File Path:";
                             font-size: 11px;
-                            color: #a6adc8;
+                            color: #aaaaaa;
                         }
 
                         HorizontalLayout {
@@ -93,7 +93,7 @@ export component MainWindow inherits Window {
                         Text {
                             text: "main.c File Path:";
                             font-size: 11px;
-                            color: #a6adc8;
+                            color: #aaaaaa;
                         }
 
                         HorizontalLayout {
@@ -123,12 +123,12 @@ export component MainWindow inherits Window {
             }
         }
 
-        // Error Banner
+        // Semantic Error Banner (Red)
         if root.has_error : Rectangle {
-            background: #45171e;
+            background: #2c1616;
             border-radius: 6px;
             border-width: 1px;
-            border-color: #f38ba8;
+            border-color: #8b2626;
 
             HorizontalLayout {
                 padding: 10px;
@@ -138,23 +138,25 @@ export component MainWindow inherits Window {
                     text: "Error:";
                     font-size: 13px;
                     font-weight: 700;
-                    color: #f38ba8;
+                    color: #f87171;
                 }
 
                 Text {
                     text: root.error_message;
                     font-size: 12px;
-                    color: #f38ba8;
+                    color: #f87171;
                     wrap: word-wrap;
                     horizontal-stretch: 1;
                 }
             }
         }
 
-        // Header Info Area
+        // Header Info Area (Semantic Green accent when project is loaded)
         Rectangle {
-            background: #252538;
+            background: #1e1e1e;
             border-radius: 6px;
+            border-width: 1px;
+            border-color: root.project_loaded ? #2e7d32 : #333333;
 
             HorizontalLayout {
                 padding: 12px;
@@ -162,20 +164,20 @@ export component MainWindow inherits Window {
 
                 HorizontalLayout {
                     spacing: 6px;
-                    Text { text: "Project:"; font-size: 13px; font-weight: 700; color: #89b4fa; }
-                    Text { text: root.project_loaded ? root.project_name : "—"; font-size: 13px; color: #cdd6f4; }
+                    Text { text: "Project:"; font-size: 13px; font-weight: 700; color: root.project_loaded ? #81c784 : #aaaaaa; }
+                    Text { text: root.project_loaded ? root.project_name : "—"; font-size: 13px; color: #eeeeee; }
                 }
 
                 HorizontalLayout {
                     spacing: 6px;
-                    Text { text: "MCU Family:"; font-size: 13px; font-weight: 700; color: #89b4fa; }
-                    Text { text: root.project_loaded ? root.mcu_family : "—"; font-size: 13px; color: #cdd6f4; }
+                    Text { text: "MCU Family:"; font-size: 13px; font-weight: 700; color: root.project_loaded ? #81c784 : #aaaaaa; }
+                    Text { text: root.project_loaded ? root.mcu_family : "—"; font-size: 13px; color: #eeeeee; }
                 }
 
                 HorizontalLayout {
                     spacing: 6px;
-                    Text { text: "MCU Name:"; font-size: 13px; font-weight: 700; color: #89b4fa; }
-                    Text { text: root.project_loaded ? root.mcu_name : "—"; font-size: 13px; color: #cdd6f4; }
+                    Text { text: "MCU Name:"; font-size: 13px; font-weight: 700; color: root.project_loaded ? #81c784 : #aaaaaa; }
+                    Text { text: root.project_loaded ? root.mcu_name : "—"; font-size: 13px; color: #eeeeee; }
                 }
             }
         }
@@ -185,12 +187,12 @@ export component MainWindow inherits Window {
             spacing: 12px;
             vertical-stretch: 1;
 
-            // Left Section: Peripherals
+            // Left Section: Peripherals (Neutral Grayscale)
             Rectangle {
-                background: #181825;
+                background: #181818;
                 border-radius: 8px;
                 border-width: 1px;
-                border-color: #313244;
+                border-color: #333333;
                 horizontal-stretch: 1;
 
                 VerticalLayout {
@@ -201,12 +203,12 @@ export component MainWindow inherits Window {
                         text: "Peripherals (" + root.peripherals.length + ")";
                         font-size: 14px;
                         font-weight: 700;
-                        color: #a6e3a1;
+                        color: #eeeeee;
                     }
 
                     Rectangle {
                         height: 1px;
-                        background: #313244;
+                        background: #333333;
                     }
 
                     ScrollView {
@@ -217,11 +219,11 @@ export component MainWindow inherits Window {
                             if root.peripherals.length == 0 : Text {
                                 text: root.project_loaded ? "No peripherals configured." : "Load a project to view peripherals.";
                                 font-size: 12px;
-                                color: #6c7086;
+                                color: #777777;
                             }
 
                             for item in root.peripherals : Rectangle {
-                                background: #252538;
+                                background: #222222;
                                 border-radius: 4px;
                                 height: 36px;
 
@@ -233,7 +235,7 @@ export component MainWindow inherits Window {
                                         text: item.name;
                                         font-size: 12px;
                                         font-weight: 700;
-                                        color: #cdd6f4;
+                                        color: #eeeeee;
                                         vertical-alignment: center;
                                         horizontal-stretch: 1;
                                     }
@@ -241,7 +243,7 @@ export component MainWindow inherits Window {
                                     Text {
                                         text: "Mode: " + item.mode;
                                         font-size: 11px;
-                                        color: #bac2de;
+                                        color: #cccccc;
                                         vertical-alignment: center;
                                         horizontal-stretch: 1;
                                     }
@@ -249,7 +251,7 @@ export component MainWindow inherits Window {
                                     Text {
                                         text: "Params: " + item.param_count;
                                         font-size: 11px;
-                                        color: #a6adc8;
+                                        color: #aaaaaa;
                                         vertical-alignment: center;
                                     }
                                 }
@@ -259,12 +261,12 @@ export component MainWindow inherits Window {
                 }
             }
 
-            // Right Section: User Regions
+            // Right Section: User Regions (Neutral Grayscale with Yellow for implicit loop body)
             Rectangle {
-                background: #181825;
+                background: #181818;
                 border-radius: 8px;
                 border-width: 1px;
-                border-color: #313244;
+                border-color: #333333;
                 horizontal-stretch: 2;
 
                 VerticalLayout {
@@ -275,12 +277,12 @@ export component MainWindow inherits Window {
                         text: "User Regions (" + root.regions.length + ")";
                         font-size: 14px;
                         font-weight: 700;
-                        color: #f9e2af;
+                        color: #eeeeee;
                     }
 
                     Rectangle {
                         height: 1px;
-                        background: #313244;
+                        background: #333333;
                     }
 
                     ScrollView {
@@ -291,13 +293,13 @@ export component MainWindow inherits Window {
                             if root.regions.length == 0 : Text {
                                 text: root.project_loaded ? "No user regions found." : "Load a project to view regions.";
                                 font-size: 12px;
-                                color: #6c7086;
+                                color: #777777;
                             }
 
                             for item in root.regions : Rectangle {
-                                background: item.is_implicit ? #453a1a : #252538;
-                                border-color: item.is_implicit ? #f9e2af : #313244;
-                                border-width: item.is_implicit ? 1px : 0px;
+                                background: item.is_implicit ? #2e2912 : #222222;
+                                border-color: item.is_implicit ? #856404 : #333333;
+                                border-width: 1px;
                                 border-radius: 4px;
                                 height: 38px;
 
@@ -314,13 +316,13 @@ export component MainWindow inherits Window {
                                             text: item.tag;
                                             font-size: 12px;
                                             font-weight: 700;
-                                            color: item.is_implicit ? #f9e2af : #89b4fa;
+                                            color: item.is_implicit ? #fbbf24 : #eeeeee;
                                             vertical-alignment: center;
                                             overflow: elide;
                                         }
 
                                         if item.is_implicit : Rectangle {
-                                            background: #f9e2af;
+                                            background: #f59e0b;
                                             border-radius: 3px;
                                             width: 55px;
                                             height: 16px;
@@ -329,7 +331,7 @@ export component MainWindow inherits Window {
                                                 text: "[implicit]";
                                                 font-size: 9px;
                                                 font-weight: 700;
-                                                color: #11111b;
+                                                color: #121212;
                                                 horizontal-alignment: center;
                                                 vertical-alignment: center;
                                             }
@@ -339,7 +341,7 @@ export component MainWindow inherits Window {
                                     Text {
                                         text: "Bytes: " + item.byte_range;
                                         font-size: 11px;
-                                        color: #bac2de;
+                                        color: item.is_implicit ? #e5c07b : #cccccc;
                                         vertical-alignment: center;
                                         horizontal-stretch: 1;
                                     }
@@ -347,7 +349,7 @@ export component MainWindow inherits Window {
                                     Text {
                                         text: "Lines: " + item.line_range;
                                         font-size: 11px;
-                                        color: #a6adc8;
+                                        color: item.is_implicit ? #e5c07b : #aaaaaa;
                                         vertical-alignment: center;
                                         horizontal-stretch: 1;
                                     }
