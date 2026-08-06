@@ -8,7 +8,7 @@ use std::path::Path;
 
 use stakhal_core::graph::build_call_graph;
 use stakhal_core::ioc::parse_ioc;
-use stakhal_core::source::{find_loop_body_gap, scan_file};
+use stakhal_core::source::{extract_pv_declarations, find_loop_body_gap, scan_file};
 
 #[test]
 fn test_real_cubemx_project_regression() {
@@ -131,3 +131,31 @@ fn test_stm32_03_timers_graph_builder_regression() {
     assert!(edges.iter().any(|e| e.to == "MX_TIM3_Init"));
     assert!(edges.iter().any(|e| e.to == "MX_TIM4_Init"));
 }
+
+#[test]
+fn test_stm32_03_timers_pv_extract_regression() {
+    let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let fixture_dir = manifest_dir.join("tests/fixtures/stm32_03_timers");
+    let main_c_path = fixture_dir.join("Core/Src/main.c");
+
+    let decls = extract_pv_declarations(&main_c_path).expect("failed to extract PV declarations");
+
+    assert_eq!(decls.len(), 8, "Expected 8 declarations in PV region");
+
+    let isr_count = decls.iter().find(|d| d.name == "isrCount").unwrap();
+    assert_eq!(isr_count.type_str, "volatile uint32_t");
+    assert_eq!(isr_count.initial_value, Some("0".to_string()));
+
+    let step_interval = decls.iter().find(|d| d.name == "stepInterval").unwrap();
+    assert_eq!(step_interval.type_str, "uint32_t");
+    assert_eq!(step_interval.initial_value, Some("90000".to_string()));
+
+    let enc_z1 = decls.iter().find(|d| d.name == "encZ1").unwrap();
+    assert_eq!(enc_z1.type_str, "volatile int32_t");
+    assert_eq!(enc_z1.initial_value, Some("0".to_string()));
+
+    let prev_z1 = decls.iter().find(|d| d.name == "prevZ1").unwrap();
+    assert_eq!(prev_z1.type_str, "uint16_t");
+    assert_eq!(prev_z1.initial_value, Some("0".to_string()));
+}
+
