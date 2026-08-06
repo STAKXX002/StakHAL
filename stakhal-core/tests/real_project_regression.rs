@@ -1,11 +1,12 @@
 // This integration test suite exists because synthetic string fixtures did not catch that
 // CubeMX's main loop body lives in an unmarked gap between markers (USER CODE END WHILE and USER CODE BEGIN 3).
-// This test suite validates marker_scan, ioc::parser, and find_loop_body_gap against real generated output
+// This test suite validates marker_scan, ioc::parser, find_loop_body_gap, and graph::builder against real generated output
 // from CubeMX projects (stakhal_blink_f446re and stm32_03_timers) to catch regressions going forward.
 
 use std::fs;
 use std::path::Path;
 
+use stakhal_core::graph::build_call_graph;
 use stakhal_core::ioc::parse_ioc;
 use stakhal_core::source::{find_loop_body_gap, scan_file};
 
@@ -90,4 +91,43 @@ fn test_stm32_03_timers_regression() {
         "Expected loop body gap content to contain 'encZ1', but got: {:?}",
         gap_content
     );
+}
+
+#[test]
+fn test_stm32_03_timers_graph_builder_regression() {
+    let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let fixture_dir = manifest_dir.join("tests/fixtures/stm32_03_timers");
+    let ioc_path = fixture_dir.join("03_timers.ioc");
+
+    let ioc_project = parse_ioc(&ioc_path).expect("failed to parse 03_timers .ioc file");
+    let edges = build_call_graph(&ioc_project);
+
+    // Assert edges exist from TIM6_DAC_IRQHandler and TIM2_IRQHandler
+    assert!(
+        edges.iter().any(|e| e.from == "TIM6_DAC_IRQHandler"),
+        "Expected IRQ edges for TIM6_DAC_IRQHandler"
+    );
+    assert!(
+        edges.iter().any(|e| e.from == "TIM2_IRQHandler"),
+        "Expected IRQ edges for TIM2_IRQHandler"
+    );
+
+    // Assert NO edge exists whose from starts with "TIM1_", "TIM3_", or "TIM4_"
+    assert!(
+        !edges.iter().any(|e| e.from.starts_with("TIM1_")),
+        "Expected no IRQ edges for encoder-mode TIM1"
+    );
+    assert!(
+        !edges.iter().any(|e| e.from.starts_with("TIM3_")),
+        "Expected no IRQ edges for encoder-mode TIM3"
+    );
+    assert!(
+        !edges.iter().any(|e| e.from.starts_with("TIM4_")),
+        "Expected no IRQ edges for encoder-mode TIM4"
+    );
+
+    // Confirm Init edges exist for MX_TIM1_Init, MX_TIM3_Init, MX_TIM4_Init
+    assert!(edges.iter().any(|e| e.to == "MX_TIM1_Init"));
+    assert!(edges.iter().any(|e| e.to == "MX_TIM3_Init"));
+    assert!(edges.iter().any(|e| e.to == "MX_TIM4_Init"));
 }
