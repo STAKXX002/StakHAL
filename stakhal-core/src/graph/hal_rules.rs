@@ -1,6 +1,14 @@
 //! Static STM32F4 HAL IRQ handler to HAL callback mapping tables.
 //!
+//! Note on Timer IRQs:
+//! Timers on STM32F4 do not all follow a simple `TIMn_IRQHandler` naming convention.
+//! Specifically, TIM1, TIM6, TIM7, and TIM8 share interrupt vectors with other peripherals
+//! or timer sub-functions (e.g. `TIM1_BRK_TIM9_IRQHandler`, `TIM1_UP_TIM10_IRQHandler`,
+//! `TIM1_TRG_COM_TIM11_IRQHandler`, `TIM1_CC_IRQHandler`, `TIM6_DAC_IRQHandler`, etc.).
+//! These non-trivial shared-vector names require special-casing to match real STM32F4xx HAL vector tables.
+//!
 //! Known gaps / Peripherals NOT yet covered in this table:
+//! - Advanced / Basic Timer shared vectors not yet mapped: TIM7 (TIM7_IRQHandler or TIM7_DAC_IRQHandler on some lines), TIM8 (TIM8_BRK_TIM12_IRQHandler, TIM8_UP_TIM13_IRQHandler, TIM8_TRG_COM_TIM14_IRQHandler, TIM8_CC_IRQHandler)
 //! - ADC (e.g. ADC_IRQHandler -> HAL_ADC_IRQHandler)
 //! - CAN (e.g. CAN1_TX_IRQHandler, CAN1_RX0_IRQHandler, CAN1_RX1_IRQHandler, CAN1_SCE_IRQHandler)
 //! - USB (e.g. OTG_FS_IRQHandler, OTG_HS_IRQHandler)
@@ -135,6 +143,58 @@ pub static HAL_IRQ_MAPPINGS: &[HalIrqMapping] = &[
     },
     // --- TIM ---
     HalIrqMapping {
+        irq_handler_name: "TIM1_BRK_TIM9_IRQHandler",
+        hal_dispatch_fn: "HAL_TIM_IRQHandler",
+        weak_callbacks: &[
+            "HAL_TIM_PeriodElapsedCallback",
+            "HAL_TIM_OC_DelayElapsedCallback",
+            "HAL_TIM_IC_CaptureCallback",
+            "HAL_TIM_PWM_PulseFinishedCallback",
+            "HAL_TIM_TriggerCallback",
+            "HAL_TIM_ErrorCallback",
+        ],
+        peripheral_prefix: "TIM",
+    },
+    HalIrqMapping {
+        irq_handler_name: "TIM1_UP_TIM10_IRQHandler",
+        hal_dispatch_fn: "HAL_TIM_IRQHandler",
+        weak_callbacks: &[
+            "HAL_TIM_PeriodElapsedCallback",
+            "HAL_TIM_OC_DelayElapsedCallback",
+            "HAL_TIM_IC_CaptureCallback",
+            "HAL_TIM_PWM_PulseFinishedCallback",
+            "HAL_TIM_TriggerCallback",
+            "HAL_TIM_ErrorCallback",
+        ],
+        peripheral_prefix: "TIM",
+    },
+    HalIrqMapping {
+        irq_handler_name: "TIM1_TRG_COM_TIM11_IRQHandler",
+        hal_dispatch_fn: "HAL_TIM_IRQHandler",
+        weak_callbacks: &[
+            "HAL_TIM_PeriodElapsedCallback",
+            "HAL_TIM_OC_DelayElapsedCallback",
+            "HAL_TIM_IC_CaptureCallback",
+            "HAL_TIM_PWM_PulseFinishedCallback",
+            "HAL_TIM_TriggerCallback",
+            "HAL_TIM_ErrorCallback",
+        ],
+        peripheral_prefix: "TIM",
+    },
+    HalIrqMapping {
+        irq_handler_name: "TIM1_CC_IRQHandler",
+        hal_dispatch_fn: "HAL_TIM_IRQHandler",
+        weak_callbacks: &[
+            "HAL_TIM_PeriodElapsedCallback",
+            "HAL_TIM_OC_DelayElapsedCallback",
+            "HAL_TIM_IC_CaptureCallback",
+            "HAL_TIM_PWM_PulseFinishedCallback",
+            "HAL_TIM_TriggerCallback",
+            "HAL_TIM_ErrorCallback",
+        ],
+        peripheral_prefix: "TIM",
+    },
+    HalIrqMapping {
         irq_handler_name: "TIM2_IRQHandler",
         hal_dispatch_fn: "HAL_TIM_IRQHandler",
         weak_callbacks: &[
@@ -175,6 +235,19 @@ pub static HAL_IRQ_MAPPINGS: &[HalIrqMapping] = &[
     },
     HalIrqMapping {
         irq_handler_name: "TIM5_IRQHandler",
+        hal_dispatch_fn: "HAL_TIM_IRQHandler",
+        weak_callbacks: &[
+            "HAL_TIM_PeriodElapsedCallback",
+            "HAL_TIM_OC_DelayElapsedCallback",
+            "HAL_TIM_IC_CaptureCallback",
+            "HAL_TIM_PWM_PulseFinishedCallback",
+            "HAL_TIM_TriggerCallback",
+            "HAL_TIM_ErrorCallback",
+        ],
+        peripheral_prefix: "TIM",
+    },
+    HalIrqMapping {
+        irq_handler_name: "TIM6_DAC_IRQHandler",
         hal_dispatch_fn: "HAL_TIM_IRQHandler",
         weak_callbacks: &[
             "HAL_TIM_PeriodElapsedCallback",
@@ -420,6 +493,17 @@ mod tests {
     }
 
     #[test]
+    fn test_mappings_for_prefix_tim_shared_vectors() {
+        let tim_mappings = mappings_for_peripheral_prefix("TIM");
+        assert!(tim_mappings
+            .iter()
+            .any(|m| m.irq_handler_name == "TIM6_DAC_IRQHandler"));
+        assert!(tim_mappings
+            .iter()
+            .any(|m| m.irq_handler_name == "TIM1_UP_TIM10_IRQHandler"));
+    }
+
+    #[test]
     fn test_unknown_handler_returns_none() {
         assert!(mapping_for_irq_handler("NotARealHandler").is_none());
     }
@@ -434,3 +518,4 @@ mod tests {
         assert_ne!(exti9_5.irq_handler_name, exti15_10.irq_handler_name);
     }
 }
+
