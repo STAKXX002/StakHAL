@@ -1,4 +1,4 @@
-import { Button, LineEdit, ScrollView } from "std-widgets.slint";
+import { Button, ScrollView } from "std-widgets.slint";
 
 export struct PeripheralItem {
     name: string,
@@ -19,8 +19,10 @@ export component MainWindow inherits Window {
     preferred-height: 650px;
     background: #121212;
 
-    in-out property <string> ioc_path: "/path/to/project.ioc";
-    in-out property <string> main_c_path: "/path/to/Core/Src/main.c";
+    in-out property <string> project_dir: "";
+    in property <string> discovered_ioc_path: "";
+    in property <string> discovered_main_c_path: "";
+    in property <bool> has_discovered_paths: false;
 
     in property <string> mcu_family: "";
     in property <string> mcu_name: "";
@@ -34,14 +36,13 @@ export component MainWindow inherits Window {
     in property <[RegionItem]> regions: [];
 
     callback load_clicked();
-    callback browse_ioc_clicked();
-    callback browse_main_c_clicked();
+    callback browse_folder_clicked();
 
     VerticalLayout {
         padding: 16px;
         spacing: 12px;
 
-        // Top Control Panel (Paths & Load Button)
+        // Top Control Panel (Folder Selection & Discovered Paths & Load Button)
         Rectangle {
             background: #1e1e1e;
             border-radius: 8px;
@@ -53,36 +54,21 @@ export component MainWindow inherits Window {
                 spacing: 10px;
 
                 Text {
-                    text: "Project Path Configuration";
+                    text: "Project Directory Configuration";
                     font-size: 14px;
                     font-weight: 700;
                     color: #eeeeee;
                 }
 
                 HorizontalLayout {
-                    spacing: 10px;
+                    spacing: 12px;
 
                     VerticalLayout {
-                        spacing: 4px;
-                        horizontal-stretch: 1;
+                        alignment: center;
 
-                        Text {
-                            text: ".ioc File Path:";
-                            font-size: 11px;
-                            color: #aaaaaa;
-                        }
-
-                        HorizontalLayout {
-                            spacing: 6px;
-                            LineEdit {
-                                text <=> root.ioc_path;
-                                placeholder-text: "/path/to/project.ioc";
-                                horizontal-stretch: 1;
-                            }
-                            Button {
-                                text: "Browse";
-                                clicked => { root.browse_ioc_clicked(); }
-                            }
+                        Button {
+                            text: "Browse Project Folder";
+                            clicked => { root.browse_folder_clicked(); }
                         }
                     }
 
@@ -90,32 +76,46 @@ export component MainWindow inherits Window {
                         spacing: 4px;
                         horizontal-stretch: 1;
 
-                        Text {
-                            text: "main.c File Path:";
-                            font-size: 11px;
-                            color: #aaaaaa;
+                        HorizontalLayout {
+                            spacing: 6px;
+                            Text {
+                                text: ".ioc Path:";
+                                font-size: 11px;
+                                font-weight: 700;
+                                color: #aaaaaa;
+                            }
+                            Text {
+                                text: root.has_discovered_paths ? root.discovered_ioc_path : "(no .ioc file discovered)";
+                                font-size: 11px;
+                                color: root.has_discovered_paths ? #888888 : #666666;
+                                overflow: elide;
+                            }
                         }
 
                         HorizontalLayout {
                             spacing: 6px;
-                            LineEdit {
-                                text <=> root.main_c_path;
-                                placeholder-text: "/path/to/Core/Src/main.c";
-                                horizontal-stretch: 1;
+                            Text {
+                                text: "main.c Path:";
+                                font-size: 11px;
+                                font-weight: 700;
+                                color: #aaaaaa;
                             }
-                            Button {
-                                text: "Browse";
-                                clicked => { root.browse_main_c_clicked(); }
+                            Text {
+                                text: root.has_discovered_paths ? root.discovered_main_c_path : "(no main.c file discovered)";
+                                font-size: 11px;
+                                color: root.has_discovered_paths ? #888888 : #666666;
+                                overflow: elide;
                             }
                         }
                     }
 
                     VerticalLayout {
-                        alignment: end;
+                        alignment: center;
 
                         Button {
                             text: "Load Project";
                             primary: true;
+                            enabled: root.has_discovered_paths;
                             clicked => { root.load_clicked(); }
                         }
                     }
@@ -217,7 +217,7 @@ export component MainWindow inherits Window {
                             spacing: 4px;
 
                             if root.peripherals.length == 0 : Text {
-                                text: root.project_loaded ? "No peripherals configured." : "Load a project to view peripherals.";
+                                text: root.project_loaded ? "No peripherals configured." : "Select folder and click Load Project.";
                                 font-size: 12px;
                                 color: #777777;
                             }
@@ -291,7 +291,7 @@ export component MainWindow inherits Window {
                             spacing: 4px;
 
                             if root.regions.length == 0 : Text {
-                                text: root.project_loaded ? "No user regions found." : "Load a project to view regions.";
+                                text: root.project_loaded ? "No user regions found." : "Select folder and click Load Project.";
                                 font-size: 12px;
                                 color: #777777;
                             }
