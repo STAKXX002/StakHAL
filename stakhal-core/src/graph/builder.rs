@@ -1,7 +1,8 @@
+use serde::{Deserialize, Serialize};
 use crate::graph::hal_rules::HAL_IRQ_MAPPINGS;
 use crate::ioc::IocProject;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum EdgeType {
     Init,
     IrqEntry,
@@ -9,7 +10,7 @@ pub enum EdgeType {
     WeakOverride,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GraphEdge {
     pub from: String,
     pub to: String,

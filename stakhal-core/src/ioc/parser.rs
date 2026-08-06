@@ -1,8 +1,9 @@
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct IocProject {
     pub mcu_family: String,
     pub mcu_name: String, // e.g. "STM32F446RETx"
@@ -11,13 +12,13 @@ pub struct IocProject {
     pub raw: HashMap<String, String>, // full unparsed key=value map
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PinConfig {
     pub pin: String,    // e.g. "PA2"
     pub signal: String, // e.g. "USART2_TX"
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PeripheralConfig {
     pub name: String,                        // e.g. "USART2"
     pub mode: Option<String>,                // e.g. "Asynchronous"

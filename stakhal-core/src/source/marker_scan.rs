@@ -1,8 +1,9 @@
 use std::fs;
 use std::path::{Path, PathBuf};
+use serde::{Deserialize, Serialize};
 use tree_sitter::Parser;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct UserRegion {
     pub tag: String,
     pub file: PathBuf,
