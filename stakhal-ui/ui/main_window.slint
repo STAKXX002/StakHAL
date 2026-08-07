@@ -1,4 +1,4 @@
-import { Button, LineEdit, ScrollView } from "std-widgets.slint";
+import { Button, LineEdit, ListView, ScrollView } from "std-widgets.slint";
 
 export struct PeripheralItem {
     name: string,
@@ -490,7 +490,7 @@ export component MainWindow inherits Window {
 
         // FULL SOURCE SUB-PANEL (Replaces main content view when showing_source_view is true)
         if root.showing_source_view : Rectangle {
-            background: #141414;
+            background: #111111;
             border-radius: 8px;
             border-width: 1px;
             border-color: #3b82f6;
@@ -500,13 +500,12 @@ export component MainWindow inherits Window {
                 padding: 12px;
                 spacing: 10px;
 
-                // Source View Header (Variable details + Close button)
+                // Source View Header (Variable details + Quiet Legend + Close button)
                 HorizontalLayout {
-                    spacing: 12px;
+                    spacing: 16px;
 
                     HorizontalLayout {
                         spacing: 8px;
-                        horizontal-stretch: 1;
 
                         Text {
                             text: "PV Source View:";
@@ -532,89 +531,82 @@ export component MainWindow inherits Window {
                         }
                     }
 
-                    // Legend Badges
+                    // Compact Quiet Legend (Non-interactive dot swatches + labels)
                     HorizontalLayout {
-                        spacing: 10px;
-                        alignment: center;
+                        spacing: 16px;
+                        horizontal-stretch: 1;
 
-                        Rectangle {
-                            background: #064e3b;
-                            border-color: #059669;
-                            border-width: 1px;
-                            border-radius: 3px;
+                        HorizontalLayout {
+                            spacing: 5px;
 
-                            HorizontalLayout {
-                                padding-left: 6px;
-                                padding-right: 6px;
+                            Text {
+                                text: "●";
+                                font-size: 10px;
+                                color: #34d399;
+                                vertical-alignment: center;
+                            }
 
-                                Text {
-                                    text: "Declaration (click to edit)";
-                                    font-size: 10px;
-                                    font-weight: 700;
-                                    color: #a7f3d0;
-                                    vertical-alignment: center;
-                                }
+                            Text {
+                                text: "Declaration";
+                                font-size: 11px;
+                                color: #a7f3d0;
+                                vertical-alignment: center;
                             }
                         }
 
-                        Rectangle {
-                            background: #0f2942;
-                            border-color: #0284c7;
-                            border-width: 1px;
-                            border-radius: 3px;
+                        HorizontalLayout {
+                            spacing: 5px;
 
-                            HorizontalLayout {
-                                padding-left: 6px;
-                                padding-right: 6px;
+                            Text {
+                                text: "●";
+                                font-size: 10px;
+                                color: #38bdf8;
+                                vertical-alignment: center;
+                            }
 
-                                Text {
-                                    text: "Usage (click to scroll)";
-                                    font-size: 10px;
-                                    font-weight: 700;
-                                    color: #38bdf8;
-                                    vertical-alignment: center;
-                                }
+                            Text {
+                                text: "Usage";
+                                font-size: 11px;
+                                color: #38bdf8;
+                                vertical-alignment: center;
                             }
                         }
 
-                        Rectangle {
-                            background: #1e1e1e;
-                            border-color: #444444;
-                            border-width: 1px;
-                            border-radius: 3px;
+                        HorizontalLayout {
+                            spacing: 5px;
 
-                            HorizontalLayout {
-                                padding-left: 6px;
-                                padding-right: 6px;
+                            Text {
+                                text: "●";
+                                font-size: 10px;
+                                color: #d1d5db;
+                                vertical-alignment: center;
+                            }
 
-                                Text {
-                                    text: "User Code";
-                                    font-size: 10px;
-                                    color: #d1d5db;
-                                    vertical-alignment: center;
-                                }
+                            Text {
+                                text: "User Code";
+                                font-size: 11px;
+                                color: #d1d5db;
+                                vertical-alignment: center;
                             }
                         }
 
-                        Rectangle {
-                            background: #181818;
-                            border-color: #2a2a2a;
-                            border-width: 1px;
-                            border-radius: 3px;
+                        HorizontalLayout {
+                            spacing: 5px;
 
-                            HorizontalLayout {
-                                padding-left: 6px;
-                                padding-right: 6px;
+                            Text {
+                                text: "●";
+                                font-size: 10px;
+                                color: #555555;
+                                vertical-alignment: center;
+                            }
 
-                                Text {
-                                    text: "Generated";
-                                    font-size: 10px;
-                                    color: #555555;
-                                    vertical-alignment: center;
-                                }
+                            Text {
+                                text: "Generated";
+                                font-size: 11px;
+                                color: #555555;
+                                vertical-alignment: center;
                             }
                         }
-
                     }
 
                     Button {
@@ -625,119 +617,111 @@ export component MainWindow inherits Window {
 
                 Rectangle {
                     height: 1px;
-                    background: #333333;
+                    background: #2a2a2a;
                 }
 
-                // Scrollable Code View
-                ScrollView {
+                // Virtualized ListView Code View with Flat Editor Background
+                ListView {
                     viewport-y: root.source_scroll_y;
 
-                    VerticalLayout {
-                        alignment: start;
-                        spacing: 2px;
+                    for item[idx] in root.source_lines : Rectangle {
+                        background: item.tier_str == "declaration" ? #064e3b : (item.tier_str == "usage" ? #0f2942 : #111111);
 
-                        for item[idx] in root.source_lines : Rectangle {
-                            background: item.tier_str == "declaration" ? #064e3b : (item.tier_str == "usage" ? #0f2942 : (item.tier_str == "normal" ? #1a1a1a : #141414));
-                            border-color: item.tier_str == "declaration" ? #059669 : (item.tier_str == "usage" ? #0284c7 : #141414);
-                            border-width: (item.tier_str == "declaration" || item.tier_str == "usage") ? 1px : 0px;
-                            border-radius: 3px;
+                        VerticalLayout {
+                            padding-left: 6px;
+                            padding-right: 6px;
+                            padding-top: 1px;
+                            padding-bottom: 1px;
+                            spacing: 2px;
 
-                            VerticalLayout {
-                                padding-left: 6px;
-                                padding-right: 6px;
-                                padding-top: 2px;
-                                padding-bottom: 2px;
-                                spacing: 4px;
+                            TouchArea {
+                                enabled: item.tier_str == "declaration" || item.tier_str == "usage";
+                                clicked => {
+                                    if (item.tier_str == "declaration") {
+                                        root.click_declaration_line(idx);
+                                    } else if (item.tier_str == "usage") {
+                                        root.source_scroll_y = - (idx * 20px);
+                                    }
+                                }
 
-                                TouchArea {
-                                    enabled: item.tier_str == "declaration" || item.tier_str == "usage";
-                                    clicked => {
-                                        if (item.tier_str == "declaration") {
-                                            root.click_declaration_line(idx);
-                                        } else if (item.tier_str == "usage") {
-                                            root.source_scroll_y = - (idx * 24px);
-                                        }
+                                HorizontalLayout {
+                                    spacing: 12px;
+
+                                    // Line Number Column
+                                    Text {
+                                        text: item.line_number;
+                                        font-size: 12px;
+                                        font-family: "monospace";
+                                        color: item.tier_str == "declaration" ? #34d399 : (item.tier_str == "usage" ? #38bdf8 : (item.tier_str == "normal" ? #9ca3af : #4b5563));
+                                        width: 45px;
+                                        horizontal-alignment: end;
+                                        vertical-alignment: center;
                                     }
 
-                                    HorizontalLayout {
-                                        spacing: 12px;
+                                    // Line Content Column
+                                    if !item.is_editing : Text {
+                                        text: item.text;
+                                        font-size: 12px;
+                                        font-family: "monospace";
+                                        font-weight: (item.tier_str == "declaration" || item.tier_str == "usage") ? 700 : 400;
+                                        color: item.tier_str == "declaration" ? #a7f3d0 : (item.tier_str == "usage" ? #38bdf8 : (item.tier_str == "normal" ? #e5e7eb : #555555));
+                                        vertical-alignment: center;
+                                        horizontal-stretch: 1;
+                                    }
+                                }
+                            }
 
-                                        // Line Number Column
+                            // Scoped Inline Declaration Edit Mode
+                            // Known limitation: assumes declaration is a single line — if a declaration spans multiple lines, editing may not render/behave perfectly; acceptable for v1 given typical PV declarations are single-line.
+                            if item.is_editing : VerticalLayout {
+                                spacing: 6px;
+                                padding-left: 57px;
+
+                                if item.has_error : Rectangle {
+                                    background: #3b1818;
+                                    border-radius: 4px;
+                                    border-width: 1px;
+                                    border-color: #991b1b;
+
+                                    HorizontalLayout {
+                                        padding: 6px;
+                                        spacing: 6px;
+
                                         Text {
-                                            text: item.line_number;
-                                            font-size: 12px;
-                                            font-family: "monospace";
-                                            color: item.tier_str == "declaration" ? #34d399 : (item.tier_str == "usage" ? #38bdf8 : (item.tier_str == "normal" ? #9ca3af : #4b5563));
-                                            width: 45px;
-                                            horizontal-alignment: end;
-                                            vertical-alignment: center;
+                                            text: "Error:";
+                                            font-size: 11px;
+                                            font-weight: 700;
+                                            color: #f87171;
                                         }
 
-                                        // Line Content Column
-                                        if !item.is_editing : Text {
-                                            text: item.text;
-                                            font-size: 12px;
-                                            font-family: "monospace";
-                                            font-weight: (item.tier_str == "declaration" || item.tier_str == "usage") ? 700 : 400;
-                                            color: item.tier_str == "declaration" ? #a7f3d0 : (item.tier_str == "usage" ? #38bdf8 : (item.tier_str == "normal" ? #e5e7eb : #555555));
-                                            vertical-alignment: center;
+                                        Text {
+                                            text: item.error_message;
+                                            font-size: 11px;
+                                            color: #f87171;
+                                            wrap: word-wrap;
                                             horizontal-stretch: 1;
                                         }
                                     }
                                 }
 
-                                // Scoped Inline Declaration Edit Mode
-                                // Known limitation: assumes declaration is a single line — if a declaration spans multiple lines, editing may not render/behave perfectly; acceptable for v1 given typical PV declarations are single-line.
-                                if item.is_editing : VerticalLayout {
-                                    spacing: 6px;
-                                    padding-left: 57px; // align with code column
+                                edit_box := LineEdit {
+                                    text: item.text;
+                                    font-size: 12px;
+                                    font-family: "monospace";
+                                }
 
-                                    if item.has_error : Rectangle {
-                                        background: #3b1818;
-                                        border-radius: 4px;
-                                        border-width: 1px;
-                                        border-color: #991b1b;
+                                HorizontalLayout {
+                                    spacing: 8px;
 
-                                        HorizontalLayout {
-                                            padding: 6px;
-                                            spacing: 6px;
-
-                                            Text {
-                                                text: "Error:";
-                                                font-size: 11px;
-                                                font-weight: 700;
-                                                color: #f87171;
-                                            }
-
-                                            Text {
-                                                text: item.error_message;
-                                                font-size: 11px;
-                                                color: #f87171;
-                                                wrap: word-wrap;
-                                                horizontal-stretch: 1;
-                                            }
-                                        }
+                                    Button {
+                                        text: "Cancel";
+                                        clicked => { root.cancel_declaration_edit(idx); }
                                     }
 
-                                    edit_box := LineEdit {
-                                        text: item.text;
-                                        font-size: 12px;
-                                        font-family: "monospace";
-                                    }
-
-                                    HorizontalLayout {
-                                        spacing: 8px;
-
-                                        Button {
-                                            text: "Cancel";
-                                            clicked => { root.cancel_declaration_edit(idx); }
-                                        }
-
-                                        Button {
-                                            text: "Save";
-                                            primary: true;
-                                            clicked => { root.save_declaration_edit(idx, edit_box.text); }
-                                        }
+                                    Button {
+                                        text: "Save";
+                                        primary: true;
+                                        clicked => { root.save_declaration_edit(idx, edit_box.text); }
                                     }
                                 }
                             }
