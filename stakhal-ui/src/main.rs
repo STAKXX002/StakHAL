@@ -5,6 +5,8 @@ use std::rc::Rc;
 
 use serde::{Deserialize, Serialize};
 use slint::{ModelRc, VecModel};
+
+
 use stakhal_core::ioc::discover_project_files;
 use stakhal_core::ir::load_project;
 use stakhal_core::source::pv_extract::PvDeclaration;
@@ -321,6 +323,8 @@ fn main() -> Result<(), slint::PlatformError> {
 
         update_source_window_slice(&ui, &mut st, Some(0.0));
     });
+
+
 
     let ui_weak_close_src = ui.as_weak();
     let state_close_src = Rc::clone(&state);
