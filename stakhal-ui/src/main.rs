@@ -8,15 +8,14 @@ use slint::{ModelRc, VecModel};
 use stakhal_core::ioc::discover_project_files;
 use stakhal_core::ir::load_project;
 use stakhal_core::source::pv_extract::PvDeclaration;
+use stakhal_core::source::scan_file;
+use stakhal_core::source::write_region;
 
 slint::include_modules!();
-
-const DEFAULT_EDITOR_TEMPLATE: &str = "code --goto {path}:{line}:{col}";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct AppConfig {
     project_dir: Option<String>,
-    editor_cmd_template: Option<String>,
 }
 
 #[derive(Default)]
@@ -24,6 +23,9 @@ struct LoadedState {
     ioc_path: PathBuf,
     main_c_path: PathBuf,
     pv_declarations: Vec<PvDeclaration>,
+    pv_region_byte_range: Option<(usize, usize)>,
+    expanded_pv_index: Option<usize>,
+    inline_error: Option<(usize, String)>,
 }
 
 fn get_config_file_path() -> Option<PathBuf> {
@@ -39,90 +41,50 @@ fn load_app_config() -> AppConfig {
             }
         }
     }
-    AppConfig {
-        project_dir: None,
-        editor_cmd_template: None,
-    }
+    AppConfig { project_dir: None }
 }
 
-fn save_app_config(dir: Option<&str>, template: Option<&str>) {
+fn save_app_config(dir: &str) {
     if let Some(config_path) = get_config_file_path() {
         if let Some(parent) = config_path.parent() {
             let _ = fs::create_dir_all(parent);
         }
-        let mut current = load_app_config();
-        if let Some(d) = dir {
-            current.project_dir = Some(d.to_string());
-        }
-        if let Some(t) = template {
-            current.editor_cmd_template = Some(t.to_string());
-        }
-        if let Ok(json) = serde_json::to_string_pretty(&current) {
+        let config = AppConfig {
+            project_dir: Some(dir.to_string()),
+        };
+        if let Ok(json) = serde_json::to_string_pretty(&config) {
             let _ = fs::write(config_path, json);
         }
     }
 }
 
-fn parse_cmd_line(cmd_line: &str) -> Option<(String, Vec<String>)> {
-    let mut args = Vec::new();
-    let mut current = String::new();
-    let mut in_quotes = false;
-    let mut quote_char = ' ';
+fn update_pv_ui_model(ui: &MainWindow, state: &LoadedState) {
+    let pv_items: Vec<PvItem> = state
+        .pv_declarations
+        .iter()
+        .enumerate()
+        .map(|(idx, d)| {
+            let is_expanded = state.expanded_pv_index == Some(idx);
+            let (has_error, error_message) = match &state.inline_error {
+                Some((err_idx, msg)) if *err_idx == idx => (true, msg.clone()),
+                _ => (false, String::new()),
+            };
 
-    for ch in cmd_line.chars() {
-        match ch {
-            '"' | '\'' if !in_quotes => {
-                in_quotes = true;
-                quote_char = ch;
+            PvItem {
+                name: d.name.clone().into(),
+                type_str: d.type_str.clone().into(),
+                initial_value: d.initial_value.clone().unwrap_or_else(|| "—".to_string()).into(),
+                raw_text: d.raw_text.clone().into(),
+                line: d.line as i32,
+                pv_index: idx as i32,
+                is_expanded,
+                has_error,
+                error_message: error_message.into(),
             }
-            q if in_quotes && q == quote_char => {
-                in_quotes = false;
-            }
-            ' ' | '\t' if !in_quotes => {
-                if !current.is_empty() {
-                    args.push(current.clone());
-                    current.clear();
-                }
-            }
-            _ => {
-                current.push(ch);
-            }
-        }
-    }
-    if !current.is_empty() {
-        args.push(current);
-    }
+        })
+        .collect();
 
-    if args.is_empty() {
-        return None;
-    }
-    let program = args.remove(0);
-    Some((program, args))
-}
-
-fn launch_editor(
-    template: &str,
-    main_c_path: &Path,
-    line: usize,
-) -> Result<(), String> {
-    let path_str = main_c_path.to_string_lossy();
-    let line_str = line.to_string();
-    let col_str = "1";
-
-    let expanded = template
-        .replace("{path}", &path_str)
-        .replace("{line}", &line_str)
-        .replace("{col}", col_str);
-
-    let (program, args) = parse_cmd_line(&expanded)
-        .ok_or_else(|| "Editor command template is empty".to_string())?;
-
-    std::process::Command::new(&program)
-        .args(&args)
-        .spawn()
-        .map_err(|e| format!("Failed to launch editor: {} — check your editor command in settings.", e))?;
-
-    Ok(())
+    ui.set_pv_variables(ModelRc::from(Rc::new(VecModel::from(pv_items))));
 }
 
 fn load_project_into_ui(
@@ -133,10 +95,19 @@ fn load_project_into_ui(
 ) -> Result<(), String> {
     let project = load_project(ioc_path, main_c_path).map_err(|e| e.to_string())?;
 
+    let pv_region_range = project
+        .user_regions
+        .iter()
+        .find(|r| r.tag == "PV")
+        .map(|r| r.byte_range);
+
     let mut st = state.borrow_mut();
     st.ioc_path = ioc_path.to_path_buf();
     st.main_c_path = main_c_path.to_path_buf();
     st.pv_declarations = project.pv_declarations.clone();
+    st.pv_region_byte_range = pv_region_range;
+    st.expanded_pv_index = None;
+    st.inline_error = None;
 
     ui.set_has_error(false);
     ui.set_error_message("".into());
@@ -176,20 +147,7 @@ fn load_project_into_ui(
     }
     ui.set_regions(ModelRc::from(Rc::new(VecModel::from(region_items))));
 
-    let pv_items: Vec<PvItem> = project
-        .pv_declarations
-        .iter()
-        .enumerate()
-        .map(|(idx, d)| PvItem {
-            name: d.name.clone().into(),
-            type_str: d.type_str.clone().into(),
-            initial_value: d.initial_value.clone().unwrap_or_else(|| "—".to_string()).into(),
-            raw_text: d.raw_text.clone().into(),
-            line: d.line as i32,
-            pv_index: idx as i32,
-        })
-        .collect();
-    ui.set_pv_variables(ModelRc::from(Rc::new(VecModel::from(pv_items))));
+    update_pv_ui_model(ui, &st);
 
     Ok(())
 }
@@ -199,11 +157,6 @@ fn main() -> Result<(), slint::PlatformError> {
     let state = Rc::new(RefCell::new(LoadedState::default()));
 
     let app_config = load_app_config();
-
-    let editor_template = app_config
-        .editor_cmd_template
-        .unwrap_or_else(|| DEFAULT_EDITOR_TEMPLATE.to_string());
-    ui.set_editor_cmd_template(editor_template.into());
 
     if let Some(saved_dir) = app_config.project_dir {
         let path = PathBuf::from(&saved_dir);
@@ -216,10 +169,6 @@ fn main() -> Result<(), slint::PlatformError> {
             }
         }
     }
-
-    ui.on_editor_cmd_changed(move |new_template| {
-        save_app_config(None, Some(&new_template.to_string()));
-    });
 
     let ui_weak_folder = ui.as_weak();
     ui.on_browse_folder_clicked(move || {
@@ -240,7 +189,7 @@ fn main() -> Result<(), slint::PlatformError> {
                     ui.set_has_error(false);
                     ui.set_error_message("".into());
 
-                    save_app_config(Some(&dir_str), None);
+                    save_app_config(&dir_str);
                 }
                 Err(err) => {
                     ui.set_has_discovered_paths(false);
@@ -275,69 +224,164 @@ fn main() -> Result<(), slint::PlatformError> {
         }
     });
 
-    let ui_weak_open = ui.as_weak();
-    let state_open = Rc::clone(&state);
-    ui.on_open_pv_clicked(move |idx_i32| {
-        let ui = match ui_weak_open.upgrade() {
+    let ui_weak_toggle = ui.as_weak();
+    let state_toggle = Rc::clone(&state);
+    ui.on_toggle_pv_expanded(move |idx_i32| {
+        let ui = match ui_weak_toggle.upgrade() {
             Some(u) => u,
             None => return,
         };
         let idx = idx_i32 as usize;
-        let (main_c_path, line) = {
-            let st = state_open.borrow();
+        let mut st = state_toggle.borrow_mut();
+        if idx >= st.pv_declarations.len() {
+            return;
+        }
+
+        if st.expanded_pv_index == Some(idx) {
+            st.expanded_pv_index = None;
+            st.inline_error = None;
+        } else {
+            st.expanded_pv_index = Some(idx);
+            st.inline_error = None;
+        }
+        update_pv_ui_model(&ui, &st);
+    });
+
+    let ui_weak_cancel = ui.as_weak();
+    let state_cancel = Rc::clone(&state);
+    ui.on_cancel_pv_inline_edit(move |_idx_i32| {
+        let ui = match ui_weak_cancel.upgrade() {
+            Some(u) => u,
+            None => return,
+        };
+        let mut st = state_cancel.borrow_mut();
+        st.expanded_pv_index = None;
+        st.inline_error = None;
+        update_pv_ui_model(&ui, &st);
+    });
+
+    let ui_weak_save = ui.as_weak();
+    let state_save = Rc::clone(&state);
+    ui.on_save_pv_inline_edit(move |idx_i32, new_raw_text_slint| {
+        let ui = match ui_weak_save.upgrade() {
+            Some(u) => u,
+            None => return,
+        };
+        let idx = idx_i32 as usize;
+        let new_raw_text = new_raw_text_slint.to_string();
+
+        let (main_c_path, ioc_path, loaded_pv_range, orig_decl) = {
+            let st = state_save.borrow();
             if idx >= st.pv_declarations.len() {
                 return;
             }
-            (st.main_c_path.clone(), st.pv_declarations[idx].line)
+            (
+                st.main_c_path.clone(),
+                st.ioc_path.clone(),
+                st.pv_region_byte_range,
+                st.pv_declarations[idx].clone(),
+            )
         };
 
-        let template = ui.get_editor_cmd_template().to_string();
-
-        match launch_editor(&template, &main_c_path, line) {
-            Ok(()) => {
-                ui.set_has_error(false);
-                ui.set_error_message("".into());
+        let fresh_regions = match scan_file(&main_c_path) {
+            Ok(r) => r,
+            Err(err) => {
+                let mut st = state_save.borrow_mut();
+                st.inline_error = Some((idx, err.to_string()));
+                update_pv_ui_model(&ui, &st);
+                return;
             }
-            Err(err_msg) => {
-                ui.set_has_error(true);
-                ui.set_error_message(err_msg.into());
+        };
+
+        let fresh_pv_region = match fresh_regions.into_iter().find(|r| r.tag == "PV") {
+            Some(r) => r,
+            None => {
+                let mut st = state_save.borrow_mut();
+                st.inline_error = Some((idx, "No PV region found in fresh scan".to_string()));
+                update_pv_ui_model(&ui, &st);
+                return;
+            }
+        };
+
+        if let Some(loaded_range) = loaded_pv_range {
+            if fresh_pv_region.byte_range != loaded_range {
+                let mut st = state_save.borrow_mut();
+                st.inline_error = Some((
+                    idx,
+                    "File has changed since project was loaded — reload project and try again"
+                        .to_string(),
+                ));
+                update_pv_ui_model(&ui, &st);
+                return;
+            }
+        } else {
+            let mut st = state_save.borrow_mut();
+            st.inline_error = Some((
+                idx,
+                "File has changed since project was loaded — reload project and try again"
+                    .to_string(),
+            ));
+            update_pv_ui_model(&ui, &st);
+            return;
+        }
+
+        let file_content = match fs::read_to_string(&main_c_path) {
+            Ok(c) => c,
+            Err(e) => {
+                let mut st = state_save.borrow_mut();
+                st.inline_error = Some((idx, e.to_string()));
+                update_pv_ui_model(&ui, &st);
+                return;
+            }
+        };
+
+        let pv_start = fresh_pv_region.byte_range.0;
+        let pv_end = fresh_pv_region.byte_range.1;
+
+        if pv_end > file_content.as_bytes().len() {
+            let mut st = state_save.borrow_mut();
+            st.inline_error = Some((idx, "PV region byte range out of file bounds".to_string()));
+            update_pv_ui_model(&ui, &st);
+            return;
+        }
+
+        let pv_full_text = &file_content[pv_start..pv_end];
+
+        let decl_start = orig_decl.byte_range.0;
+        let decl_end = orig_decl.byte_range.1;
+
+        if decl_start < pv_start || decl_end > pv_end {
+            let mut st = state_save.borrow_mut();
+            st.inline_error = Some((
+                idx,
+                "Declaration byte range out of PV region bounds".to_string(),
+            ));
+            update_pv_ui_model(&ui, &st);
+            return;
+        }
+
+        let decl_start_rel = decl_start - pv_start;
+        let decl_end_rel = decl_end - pv_start;
+
+        let mut new_pv_full_text = String::new();
+        new_pv_full_text.push_str(&pv_full_text[..decl_start_rel]);
+        new_pv_full_text.push_str(&new_raw_text);
+        new_pv_full_text.push_str(&pv_full_text[decl_end_rel..]);
+
+        match write_region(&main_c_path, &fresh_pv_region, &new_pv_full_text) {
+            Ok(()) => {
+                if let Err(err_msg) = load_project_into_ui(&ui, &ioc_path, &main_c_path, &state_save) {
+                    ui.set_has_error(true);
+                    ui.set_error_message(err_msg.into());
+                }
+            }
+            Err(err) => {
+                let mut st = state_save.borrow_mut();
+                st.inline_error = Some((idx, err.to_string()));
+                update_pv_ui_model(&ui, &st);
             }
         }
     });
 
     ui.run()
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_parse_cmd_line_simple() {
-        let (cmd, args) = parse_cmd_line("code --goto {path}:{line}:{col}").unwrap();
-        assert_eq!(cmd, "code");
-        assert_eq!(args, vec!["--goto", "{path}:{line}:{col}"]);
-    }
-
-    #[test]
-    fn test_parse_cmd_line_quoted() {
-        let (cmd, args) = parse_cmd_line("gedit +52 \"/path with spaces/main.c\"").unwrap();
-        assert_eq!(cmd, "gedit");
-        assert_eq!(args, vec!["+52", "/path with spaces/main.c"]);
-    }
-
-    #[test]
-    fn test_launch_editor_invalid_command() {
-        let res = launch_editor(
-            "nonexistent_binary_xyz {path}:{line}",
-            Path::new("/tmp/test.c"),
-            42,
-        );
-        assert!(res.is_err());
-        let err = res.unwrap_err();
-        assert!(err.contains("Failed to launch editor:"));
-        assert!(err.contains("check your editor command in settings."));
-    }
-}
-
-

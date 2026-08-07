@@ -20,6 +20,9 @@ export struct PvItem {
     raw_text: string,
     line: int,
     pv_index: int,
+    is_expanded: bool,
+    has_error: bool,
+    error_message: string,
 }
 
 export component MainWindow inherits Window {
@@ -45,19 +48,18 @@ export component MainWindow inherits Window {
     in property <[RegionItem]> regions: [];
     in property <[PvItem]> pv_variables: [];
 
-    // Editor Settings Property
-    in-out property <string> editor_cmd_template: "code --goto {path}:{line}:{col}";
-
     callback load_clicked();
     callback browse_folder_clicked();
-    callback open_pv_clicked(int);
-    callback editor_cmd_changed(string);
+
+    callback toggle_pv_expanded(int);
+    callback save_pv_inline_edit(int, string);
+    callback cancel_pv_inline_edit(int);
 
     VerticalLayout {
         padding: 16px;
         spacing: 12px;
 
-        // Top Control Panel (Folder Selection, Discovered Paths, Editor Settings, & Load Button)
+        // Top Control Panel (Folder Selection, Discovered Paths, & Load Button)
         Rectangle {
             background: #1e1e1e;
             border-radius: 8px;
@@ -70,7 +72,7 @@ export component MainWindow inherits Window {
 
                 HorizontalLayout {
                     Text {
-                        text: "Project Directory & Editor Configuration";
+                        text: "Project Directory Configuration";
                         font-size: 14px;
                         font-weight: 700;
                         color: #eeeeee;
@@ -137,29 +139,10 @@ export component MainWindow inherits Window {
                         }
                     }
                 }
-
-                // Small settings row for Editor Command Template
-                HorizontalLayout {
-                    spacing: 8px;
-
-                    Text {
-                        text: "Editor Command:";
-                        font-size: 11px;
-                        font-weight: 700;
-                        color: #aaaaaa;
-                        vertical-alignment: center;
-                    }
-
-                    LineEdit {
-                        text <=> root.editor_cmd_template;
-                        horizontal-stretch: 1;
-                        edited => { root.editor_cmd_changed(root.editor_cmd_template); }
-                    }
-                }
             }
         }
 
-        // Semantic Error Banner (Red)
+        // Global Semantic Error Banner (Red)
         if root.has_error : Rectangle {
             background: #2c1616;
             border-radius: 6px;
@@ -218,7 +201,7 @@ export component MainWindow inherits Window {
             }
         }
 
-        // Content Area (Peripherals, User Regions, & PV Variables)
+        // Content Area (Peripherals, User Regions, & PV Variables Accordion)
         HorizontalLayout {
             spacing: 12px;
             vertical-stretch: 1;
@@ -396,13 +379,13 @@ export component MainWindow inherits Window {
                 }
             }
 
-            // Section 3: PV Variables Panel
+            // Section 3: PV Variables Panel (Inline Accordion Editing)
             Rectangle {
                 background: #181818;
                 border-radius: 8px;
                 border-width: 1px;
                 border-color: #333333;
-                horizontal-stretch: 1;
+                horizontal-stretch: 1.2;
 
                 VerticalLayout {
                     padding: 12px;
@@ -423,7 +406,7 @@ export component MainWindow inherits Window {
                     ScrollView {
                         VerticalLayout {
                             alignment: start;
-                            spacing: 4px;
+                            spacing: 6px;
 
                             if root.pv_variables.length == 0 : Text {
                                 text: root.project_loaded ? "No PV declarations found." : "Select folder and click Load Project.";
@@ -432,57 +415,117 @@ export component MainWindow inherits Window {
                             }
 
                             for item in root.pv_variables : Rectangle {
-                                background: #222222;
-                                border-radius: 4px;
-                                height: 38px;
+                                background: item.is_expanded ? #25282a : #222222;
+                                border-radius: 6px;
+                                border-color: item.is_expanded ? #3b82f6 : #333333;
+                                border-width: 1px;
 
-                                TouchArea {
-                                    double-clicked => { root.open_pv_clicked(item.pv_index); }
+                                VerticalLayout {
+                                    padding: 8px;
+                                    spacing: 8px;
 
-                                    HorizontalLayout {
-                                        padding-left: 10px;
-                                        padding-right: 10px;
+                                    // Collapsed Header Row (Whole row is clickable to toggle expansion)
+                                    TouchArea {
+                                        clicked => { root.toggle_pv_expanded(item.pv_index); }
+
+                                        HorizontalLayout {
+                                            spacing: 8px;
+
+                                            Text {
+                                                text: (item.is_expanded ? "▼ " : "► ") + item.name;
+                                                font-size: 12px;
+                                                font-weight: 700;
+                                                color: item.is_expanded ? #60a5fa : #eeeeee;
+                                                vertical-alignment: center;
+                                                width: 110px;
+                                                overflow: elide;
+                                            }
+
+                                            Text {
+                                                text: item.type_str;
+                                                font-size: 11px;
+                                                color: #cccccc;
+                                                vertical-alignment: center;
+                                                width: 105px;
+                                                overflow: elide;
+                                            }
+
+                                            Text {
+                                                text: "Init: " + item.initial_value;
+                                                font-size: 11px;
+                                                color: #aaaaaa;
+                                                vertical-alignment: center;
+                                                horizontal-stretch: 1;
+                                                overflow: elide;
+                                            }
+
+                                            Text {
+                                                text: "L" + item.line;
+                                                font-size: 11px;
+                                                color: #777777;
+                                                vertical-alignment: center;
+                                                width: 35px;
+                                            }
+                                        }
+                                    }
+
+                                    // Inline Expanded Editor Body
+                                    if item.is_expanded : VerticalLayout {
                                         spacing: 8px;
 
+                                        if item.has_error : Rectangle {
+                                            background: #3b1818;
+                                            border-radius: 4px;
+                                            border-width: 1px;
+                                            border-color: #991b1b;
+
+                                            HorizontalLayout {
+                                                padding: 6px;
+                                                spacing: 6px;
+
+                                                Text {
+                                                    text: "Error:";
+                                                    font-size: 11px;
+                                                    font-weight: 700;
+                                                    color: #f87171;
+                                                }
+
+                                                Text {
+                                                    text: item.error_message;
+                                                    font-size: 11px;
+                                                    color: #f87171;
+                                                    wrap: word-wrap;
+                                                    horizontal-stretch: 1;
+                                                }
+                                            }
+                                        }
+
                                         Text {
-                                            text: item.name;
-                                            font-size: 12px;
+                                            text: "Edit Declaration Statement:";
+                                            font-size: 11px;
                                             font-weight: 700;
-                                            color: #eeeeee;
-                                            vertical-alignment: center;
-                                            width: 95px;
-                                            overflow: elide;
-                                        }
-
-                                        Text {
-                                            text: item.type_str;
-                                            font-size: 11px;
-                                            color: #cccccc;
-                                            vertical-alignment: center;
-                                            width: 105px;
-                                            overflow: elide;
-                                        }
-
-                                        Text {
-                                            text: "Init: " + item.initial_value;
-                                            font-size: 11px;
                                             color: #aaaaaa;
-                                            vertical-alignment: center;
-                                            horizontal-stretch: 1;
-                                            overflow: elide;
                                         }
 
-                                        Text {
-                                            text: "L" + item.line;
-                                            font-size: 11px;
-                                            color: #777777;
-                                            vertical-alignment: center;
-                                            width: 35px;
+                                        edit_box := LineEdit {
+                                            text: item.raw_text;
+                                            font-size: 12px;
                                         }
 
-                                        Button {
-                                            text: "Open";
-                                            clicked => { root.open_pv_clicked(item.pv_index); }
+                                        HorizontalLayout {
+                                            spacing: 8px;
+                                            alignment: end;
+
+                                            Button {
+                                                text: "Cancel";
+                                                clicked => { root.cancel_pv_inline_edit(item.pv_index); }
+                                            }
+
+                                            Button {
+                                                text: "Save";
+                                                primary: true;
+                                                clicked => { root.save_pv_inline_edit(item.pv_index, edit_box.text); }
+                                            }
                                         }
                                     }
                                 }
