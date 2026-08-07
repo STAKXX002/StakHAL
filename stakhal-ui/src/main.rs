@@ -34,6 +34,9 @@ struct LoadedState {
     visible_start_index: usize,
     editing_line_number: Option<usize>,
     inline_error: Option<String>,
+    last_window: Option<(usize, usize)>,
+    last_editing_line: Option<usize>,
+    last_inline_error: Option<Option<String>>,
 }
 
 fn get_config_file_path() -> Option<PathBuf> {
@@ -68,11 +71,16 @@ fn save_app_config(dir: &str) {
 
 fn update_source_window_slice(ui: &MainWindow, state: &mut LoadedState, override_scroll_y: Option<f32>) {
     let total_lines = state.rendered_lines.len();
-    ui.set_total_line_count(total_lines as i32);
+    if ui.get_total_line_count() != total_lines as i32 {
+        ui.set_total_line_count(total_lines as i32);
+    }
 
     if total_lines == 0 {
-        ui.set_visible_start_index(0);
-        ui.set_source_lines(ModelRc::from(Rc::new(VecModel::from(vec![]))));
+        if state.last_window != Some((0, 0)) {
+            state.last_window = Some((0, 0));
+            ui.set_visible_start_index(0);
+            ui.set_source_lines(ModelRc::from(Rc::new(VecModel::from(vec![]))));
+        }
         return;
     }
 
@@ -87,8 +95,23 @@ fn update_source_window_slice(ui: &MainWindow, state: &mut LoadedState, override
     let start_idx = first_visible_line.saturating_sub(buffer).min(total_lines.saturating_sub(1));
     let end_idx = (start_idx + window_size).min(total_lines);
 
+    let window_changed = state.last_window != Some((start_idx, end_idx));
+    let editing_changed = state.last_editing_line != state.editing_line_number;
+    let error_changed = state.last_inline_error != Some(state.inline_error.clone());
+
+    if !window_changed && !editing_changed && !error_changed {
+        // Break feedback loop: no visual change in window slice or editing state, skip property writes.
+        return;
+    }
+
+    state.last_window = Some((start_idx, end_idx));
+    state.last_editing_line = state.editing_line_number;
+    state.last_inline_error = Some(state.inline_error.clone());
     state.visible_start_index = start_idx;
-    ui.set_visible_start_index(start_idx as i32);
+
+    if ui.get_visible_start_index() != start_idx as i32 {
+        ui.set_visible_start_index(start_idx as i32);
+    }
 
     let source_line_items: Vec<SourceLineItem> = state.rendered_lines[start_idx..end_idx]
         .iter()
@@ -123,6 +146,7 @@ fn update_source_window_slice(ui: &MainWindow, state: &mut LoadedState, override
 
     ui.set_source_lines(ModelRc::from(Rc::new(VecModel::from(source_line_items))));
 }
+
 
 
 fn load_project_into_ui(
@@ -315,6 +339,7 @@ fn main() -> Result<(), slint::PlatformError> {
         st.rendered_lines = rendered_lines;
         st.editing_line_number = None;
         st.inline_error = None;
+        st.last_window = None;
 
         ui.set_active_pv_name(decl.name.into());
         ui.set_active_pv_type(decl.type_str.into());
@@ -322,6 +347,7 @@ fn main() -> Result<(), slint::PlatformError> {
         ui.set_source_scroll_y(0.0_f32.into());
 
         update_source_window_slice(&ui, &mut st, Some(0.0));
+
     });
 
 
