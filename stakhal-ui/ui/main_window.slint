@@ -1,4 +1,4 @@
-import { Button, ScrollView } from "std-widgets.slint";
+import { Button, LineEdit, ScrollView } from "std-widgets.slint";
 
 export struct PeripheralItem {
     name: string,
@@ -13,9 +13,19 @@ export struct RegionItem {
     is_implicit: bool,
 }
 
+export struct PvItem {
+    name: string,
+    type_str: string,
+    initial_value: string,
+    raw_text: string,
+    byte_start: int,
+    byte_end: int,
+    pv_index: int,
+}
+
 export component MainWindow inherits Window {
     title: "StakHAL - STM32 Project Viewer";
-    preferred-width: 900px;
+    preferred-width: 1050px;
     preferred-height: 650px;
     background: #121212;
 
@@ -34,9 +44,20 @@ export component MainWindow inherits Window {
 
     in property <[PeripheralItem]> peripherals: [];
     in property <[RegionItem]> regions: [];
+    in property <[PvItem]> pv_variables: [];
+
+    // Edit PV Modal Dialog Properties
+    in-out property <bool> edit_dialog_visible: false;
+    in-out property <string> edit_pv_name: "";
+    in-out property <string> edit_pv_raw_text: "";
+    in-out property <bool> edit_dialog_has_error: false;
+    in-out property <string> edit_dialog_error_message: "";
 
     callback load_clicked();
     callback browse_folder_clicked();
+    callback edit_pv_clicked(int);
+    callback save_pv_edit_clicked();
+    callback cancel_pv_edit_clicked();
 
     VerticalLayout {
         padding: 16px;
@@ -182,12 +203,12 @@ export component MainWindow inherits Window {
             }
         }
 
-        // Content Area (Peripherals & User Regions)
+        // Content Area (Peripherals, User Regions, & PV Variables)
         HorizontalLayout {
             spacing: 12px;
             vertical-stretch: 1;
 
-            // Left Section: Peripherals (Neutral Grayscale)
+            // Section 1: Peripherals
             Rectangle {
                 background: #181818;
                 border-radius: 8px;
@@ -261,13 +282,13 @@ export component MainWindow inherits Window {
                 }
             }
 
-            // Right Section: User Regions (Neutral Grayscale with Yellow for implicit loop body)
+            // Section 2: User Regions
             Rectangle {
                 background: #181818;
                 border-radius: 8px;
                 border-width: 1px;
                 border-color: #333333;
-                horizontal-stretch: 2;
+                horizontal-stretch: 1;
 
                 VerticalLayout {
                     padding: 12px;
@@ -306,11 +327,11 @@ export component MainWindow inherits Window {
                                 HorizontalLayout {
                                     padding-left: 10px;
                                     padding-right: 10px;
-                                    spacing: 12px;
+                                    spacing: 8px;
 
                                     HorizontalLayout {
                                         spacing: 6px;
-                                        width: 180px;
+                                        width: 150px;
 
                                         Text {
                                             text: item.tag;
@@ -356,6 +377,166 @@ export component MainWindow inherits Window {
                                 }
                             }
                         }
+                    }
+                }
+            }
+
+            // Section 3: PV Variables Panel
+            Rectangle {
+                background: #181818;
+                border-radius: 8px;
+                border-width: 1px;
+                border-color: #333333;
+                horizontal-stretch: 1;
+
+                VerticalLayout {
+                    padding: 12px;
+                    spacing: 8px;
+
+                    Text {
+                        text: "PV Variables (" + root.pv_variables.length + ")";
+                        font-size: 14px;
+                        font-weight: 700;
+                        color: #eeeeee;
+                    }
+
+                    Rectangle {
+                        height: 1px;
+                        background: #333333;
+                    }
+
+                    ScrollView {
+                        VerticalLayout {
+                            alignment: start;
+                            spacing: 4px;
+
+                            if root.pv_variables.length == 0 : Text {
+                                text: root.project_loaded ? "No PV declarations found." : "Select folder and click Load Project.";
+                                font-size: 12px;
+                                color: #777777;
+                            }
+
+                            for item in root.pv_variables : Rectangle {
+                                background: #222222;
+                                border-radius: 4px;
+                                height: 38px;
+
+                                HorizontalLayout {
+                                    padding-left: 10px;
+                                    padding-right: 10px;
+                                    spacing: 8px;
+
+                                    Text {
+                                        text: item.name;
+                                        font-size: 12px;
+                                        font-weight: 700;
+                                        color: #eeeeee;
+                                        vertical-alignment: center;
+                                        width: 100px;
+                                        overflow: elide;
+                                    }
+
+                                    Text {
+                                        text: item.type_str;
+                                        font-size: 11px;
+                                        color: #cccccc;
+                                        vertical-alignment: center;
+                                        width: 110px;
+                                        overflow: elide;
+                                    }
+
+                                    Text {
+                                        text: "Init: " + item.initial_value;
+                                        font-size: 11px;
+                                        color: #aaaaaa;
+                                        vertical-alignment: center;
+                                        horizontal-stretch: 1;
+                                        overflow: elide;
+                                    }
+
+                                    Button {
+                                        text: "Edit";
+                                        clicked => { root.edit_pv_clicked(item.pv_index); }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Modal Edit PV Overlay
+    if root.edit_dialog_visible : Rectangle {
+        background: #000000a0;
+
+        Rectangle {
+            width: 540px;
+            height: 220px;
+            background: #1e1e1e;
+            border-radius: 8px;
+            border-width: 1px;
+            border-color: #444444;
+
+            VerticalLayout {
+                padding: 16px;
+                spacing: 12px;
+
+                Text {
+                    text: "Edit PV Declaration: " + root.edit_pv_name;
+                    font-size: 14px;
+                    font-weight: 700;
+                    color: #eeeeee;
+                }
+
+                if root.edit_dialog_has_error : Rectangle {
+                    background: #2c1616;
+                    border-radius: 4px;
+                    border-width: 1px;
+                    border-color: #8b2626;
+
+                    HorizontalLayout {
+                        padding: 8px;
+                        spacing: 8px;
+
+                        Text {
+                            text: root.edit_dialog_error_message;
+                            font-size: 11px;
+                            color: #f87171;
+                            wrap: word-wrap;
+                            horizontal-stretch: 1;
+                        }
+                    }
+                }
+
+                VerticalLayout {
+                    spacing: 4px;
+
+                    Text {
+                        text: "Declaration Raw Text:";
+                        font-size: 11px;
+                        color: #aaaaaa;
+                    }
+
+                    LineEdit {
+                        text <=> root.edit_pv_raw_text;
+                    }
+                }
+
+                HorizontalLayout {
+                    alignment: end;
+                    spacing: 10px;
+
+                    Button {
+                        text: "Cancel";
+                        clicked => { root.cancel_pv_edit_clicked(); }
+                    }
+
+                    Button {
+                        text: "Save";
+                        primary: true;
+                        clicked => { root.save_pv_edit_clicked(); }
                     }
                 }
             }
