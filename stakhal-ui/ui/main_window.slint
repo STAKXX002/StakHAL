@@ -59,7 +59,13 @@ export component MainWindow inherits Window {
     in property <string> active_pv_name: "";
     in property <string> active_pv_type: "";
     in property <[SourceLineItem]> source_lines: [];
+    in property <int> total_line_count: 0;
+    in property <int> visible_start_index: 0;
     in-out property <length> source_scroll_y: 0px;
+
+    changed source_scroll_y => {
+        root.source_scroll_changed(root.source_scroll_y);
+    }
 
     callback load_clicked();
     callback browse_folder_clicked();
@@ -69,6 +75,8 @@ export component MainWindow inherits Window {
     callback click_declaration_line(int);
     callback cancel_declaration_edit(int);
     callback save_declaration_edit(int, string);
+    callback source_scroll_changed(length);
+    callback jump_to_line(int);
 
     VerticalLayout {
         padding: 16px;
@@ -620,100 +628,114 @@ export component MainWindow inherits Window {
                     background: #2a2a2a;
                 }
 
-                // Scrollable Code View
-                ListView {
-                    viewport-y: root.source_scroll_y;
+                // Scrollable Code View with Manual Windowing Virtualization
+                ScrollView {
+                    viewport-y <=> root.source_scroll_y;
 
-                    for item[idx] in root.source_lines : Rectangle {
-                        height: 22px;
-                        background: item.tier_str == "declaration" ? #064e3b : (item.tier_str == "usage" ? #0f2942 : #111111);
+                    // Full height spacer container matching total lines * 20px
+                    Rectangle {
+                        height: root.total_line_count * 20px;
 
-                        HorizontalLayout {
-                            padding-left: 6px;
-                            padding-right: 6px;
-                            spacing: 8px;
+                        // Windowed container positioned at visible_start_index * 20px
+                        Rectangle {
+                            y: root.visible_start_index * 20px;
+                            height: root.source_lines.length * 20px;
 
-                            // Line Number Column
-                            Text {
-                                text: item.line_number;
-                                font-size: 12px;
-                                font-family: "monospace";
-                                color: item.tier_str == "declaration" ? #34d399 : (item.tier_str == "usage" ? #38bdf8 : (item.tier_str == "normal" ? #9ca3af : #4b5563));
-                                width: 45px;
-                                horizontal-alignment: end;
-                                vertical-alignment: center;
-                            }
+                            VerticalLayout {
+                                alignment: start;
+                                spacing: 0px;
 
-                            // Line Content View Mode
-                            if !item.is_editing : TouchArea {
-                                enabled: item.tier_str == "declaration" || item.tier_str == "usage";
-                                clicked => {
-                                    if (item.tier_str == "declaration") {
-                                        root.click_declaration_line(item.line_number);
-                                    } else if (item.tier_str == "usage") {
-                                        root.source_scroll_y = - (idx * 20px);
-                                    }
-                                }
+                                for item in root.source_lines : Rectangle {
+                                    height: 20px;
+                                    background: item.tier_str == "declaration" ? #064e3b : (item.tier_str == "usage" ? #0f2942 : #111111);
 
-                                Text {
-                                    text: item.text;
-                                    font-size: 12px;
-                                    font-family: "monospace";
-                                    font-weight: (item.tier_str == "declaration" || item.tier_str == "usage") ? 700 : 400;
-                                    color: item.tier_str == "declaration" ? #a7f3d0 : (item.tier_str == "usage" ? #38bdf8 : (item.tier_str == "normal" ? #e5e7eb : #555555));
-                                    vertical-alignment: center;
-                                }
-                            }
+                                    HorizontalLayout {
+                                        padding-left: 6px;
+                                        padding-right: 6px;
+                                        spacing: 8px;
 
-                            // Scoped Single-Line Declaration Edit Mode
-                            // Known limitation: assumes declaration is a single line — if a declaration spans multiple lines, editing may not render/behave perfectly; acceptable for v1 given typical PV declarations are single-line.
-                            if item.is_editing : FocusScope {
-                                horizontal-stretch: 1;
+                                        // Line Number Column
+                                        Text {
+                                            text: item.line_number;
+                                            font-size: 12px;
+                                            font-family: "monospace";
+                                            color: item.tier_str == "declaration" ? #34d399 : (item.tier_str == "usage" ? #38bdf8 : (item.tier_str == "normal" ? #9ca3af : #4b5563));
+                                            width: 45px;
+                                            horizontal-alignment: end;
+                                            vertical-alignment: center;
+                                        }
 
-                                key-pressed(event) => {
-                                    if (event.text == "\u{1b}") {
-                                        root.cancel_declaration_edit(item.line_number);
-                                        return accept;
-                                    }
-                                    return reject;
-                                }
+                                        // Line Content View Mode
+                                        if !item.is_editing : TouchArea {
+                                            enabled: item.tier_str == "declaration" || item.tier_str == "usage";
+                                            clicked => {
+                                                if (item.tier_str == "declaration") {
+                                                    root.click_declaration_line(item.line_number);
+                                                } else if (item.tier_str == "usage") {
+                                                    root.jump_to_line(item.line_number);
+                                                }
+                                            }
 
-                                HorizontalLayout {
-                                    spacing: 6px;
+                                            Text {
+                                                text: item.text;
+                                                font-size: 12px;
+                                                font-family: "monospace";
+                                                font-weight: (item.tier_str == "declaration" || item.tier_str == "usage") ? 700 : 400;
+                                                color: item.tier_str == "declaration" ? #a7f3d0 : (item.tier_str == "usage" ? #38bdf8 : (item.tier_str == "normal" ? #e5e7eb : #555555));
+                                                vertical-alignment: center;
+                                            }
+                                        }
 
-                                    edit_box := LineEdit {
-                                        text: item.text;
-                                        font-size: 12px;
-                                        font-family: "monospace";
-                                        horizontal-stretch: 1;
-                                        accepted => { root.save_declaration_edit(item.line_number, edit_box.text); }
-                                    }
+                                        // Scoped Single-Line Declaration Edit Mode
+                                        if item.is_editing : FocusScope {
+                                            horizontal-stretch: 1;
 
-                                    Button {
-                                        text: "✓";
-                                        width: 24px;
-                                        clicked => { root.save_declaration_edit(item.line_number, edit_box.text); }
-                                    }
+                                            key-pressed(event) => {
+                                                if (event.text == "\u{1b}") {
+                                                    root.cancel_declaration_edit(item.line_number);
+                                                    return accept;
+                                                }
+                                                return reject;
+                                            }
 
-                                    Button {
-                                        text: "✕";
-                                        width: 24px;
-                                        clicked => { root.cancel_declaration_edit(item.line_number); }
-                                    }
+                                            HorizontalLayout {
+                                                spacing: 6px;
 
-                                    if item.has_error : Text {
-                                        text: "⚠️ " + item.error_message;
-                                        font-size: 11px;
-                                        color: #f87171;
-                                        vertical-alignment: center;
-                                        overflow: elide;
+                                                edit_box := LineEdit {
+                                                    text: item.text;
+                                                    font-size: 12px;
+                                                    font-family: "monospace";
+                                                    horizontal-stretch: 1;
+                                                    accepted => { root.save_declaration_edit(item.line_number, edit_box.text); }
+                                                }
+
+                                                Button {
+                                                    text: "✓";
+                                                    width: 24px;
+                                                    clicked => { root.save_declaration_edit(item.line_number, edit_box.text); }
+                                                }
+
+                                                Button {
+                                                    text: "✕";
+                                                    width: 24px;
+                                                    clicked => { root.cancel_declaration_edit(item.line_number); }
+                                                }
+
+                                                if item.has_error : Text {
+                                                    text: "⚠️ " + item.error_message;
+                                                    font-size: 11px;
+                                                    color: #f87171;
+                                                    vertical-alignment: center;
+                                                    overflow: elide;
+                                                }
+                                            }
+                                        }
                                     }
                                 }
                             }
                         }
                     }
                 }
-
             }
         }
     }
