@@ -628,121 +628,117 @@ export component MainWindow inherits Window {
                     background: #2a2a2a;
                 }
 
-                // Scrollable Code View with Manual Windowing Virtualization
+                // Scrollable Code View with Windowing Virtualization (Top Spacer + Rows + Bottom Spacer)
                 ScrollView {
-                    vertical-stretch: 1;
                     viewport-y <=> root.source_scroll_y;
 
+                    VerticalLayout {
+                        alignment: start;
+                        spacing: 0px;
 
-                    // Full height spacer container matching total lines * 20px
-                    Rectangle {
-                        width: 100%;
-                        height: root.total_line_count * 20px;
-
-                        // Windowed container positioned at visible_start_index * 20px
+                        // Top Spacer
                         Rectangle {
+                            height: root.visible_start_index * 20px;
+                        }
+
+                        // Visible Window Rows
+                        for item in root.source_lines : Rectangle {
+                            height: 20px;
                             width: 100%;
-                            y: root.visible_start_index * 20px;
-                            height: root.source_lines.length * 20px;
+                            background: item.tier_str == "declaration" ? #064e3b : (item.tier_str == "usage" ? #0f2942 : #111111);
 
-                            VerticalLayout {
-                                width: 100%;
-                                alignment: start;
-                                spacing: 0px;
+                            HorizontalLayout {
+                                padding-left: 6px;
+                                padding-right: 6px;
+                                spacing: 8px;
 
-                                for item in root.source_lines : Rectangle {
-                                    width: 100%;
-                                    height: 20px;
-                                    background: item.tier_str == "declaration" ? #064e3b : (item.tier_str == "usage" ? #0f2942 : #111111);
+                                // Line Number Column
+                                Text {
+                                    text: item.line_number;
+                                    font-size: 12px;
+                                    font-family: "monospace";
+                                    color: item.tier_str == "declaration" ? #34d399 : (item.tier_str == "usage" ? #38bdf8 : (item.tier_str == "normal" ? #9ca3af : #4b5563));
+                                    width: 45px;
+                                    horizontal-alignment: end;
+                                    vertical-alignment: center;
+                                }
 
+                                // Line Content View Mode
+                                if !item.is_editing : TouchArea {
+                                    enabled: item.tier_str == "declaration" || item.tier_str == "usage";
+                                    clicked => {
+                                        if (item.tier_str == "declaration") {
+                                            root.click_declaration_line(item.line_number);
+                                        } else if (item.tier_str == "usage") {
+                                            root.jump_to_line(item.line_number);
+                                        }
+                                    }
+
+                                    Text {
+                                        text: item.text;
+                                        font-size: 12px;
+                                        font-family: "monospace";
+                                        font-weight: (item.tier_str == "declaration" || item.tier_str == "usage") ? 700 : 400;
+                                        color: item.tier_str == "declaration" ? #a7f3d0 : (item.tier_str == "usage" ? #38bdf8 : (item.tier_str == "normal" ? #e5e7eb : #555555));
+                                        vertical-alignment: center;
+                                    }
+                                }
+
+                                // Scoped Single-Line Declaration Edit Mode
+                                if item.is_editing : FocusScope {
+                                    horizontal-stretch: 1;
+
+                                    key-pressed(event) => {
+                                        if (event.text == "\u{1b}") {
+                                            root.cancel_declaration_edit(item.line_number);
+                                            return accept;
+                                        }
+                                        return reject;
+                                    }
 
                                     HorizontalLayout {
-                                        padding-left: 6px;
-                                        padding-right: 6px;
-                                        spacing: 8px;
+                                        spacing: 6px;
 
-                                        // Line Number Column
-                                        Text {
-                                            text: item.line_number;
+                                        edit_box := LineEdit {
+                                            text: item.text;
                                             font-size: 12px;
                                             font-family: "monospace";
-                                            color: item.tier_str == "declaration" ? #34d399 : (item.tier_str == "usage" ? #38bdf8 : (item.tier_str == "normal" ? #9ca3af : #4b5563));
-                                            width: 45px;
-                                            horizontal-alignment: end;
-                                            vertical-alignment: center;
-                                        }
-
-                                        // Line Content View Mode
-                                        if !item.is_editing : TouchArea {
-                                            enabled: item.tier_str == "declaration" || item.tier_str == "usage";
-                                            clicked => {
-                                                if (item.tier_str == "declaration") {
-                                                    root.click_declaration_line(item.line_number);
-                                                } else if (item.tier_str == "usage") {
-                                                    root.jump_to_line(item.line_number);
-                                                }
-                                            }
-
-                                            Text {
-                                                text: item.text;
-                                                font-size: 12px;
-                                                font-family: "monospace";
-                                                font-weight: (item.tier_str == "declaration" || item.tier_str == "usage") ? 700 : 400;
-                                                color: item.tier_str == "declaration" ? #a7f3d0 : (item.tier_str == "usage" ? #38bdf8 : (item.tier_str == "normal" ? #e5e7eb : #555555));
-                                                vertical-alignment: center;
-                                            }
-                                        }
-
-                                        // Scoped Single-Line Declaration Edit Mode
-                                        if item.is_editing : FocusScope {
                                             horizontal-stretch: 1;
+                                            accepted => { root.save_declaration_edit(item.line_number, edit_box.text); }
+                                        }
 
-                                            key-pressed(event) => {
-                                                if (event.text == "\u{1b}") {
-                                                    root.cancel_declaration_edit(item.line_number);
-                                                    return accept;
-                                                }
-                                                return reject;
-                                            }
+                                        Button {
+                                            text: "✓";
+                                            width: 24px;
+                                            clicked => { root.save_declaration_edit(item.line_number, edit_box.text); }
+                                        }
 
-                                            HorizontalLayout {
-                                                spacing: 6px;
+                                        Button {
+                                            text: "✕";
+                                            width: 24px;
+                                            clicked => { root.cancel_declaration_edit(item.line_number); }
+                                        }
 
-                                                edit_box := LineEdit {
-                                                    text: item.text;
-                                                    font-size: 12px;
-                                                    font-family: "monospace";
-                                                    horizontal-stretch: 1;
-                                                    accepted => { root.save_declaration_edit(item.line_number, edit_box.text); }
-                                                }
-
-                                                Button {
-                                                    text: "✓";
-                                                    width: 24px;
-                                                    clicked => { root.save_declaration_edit(item.line_number, edit_box.text); }
-                                                }
-
-                                                Button {
-                                                    text: "✕";
-                                                    width: 24px;
-                                                    clicked => { root.cancel_declaration_edit(item.line_number); }
-                                                }
-
-                                                if item.has_error : Text {
-                                                    text: "⚠️ " + item.error_message;
-                                                    font-size: 11px;
-                                                    color: #f87171;
-                                                    vertical-alignment: center;
-                                                    overflow: elide;
-                                                }
-                                            }
+                                        if item.has_error : Text {
+                                            text: "⚠️ " + item.error_message;
+                                            font-size: 11px;
+                                            color: #f87171;
+                                            vertical-alignment: center;
+                                            overflow: elide;
                                         }
                                     }
                                 }
                             }
                         }
+
+                        // Bottom Spacer
+                        Rectangle {
+                            height: (root.total_line_count - root.visible_start_index - root.source_lines.length) * 20px;
+                        }
                     }
                 }
+
+
             }
         }
     }
