@@ -183,6 +183,14 @@ pub fn find_loop_body_gap(regions: &[UserRegion]) -> Option<UserRegion> {
     })
 }
 
+/// Returns true if byte_offset falls within any region's byte_range (inclusive start, exclusive end).
+pub fn is_byte_in_user_region(byte_offset: usize, regions: &[UserRegion]) -> bool {
+    regions
+        .iter()
+        .any(|r| byte_offset >= r.byte_range.0 && byte_offset < r.byte_range.1)
+}
+
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -383,4 +391,42 @@ while (1) {
         let regions = scan_source(path, source).unwrap();
         assert!(find_loop_body_gap(&regions).is_none());
     }
+
+    #[test]
+    fn test_is_byte_in_user_region() {
+        let regions = vec![
+            UserRegion {
+                tag: "PV".to_string(),
+                file: PathBuf::from("main.c"),
+                byte_range: (10, 20),
+                line_range: (2, 4),
+                begin_marker_range: (0, 10),
+                end_marker_range: (20, 30),
+            },
+            UserRegion {
+                tag: "0".to_string(),
+                file: PathBuf::from("main.c"),
+                byte_range: (50, 100),
+                line_range: (10, 15),
+                begin_marker_range: (40, 50),
+                end_marker_range: (100, 110),
+            },
+        ];
+
+        // Inside a region
+        assert!(is_byte_in_user_region(15, &regions));
+        assert!(is_byte_in_user_region(75, &regions));
+
+        // Outside all regions
+        assert!(!is_byte_in_user_region(5, &regions));
+        assert!(!is_byte_in_user_region(30, &regions));
+        assert!(!is_byte_in_user_region(150, &regions));
+
+        // Boundary tests (inclusive start, exclusive end)
+        assert!(is_byte_in_user_region(10, &regions)); // start byte -> true
+        assert!(!is_byte_in_user_region(20, &regions)); // end byte -> false
+        assert!(is_byte_in_user_region(50, &regions)); // start byte -> true
+        assert!(!is_byte_in_user_region(100, &regions)); // end byte -> false
+    }
 }
+

@@ -163,4 +163,26 @@ fn test_stm32_03_timers_pv_extract_regression() {
     assert_eq!(prev_z1.line, 63);
 }
 
+use stakhal_core::source::find_variable_usages;
+
+#[test]
+fn test_stm32_03_timers_usage_finder_regression() {
+
+    let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let fixture_dir = manifest_dir.join("tests/fixtures/stm32_03_timers");
+    let main_c_path = fixture_dir.join("Core/Src/main.c");
+
+    let decls = extract_pv_declarations(&main_c_path).expect("failed to extract PV declarations");
+    let isr_count = decls.iter().find(|d| d.name == "isrCount").unwrap();
+
+    let usages = find_variable_usages(&main_c_path, &isr_count.name, isr_count.byte_range)
+        .expect("find_variable_usages failed");
+
+    assert!(!usages.is_empty(), "Expected at least one usage of isrCount");
+
+    let callback_usage = usages.iter().find(|u| u.line == 496).expect("Expected usage at line 496 in HAL_TIM_PeriodElapsedCallback");
+    assert_eq!(callback_usage.context_snippet, "isrCount++;");
+}
+
+
 
