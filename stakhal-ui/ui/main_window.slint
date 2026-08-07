@@ -630,7 +630,9 @@ export component MainWindow inherits Window {
 
                 // Scrollable Code View with Manual Windowing Virtualization
                 ScrollView {
+                    vertical-stretch: 1;
                     viewport-y <=> root.source_scroll_y;
+
 
                     // Full height spacer container matching total lines * 20px
                     Rectangle {
