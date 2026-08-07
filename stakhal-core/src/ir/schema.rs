@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 use crate::graph::builder::{build_call_graph, GraphEdge};
 use crate::ioc::parser::{parse_ioc, IocParseError, PeripheralConfig, PinConfig};
 use crate::source::marker_scan::{find_loop_body_gap, scan_file, ScanError, UserRegion};
+use crate::source::pv_extract::{extract_pv_declarations, PvDeclaration, PvExtractError};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProjectMeta {
@@ -22,6 +23,7 @@ pub struct Project {
     pub user_regions: Vec<UserRegion>,
     pub loop_body: Option<UserRegion>, // from find_loop_body_gap, may be None
     pub call_graph_edges: Vec<GraphEdge>,
+    pub pv_declarations: Vec<PvDeclaration>,
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -30,6 +32,8 @@ pub enum ProjectLoadError {
     IocError(#[from] IocParseError),
     #[error(transparent)]
     ScanError(#[from] ScanError),
+    #[error(transparent)]
+    PvExtractError(#[from] PvExtractError),
 }
 
 pub fn load_project(ioc_path: &Path, main_c_path: &Path) -> Result<Project, ProjectLoadError> {
@@ -37,6 +41,12 @@ pub fn load_project(ioc_path: &Path, main_c_path: &Path) -> Result<Project, Proj
     let user_regions = scan_file(main_c_path)?;
     let loop_body = find_loop_body_gap(&user_regions);
     let call_graph_edges = build_call_graph(&ioc);
+
+    let pv_declarations = match extract_pv_declarations(main_c_path) {
+        Ok(decls) => decls,
+        Err(PvExtractError::NoPvRegion) => vec![],
+        Err(e) => return Err(ProjectLoadError::PvExtractError(e)),
+    };
 
     let name = ioc_path
         .file_stem()
@@ -59,6 +69,7 @@ pub fn load_project(ioc_path: &Path, main_c_path: &Path) -> Result<Project, Proj
         user_regions,
         loop_body,
         call_graph_edges,
+        pv_declarations,
     })
 }
 
@@ -104,6 +115,7 @@ mod tests {
         assert_eq!(project.pins.len(), 7);
         assert_eq!(project.peripherals.len(), 0);
         assert!(project.loop_body.is_some());
+        assert!(project.pv_declarations.is_empty());
     }
 
     #[test]
@@ -119,6 +131,11 @@ mod tests {
                 .iter()
                 .any(|e| e.edge_type == EdgeType::IrqEntry),
             "Expected at least one IrqEntry edge in timers project"
+        );
+        assert_eq!(project.pv_declarations.len(), 8);
+        assert!(
+            project.pv_declarations.iter().any(|d| d.name == "isrCount"),
+            "Expected isrCount in pv_declarations"
         );
     }
 
@@ -138,5 +155,6 @@ mod tests {
         assert_eq!(roundtrip.peripherals.len(), orig.peripherals.len());
         assert_eq!(roundtrip.user_regions.len(), orig.user_regions.len());
         assert_eq!(roundtrip.call_graph_edges.len(), orig.call_graph_edges.len());
+        assert_eq!(roundtrip.pv_declarations.len(), orig.pv_declarations.len());
     }
 }
