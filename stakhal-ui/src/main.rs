@@ -64,7 +64,7 @@ fn save_app_config(dir: &str) {
     }
 }
 
-fn update_source_window_slice(ui: &MainWindow, state: &mut LoadedState) {
+fn update_source_window_slice(ui: &MainWindow, state: &mut LoadedState, override_scroll_y: Option<f32>) {
     let total_lines = state.rendered_lines.len();
     ui.set_total_line_count(total_lines as i32);
 
@@ -74,7 +74,7 @@ fn update_source_window_slice(ui: &MainWindow, state: &mut LoadedState) {
         return;
     }
 
-    let scroll_y = ui.get_source_scroll_y();
+    let scroll_y = override_scroll_y.unwrap_or_else(|| ui.get_source_scroll_y());
     let scroll_y_px = (-scroll_y).max(0.0) as usize;
     let line_height_px = 20;
 
@@ -121,6 +121,7 @@ fn update_source_window_slice(ui: &MainWindow, state: &mut LoadedState) {
 
     ui.set_source_lines(ModelRc::from(Rc::new(VecModel::from(source_line_items))));
 }
+
 
 fn load_project_into_ui(
     ui: &MainWindow,
@@ -318,7 +319,7 @@ fn main() -> Result<(), slint::PlatformError> {
         ui.set_showing_source_view(true);
         ui.set_source_scroll_y(0.0_f32.into());
 
-        update_source_window_slice(&ui, &mut st);
+        update_source_window_slice(&ui, &mut st, Some(0.0));
     });
 
     let ui_weak_close_src = ui.as_weak();
@@ -343,7 +344,7 @@ fn main() -> Result<(), slint::PlatformError> {
             None => return,
         };
         let mut st = state_scroll.borrow_mut();
-        update_source_window_slice(&ui, &mut st);
+        update_source_window_slice(&ui, &mut st, None);
     });
 
     let ui_weak_jump = ui.as_weak();
@@ -358,7 +359,7 @@ fn main() -> Result<(), slint::PlatformError> {
         let scroll_y_val = -((idx as f32) * 20.0);
         ui.set_source_scroll_y(scroll_y_val);
         let mut st = state_jump.borrow_mut();
-        update_source_window_slice(&ui, &mut st);
+        update_source_window_slice(&ui, &mut st, Some(scroll_y_val));
     });
 
     let ui_weak_click_decl = ui.as_weak();
@@ -372,7 +373,7 @@ fn main() -> Result<(), slint::PlatformError> {
         let mut st = state_click_decl.borrow_mut();
         st.editing_line_number = Some(line_num);
         st.inline_error = None;
-        update_source_window_slice(&ui, &mut st);
+        update_source_window_slice(&ui, &mut st, None);
     });
 
     let ui_weak_cancel_decl = ui.as_weak();
@@ -385,8 +386,9 @@ fn main() -> Result<(), slint::PlatformError> {
         let mut st = state_cancel_decl.borrow_mut();
         st.editing_line_number = None;
         st.inline_error = None;
-        update_source_window_slice(&ui, &mut st);
+        update_source_window_slice(&ui, &mut st, None);
     });
+
 
     let ui_weak_save_decl = ui.as_weak();
     let state_save_decl = Rc::clone(&state);
@@ -425,7 +427,8 @@ fn main() -> Result<(), slint::PlatformError> {
             Err(err) => {
                 let mut st = state_save_decl.borrow_mut();
                 st.inline_error = Some(err.to_string());
-                update_source_window_slice(&ui, &mut st);
+                update_source_window_slice(&ui, &mut st, None);
+
                 return;
             }
         };
@@ -435,7 +438,8 @@ fn main() -> Result<(), slint::PlatformError> {
             None => {
                 let mut st = state_save_decl.borrow_mut();
                 st.inline_error = Some("No PV region found in fresh scan".to_string());
-                update_source_window_slice(&ui, &mut st);
+                update_source_window_slice(&ui, &mut st, None);
+
                 return;
             }
         };
@@ -447,7 +451,8 @@ fn main() -> Result<(), slint::PlatformError> {
                     "File has changed since project was loaded — reload project and try again"
                         .to_string(),
                 );
-                update_source_window_slice(&ui, &mut st);
+                update_source_window_slice(&ui, &mut st, None);
+
                 return;
             }
         } else {
@@ -456,7 +461,8 @@ fn main() -> Result<(), slint::PlatformError> {
                 "File has changed since project was loaded — reload project and try again"
                     .to_string(),
             );
-            update_source_window_slice(&ui, &mut st);
+            update_source_window_slice(&ui, &mut st, None);
+
             return;
         }
 
@@ -465,7 +471,8 @@ fn main() -> Result<(), slint::PlatformError> {
             Err(e) => {
                 let mut st = state_save_decl.borrow_mut();
                 st.inline_error = Some(e.to_string());
-                update_source_window_slice(&ui, &mut st);
+                update_source_window_slice(&ui, &mut st, None);
+
                 return;
             }
         };
@@ -476,7 +483,7 @@ fn main() -> Result<(), slint::PlatformError> {
         if pv_end > file_content.as_bytes().len() {
             let mut st = state_save_decl.borrow_mut();
             st.inline_error = Some("PV region byte range out of file bounds".to_string());
-            update_source_window_slice(&ui, &mut st);
+            update_source_window_slice(&ui, &mut st, None);
             return;
         }
 
@@ -488,9 +495,10 @@ fn main() -> Result<(), slint::PlatformError> {
         if decl_start < pv_start || decl_end > pv_end {
             let mut st = state_save_decl.borrow_mut();
             st.inline_error = Some("Declaration byte range out of PV region bounds".to_string());
-            update_source_window_slice(&ui, &mut st);
+            update_source_window_slice(&ui, &mut st, None);
             return;
         }
+
 
         let decl_start_rel = decl_start - pv_start;
         let decl_end_rel = decl_end - pv_start;
@@ -511,7 +519,8 @@ fn main() -> Result<(), slint::PlatformError> {
             Err(err) => {
                 let mut st = state_save_decl.borrow_mut();
                 st.inline_error = Some(err.to_string());
-                update_source_window_slice(&ui, &mut st);
+                update_source_window_slice(&ui, &mut st, None);
+
             }
         }
     });
