@@ -8,14 +8,15 @@ use slint::{ModelRc, VecModel};
 use stakhal_core::ioc::discover_project_files;
 use stakhal_core::ir::load_project;
 use stakhal_core::source::pv_extract::PvDeclaration;
-use stakhal_core::source::scan_file;
-use stakhal_core::source::write_region;
 
 slint::include_modules!();
 
+const DEFAULT_EDITOR_TEMPLATE: &str = "code --goto {path}:{line}:{col}";
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
-struct LastProjectConfig {
-    project_dir: String,
+struct AppConfig {
+    project_dir: Option<String>,
+    editor_cmd_template: Option<String>,
 }
 
 #[derive(Default)]
@@ -23,8 +24,6 @@ struct LoadedState {
     ioc_path: PathBuf,
     main_c_path: PathBuf,
     pv_declarations: Vec<PvDeclaration>,
-    pv_region_byte_range: Option<(usize, usize)>,
-    active_edit_index: Option<usize>,
 }
 
 fn get_config_file_path() -> Option<PathBuf> {
@@ -32,25 +31,98 @@ fn get_config_file_path() -> Option<PathBuf> {
     Some(PathBuf::from(home).join(".config").join("stakhal").join("last_project.json"))
 }
 
-fn load_last_folder() -> Option<String> {
-    let config_path = get_config_file_path()?;
-    let content = std::fs::read_to_string(config_path).ok()?;
-    let config: LastProjectConfig = serde_json::from_str(&content).ok()?;
-    Some(config.project_dir)
-}
-
-fn save_last_folder(dir: &str) {
+fn load_app_config() -> AppConfig {
     if let Some(config_path) = get_config_file_path() {
-        if let Some(parent) = config_path.parent() {
-            let _ = std::fs::create_dir_all(parent);
-        }
-        let config = LastProjectConfig {
-            project_dir: dir.to_string(),
-        };
-        if let Ok(json) = serde_json::to_string_pretty(&config) {
-            let _ = std::fs::write(config_path, json);
+        if let Ok(content) = fs::read_to_string(config_path) {
+            if let Ok(config) = serde_json::from_str::<AppConfig>(&content) {
+                return config;
+            }
         }
     }
+    AppConfig {
+        project_dir: None,
+        editor_cmd_template: None,
+    }
+}
+
+fn save_app_config(dir: Option<&str>, template: Option<&str>) {
+    if let Some(config_path) = get_config_file_path() {
+        if let Some(parent) = config_path.parent() {
+            let _ = fs::create_dir_all(parent);
+        }
+        let mut current = load_app_config();
+        if let Some(d) = dir {
+            current.project_dir = Some(d.to_string());
+        }
+        if let Some(t) = template {
+            current.editor_cmd_template = Some(t.to_string());
+        }
+        if let Ok(json) = serde_json::to_string_pretty(&current) {
+            let _ = fs::write(config_path, json);
+        }
+    }
+}
+
+fn parse_cmd_line(cmd_line: &str) -> Option<(String, Vec<String>)> {
+    let mut args = Vec::new();
+    let mut current = String::new();
+    let mut in_quotes = false;
+    let mut quote_char = ' ';
+
+    for ch in cmd_line.chars() {
+        match ch {
+            '"' | '\'' if !in_quotes => {
+                in_quotes = true;
+                quote_char = ch;
+            }
+            q if in_quotes && q == quote_char => {
+                in_quotes = false;
+            }
+            ' ' | '\t' if !in_quotes => {
+                if !current.is_empty() {
+                    args.push(current.clone());
+                    current.clear();
+                }
+            }
+            _ => {
+                current.push(ch);
+            }
+        }
+    }
+    if !current.is_empty() {
+        args.push(current);
+    }
+
+    if args.is_empty() {
+        return None;
+    }
+    let program = args.remove(0);
+    Some((program, args))
+}
+
+fn launch_editor(
+    template: &str,
+    main_c_path: &Path,
+    line: usize,
+) -> Result<(), String> {
+    let path_str = main_c_path.to_string_lossy();
+    let line_str = line.to_string();
+    let col_str = "1";
+
+    let expanded = template
+        .replace("{path}", &path_str)
+        .replace("{line}", &line_str)
+        .replace("{col}", col_str);
+
+    let (program, args) = parse_cmd_line(&expanded)
+        .ok_or_else(|| "Editor command template is empty".to_string())?;
+
+    std::process::Command::new(&program)
+        .args(&args)
+        .spawn()
+        .map_err(|e| format!("Failed to launch editor: {} — check your editor command in settings.", e))?;
+
+    Ok(())
 }
 
 fn load_project_into_ui(
@@ -61,18 +133,10 @@ fn load_project_into_ui(
 ) -> Result<(), String> {
     let project = load_project(ioc_path, main_c_path).map_err(|e| e.to_string())?;
 
-    let pv_region_range = project
-        .user_regions
-        .iter()
-        .find(|r| r.tag == "PV")
-        .map(|r| r.byte_range);
-
     let mut st = state.borrow_mut();
     st.ioc_path = ioc_path.to_path_buf();
     st.main_c_path = main_c_path.to_path_buf();
     st.pv_declarations = project.pv_declarations.clone();
-    st.pv_region_byte_range = pv_region_range;
-    st.active_edit_index = None;
 
     ui.set_has_error(false);
     ui.set_error_message("".into());
@@ -121,8 +185,7 @@ fn load_project_into_ui(
             type_str: d.type_str.clone().into(),
             initial_value: d.initial_value.clone().unwrap_or_else(|| "—".to_string()).into(),
             raw_text: d.raw_text.clone().into(),
-            byte_start: d.byte_range.0 as i32,
-            byte_end: d.byte_range.1 as i32,
+            line: d.line as i32,
             pv_index: idx as i32,
         })
         .collect();
@@ -135,8 +198,14 @@ fn main() -> Result<(), slint::PlatformError> {
     let ui = MainWindow::new()?;
     let state = Rc::new(RefCell::new(LoadedState::default()));
 
-    // On startup, attempt to restore last used project folder and re-run discovery
-    if let Some(saved_dir) = load_last_folder() {
+    let app_config = load_app_config();
+
+    let editor_template = app_config
+        .editor_cmd_template
+        .unwrap_or_else(|| DEFAULT_EDITOR_TEMPLATE.to_string());
+    ui.set_editor_cmd_template(editor_template.into());
+
+    if let Some(saved_dir) = app_config.project_dir {
         let path = PathBuf::from(&saved_dir);
         if path.is_dir() {
             ui.set_project_dir(saved_dir.into());
@@ -147,6 +216,10 @@ fn main() -> Result<(), slint::PlatformError> {
             }
         }
     }
+
+    ui.on_editor_cmd_changed(move |new_template| {
+        save_app_config(None, Some(&new_template.to_string()));
+    });
 
     let ui_weak_folder = ui.as_weak();
     ui.on_browse_folder_clicked(move || {
@@ -167,7 +240,7 @@ fn main() -> Result<(), slint::PlatformError> {
                     ui.set_has_error(false);
                     ui.set_error_message("".into());
 
-                    save_last_folder(&dir_str);
+                    save_app_config(Some(&dir_str), None);
                 }
                 Err(err) => {
                     ui.set_has_discovered_paths(false);
@@ -202,150 +275,69 @@ fn main() -> Result<(), slint::PlatformError> {
         }
     });
 
-    let ui_weak_edit = ui.as_weak();
-    let state_edit = Rc::clone(&state);
-    ui.on_edit_pv_clicked(move |idx_i32| {
-        let ui = match ui_weak_edit.upgrade() {
+    let ui_weak_open = ui.as_weak();
+    let state_open = Rc::clone(&state);
+    ui.on_open_pv_clicked(move |idx_i32| {
+        let ui = match ui_weak_open.upgrade() {
             Some(u) => u,
             None => return,
         };
         let idx = idx_i32 as usize;
-        let mut st = state_edit.borrow_mut();
-        if idx < st.pv_declarations.len() {
-            st.active_edit_index = Some(idx);
-            let decl = &st.pv_declarations[idx];
-            ui.set_edit_pv_name(decl.name.clone().into());
-            ui.set_edit_pv_raw_text(decl.raw_text.clone().into());
-            ui.set_edit_dialog_has_error(false);
-            ui.set_edit_dialog_error_message("".into());
-            ui.set_edit_dialog_visible(true);
-        }
-    });
-
-    let ui_weak_cancel = ui.as_weak();
-    let state_cancel = Rc::clone(&state);
-    ui.on_cancel_pv_edit_clicked(move || {
-        let ui = match ui_weak_cancel.upgrade() {
-            Some(u) => u,
-            None => return,
-        };
-        let mut st = state_cancel.borrow_mut();
-        st.active_edit_index = None;
-        ui.set_edit_dialog_visible(false);
-    });
-
-    let ui_weak_save = ui.as_weak();
-    let state_save = Rc::clone(&state);
-    ui.on_save_pv_edit_clicked(move || {
-        let ui = match ui_weak_save.upgrade() {
-            Some(u) => u,
-            None => return,
-        };
-
-        let (main_c_path, ioc_path, loaded_pv_range, orig_decl) = {
-            let st = state_save.borrow();
-            let idx = match st.active_edit_index {
-                Some(i) => i,
-                None => return,
-            };
+        let (main_c_path, line) = {
+            let st = state_open.borrow();
             if idx >= st.pv_declarations.len() {
                 return;
             }
-            (
-                st.main_c_path.clone(),
-                st.ioc_path.clone(),
-                st.pv_region_byte_range,
-                st.pv_declarations[idx].clone(),
-            )
+            (st.main_c_path.clone(), st.pv_declarations[idx].line)
         };
 
-        let new_raw_text = ui.get_edit_pv_raw_text().to_string();
+        let template = ui.get_editor_cmd_template().to_string();
 
-        let fresh_regions = match scan_file(&main_c_path) {
-            Ok(r) => r,
-            Err(err) => {
-                ui.set_edit_dialog_has_error(true);
-                ui.set_edit_dialog_error_message(err.to_string().into());
-                return;
-            }
-        };
-
-        let fresh_pv_region = match fresh_regions.into_iter().find(|r| r.tag == "PV") {
-            Some(r) => r,
-            None => {
-                ui.set_edit_dialog_has_error(true);
-                ui.set_edit_dialog_error_message("No PV region found in fresh scan".into());
-                return;
-            }
-        };
-
-        if let Some(loaded_range) = loaded_pv_range {
-            if fresh_pv_region.byte_range != loaded_range {
-                ui.set_edit_dialog_has_error(true);
-                ui.set_edit_dialog_error_message(
-                    "File has changed since this was loaded — reload the project and try again".into(),
-                );
-                return;
-            }
-        } else {
-            ui.set_edit_dialog_has_error(true);
-            ui.set_edit_dialog_error_message(
-                "File has changed since this was loaded — reload the project and try again".into(),
-            );
-            return;
-        }
-
-        let file_content = match fs::read_to_string(&main_c_path) {
-            Ok(c) => c,
-            Err(e) => {
-                ui.set_edit_dialog_has_error(true);
-                ui.set_edit_dialog_error_message(e.to_string().into());
-                return;
-            }
-        };
-
-        let pv_start = fresh_pv_region.byte_range.0;
-        let pv_end = fresh_pv_region.byte_range.1;
-
-        if pv_end > file_content.as_bytes().len() {
-            ui.set_edit_dialog_has_error(true);
-            ui.set_edit_dialog_error_message("PV region byte range out of file bounds".into());
-            return;
-        }
-
-        let pv_full_text = &file_content[pv_start..pv_end];
-
-        let decl_start = orig_decl.byte_range.0;
-        let decl_end = orig_decl.byte_range.1;
-
-        if decl_start < pv_start || decl_end > pv_end {
-            ui.set_edit_dialog_has_error(true);
-            ui.set_edit_dialog_error_message("Declaration byte range out of PV region bounds".into());
-            return;
-        }
-
-        let decl_start_rel = decl_start - pv_start;
-        let decl_end_rel = decl_end - pv_start;
-
-        let mut new_pv_full_text = String::new();
-        new_pv_full_text.push_str(&pv_full_text[..decl_start_rel]);
-        new_pv_full_text.push_str(&new_raw_text);
-        new_pv_full_text.push_str(&pv_full_text[decl_end_rel..]);
-
-        match write_region(&main_c_path, &fresh_pv_region, &new_pv_full_text) {
+        match launch_editor(&template, &main_c_path, line) {
             Ok(()) => {
-                ui.set_edit_dialog_visible(false);
-                if let Err(err_msg) = load_project_into_ui(&ui, &ioc_path, &main_c_path, &state_save) {
-                    ui.set_has_error(true);
-                    ui.set_error_message(err_msg.into());
-                }
+                ui.set_has_error(false);
+                ui.set_error_message("".into());
             }
-            Err(err) => {
-                ui.set_edit_dialog_has_error(true);
-                ui.set_edit_dialog_error_message(err.to_string().into());
+            Err(err_msg) => {
+                ui.set_has_error(true);
+                ui.set_error_message(err_msg.into());
             }
         }
     });
 
     ui.run()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_cmd_line_simple() {
+        let (cmd, args) = parse_cmd_line("code --goto {path}:{line}:{col}").unwrap();
+        assert_eq!(cmd, "code");
+        assert_eq!(args, vec!["--goto", "{path}:{line}:{col}"]);
+    }
+
+    #[test]
+    fn test_parse_cmd_line_quoted() {
+        let (cmd, args) = parse_cmd_line("gedit +52 \"/path with spaces/main.c\"").unwrap();
+        assert_eq!(cmd, "gedit");
+        assert_eq!(args, vec!["+52", "/path with spaces/main.c"]);
+    }
+
+    #[test]
+    fn test_launch_editor_invalid_command() {
+        let res = launch_editor(
+            "nonexistent_binary_xyz {path}:{line}",
+            Path::new("/tmp/test.c"),
+            42,
+        );
+        assert!(res.is_err());
+        let err = res.unwrap_err();
+        assert!(err.contains("Failed to launch editor:"));
+        assert!(err.contains("check your editor command in settings."));
+    }
+}
+
+
