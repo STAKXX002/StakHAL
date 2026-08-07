@@ -15,6 +15,7 @@ pub struct PvDeclaration {
     pub array_dims: Option<String>, // raw text inside [], e.g. "64" — None if not an array
     pub raw_text: String, // the exact full declaration statement text, verbatim, as a fallback for display even if structured fields are imperfect
     pub byte_range: (usize, usize), // full declaration statement's span in the whole file (not region-relative) — needed later for write-back of a single declaration
+    pub line: usize, // 1-indexed line number where the declaration statement begins
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -95,6 +96,7 @@ fn process_declaration_node(
     source_bytes: &[u8],
     out: &mut Vec<PvDeclaration>,
 ) {
+    let line = node.start_position().row + 1;
     let raw_text = node
         .utf8_text(source_bytes)
         .unwrap_or("")
@@ -139,9 +141,11 @@ fn process_declaration_node(
             array_dims: info.array_dims,
             raw_text: raw_text.clone(),
             byte_range,
+            line,
         });
     }
 }
+
 
 fn is_declarator_node(kind: &str) -> bool {
     matches!(
@@ -322,6 +326,7 @@ uint32_t counter = 0;
         assert!(!decl.is_array);
         assert_eq!(decl.array_dims, None);
         assert_eq!(decl.raw_text, "uint32_t counter = 0;");
+        assert_eq!(decl.line, 3);
     }
 
     #[test]
@@ -342,11 +347,13 @@ int a, b = 5;
         assert_eq!(decls[0].type_str, "int");
         assert_eq!(decls[0].initial_value, None);
         assert_eq!(decls[0].raw_text, "int a, b = 5;");
+        assert_eq!(decls[0].line, 3);
 
         assert_eq!(decls[1].name, "b");
         assert_eq!(decls[1].type_str, "int");
         assert_eq!(decls[1].initial_value, Some("5".to_string()));
         assert_eq!(decls[1].raw_text, "int a, b = 5;");
+        assert_eq!(decls[1].line, 3);
     }
 
     #[test]
@@ -369,6 +376,7 @@ uint8_t buffer[64];
         assert_eq!(decl.array_dims, Some("64".to_string()));
         assert!(!decl.is_pointer);
         assert_eq!(decl.initial_value, None);
+        assert_eq!(decl.line, 3);
     }
 
     #[test]
@@ -389,7 +397,9 @@ TIM_HandleTypeDef *htim2;
         assert_eq!(decl.type_str, "TIM_HandleTypeDef");
         assert!(decl.is_pointer);
         assert!(!decl.is_array);
+        assert_eq!(decl.line, 3);
     }
+
 
     #[test]
     fn test_pv_region_with_only_comments() {

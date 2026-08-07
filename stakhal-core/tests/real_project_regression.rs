@@ -145,17 +145,22 @@ fn test_stm32_03_timers_pv_extract_regression() {
     let isr_count = decls.iter().find(|d| d.name == "isrCount").unwrap();
     assert_eq!(isr_count.type_str, "volatile uint32_t");
     assert_eq!(isr_count.initial_value, Some("0".to_string()));
+    assert_eq!(isr_count.line, 52);
 
     let step_interval = decls.iter().find(|d| d.name == "stepInterval").unwrap();
     assert_eq!(step_interval.type_str, "uint32_t");
     assert_eq!(step_interval.initial_value, Some("90000".to_string()));
+    assert_eq!(step_interval.line, 55);
 
     let enc_z1 = decls.iter().find(|d| d.name == "encZ1").unwrap();
     assert_eq!(enc_z1.type_str, "volatile int32_t");
     assert_eq!(enc_z1.initial_value, Some("0".to_string()));
+    assert_eq!(enc_z1.line, 58);
 
     let prev_z1 = decls.iter().find(|d| d.name == "prevZ1").unwrap();
     assert_eq!(prev_z1.type_str, "uint16_t");
     assert_eq!(prev_z1.initial_value, Some("0".to_string()));
+    assert_eq!(prev_z1.line, 63);
 }
+
 
