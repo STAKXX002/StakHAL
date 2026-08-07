@@ -8,7 +8,11 @@ use std::path::Path;
 
 use stakhal_core::graph::build_call_graph;
 use stakhal_core::ioc::parse_ioc;
-use stakhal_core::source::{extract_pv_declarations, find_loop_body_gap, scan_file};
+use stakhal_core::source::{
+    build_source_render_model, extract_pv_declarations, find_loop_body_gap, find_variable_usages,
+    scan_file, LineTier,
+};
+
 
 #[test]
 fn test_real_cubemx_project_regression() {
@@ -163,8 +167,6 @@ fn test_stm32_03_timers_pv_extract_regression() {
     assert_eq!(prev_z1.line, 63);
 }
 
-use stakhal_core::source::find_variable_usages;
-
 #[test]
 fn test_stm32_03_timers_usage_finder_regression() {
 
@@ -184,5 +186,37 @@ fn test_stm32_03_timers_usage_finder_regression() {
     assert_eq!(callback_usage.context_snippet, "isrCount++;");
 }
 
+#[test]
+fn test_stm32_03_timers_render_model_regression() {
+    let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let fixture_dir = manifest_dir.join("tests/fixtures/stm32_03_timers");
+    let main_c_path = fixture_dir.join("Core/Src/main.c");
 
+    let regions = scan_file(&main_c_path).expect("scan_file failed");
+    let decls = extract_pv_declarations(&main_c_path).expect("failed to extract PV declarations");
+    let isr_count = decls.iter().find(|d| d.name == "isrCount").unwrap();
 
+    let usages = find_variable_usages(&main_c_path, &isr_count.name, isr_count.byte_range)
+        .expect("find_variable_usages failed");
+    let usage_ranges: Vec<(usize, usize)> = usages.iter().map(|u| u.byte_range).collect();
+
+    let model = build_source_render_model(
+        &main_c_path,
+        &regions,
+        isr_count.byte_range,
+        &usage_ranges,
+    )
+    .expect("build_source_render_model failed");
+
+    let decl_line = model.iter().find(|l| l.line_number == 52).unwrap();
+    assert_eq!(decl_line.tier, LineTier::Declaration);
+
+    let usage_line = model.iter().find(|l| l.line_number == 496).unwrap();
+    assert_eq!(usage_line.tier, LineTier::Usage);
+
+    let gen_line = model.iter().find(|l| l.line_number == 20).unwrap();
+    assert_eq!(gen_line.tier, LineTier::Generated);
+
+    let norm_line = model.iter().find(|l| l.line_number == 5).unwrap();
+    assert_eq!(norm_line.tier, LineTier::Normal);
+}
