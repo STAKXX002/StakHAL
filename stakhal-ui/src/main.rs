@@ -8,8 +8,9 @@ use slint::{ModelRc, VecModel};
 use stakhal_core::ioc::discover_project_files;
 use stakhal_core::ir::load_project;
 use stakhal_core::source::pv_extract::PvDeclaration;
-use stakhal_core::source::scan_file;
-use stakhal_core::source::write_region;
+use stakhal_core::source::render_model::{build_source_render_model, LineTier, RenderedLine};
+use stakhal_core::source::usage_finder::{find_variable_usages, UsageSite};
+use stakhal_core::source::{scan_file, write_region, UserRegion};
 
 slint::include_modules!();
 
@@ -22,10 +23,14 @@ struct AppConfig {
 struct LoadedState {
     ioc_path: PathBuf,
     main_c_path: PathBuf,
+    user_regions: Vec<UserRegion>,
     pv_declarations: Vec<PvDeclaration>,
     pv_region_byte_range: Option<(usize, usize)>,
-    expanded_pv_index: Option<usize>,
-    inline_error: Option<(usize, String)>,
+    active_pv_index: Option<usize>,
+    active_usages: Vec<UsageSite>,
+    rendered_lines: Vec<RenderedLine>,
+    editing_line_index: Option<usize>,
+    inline_error: Option<String>,
 }
 
 fn get_config_file_path() -> Option<PathBuf> {
@@ -58,33 +63,41 @@ fn save_app_config(dir: &str) {
     }
 }
 
-fn update_pv_ui_model(ui: &MainWindow, state: &LoadedState) {
-    let pv_items: Vec<PvItem> = state
-        .pv_declarations
+fn update_source_panel_ui(ui: &MainWindow, state: &LoadedState) {
+    let source_line_items: Vec<SourceLineItem> = state
+        .rendered_lines
         .iter()
         .enumerate()
-        .map(|(idx, d)| {
-            let is_expanded = state.expanded_pv_index == Some(idx);
-            let (has_error, error_message) = match &state.inline_error {
-                Some((err_idx, msg)) if *err_idx == idx => (true, msg.clone()),
-                _ => (false, String::new()),
+        .map(|(idx, line)| {
+            let is_editing = state.editing_line_index == Some(idx);
+            let (has_error, error_message) = if is_editing {
+                match &state.inline_error {
+                    Some(err_msg) => (true, err_msg.clone()),
+                    None => (false, String::new()),
+                }
+            } else {
+                (false, String::new())
             };
 
-            PvItem {
-                name: d.name.clone().into(),
-                type_str: d.type_str.clone().into(),
-                initial_value: d.initial_value.clone().unwrap_or_else(|| "—".to_string()).into(),
-                raw_text: d.raw_text.clone().into(),
-                line: d.line as i32,
-                pv_index: idx as i32,
-                is_expanded,
+            let tier_str = match line.tier {
+                LineTier::Declaration => "declaration",
+                LineTier::Usage => "usage",
+                LineTier::Normal => "normal",
+                LineTier::Generated => "generated",
+            };
+
+            SourceLineItem {
+                line_number: line.line_number as i32,
+                text: line.text.clone().into(),
+                tier_str: tier_str.into(),
+                is_editing,
                 has_error,
                 error_message: error_message.into(),
             }
         })
         .collect();
 
-    ui.set_pv_variables(ModelRc::from(Rc::new(VecModel::from(pv_items))));
+    ui.set_source_lines(ModelRc::from(Rc::new(VecModel::from(source_line_items))));
 }
 
 fn load_project_into_ui(
@@ -104,11 +117,16 @@ fn load_project_into_ui(
     let mut st = state.borrow_mut();
     st.ioc_path = ioc_path.to_path_buf();
     st.main_c_path = main_c_path.to_path_buf();
+    st.user_regions = project.user_regions.clone();
     st.pv_declarations = project.pv_declarations.clone();
     st.pv_region_byte_range = pv_region_range;
-    st.expanded_pv_index = None;
+    st.active_pv_index = None;
+    st.active_usages.clear();
+    st.rendered_lines.clear();
+    st.editing_line_index = None;
     st.inline_error = None;
 
+    ui.set_showing_source_view(false);
     ui.set_has_error(false);
     ui.set_error_message("".into());
 
@@ -147,7 +165,20 @@ fn load_project_into_ui(
     }
     ui.set_regions(ModelRc::from(Rc::new(VecModel::from(region_items))));
 
-    update_pv_ui_model(ui, &st);
+    let pv_items: Vec<PvItem> = project
+        .pv_declarations
+        .iter()
+        .enumerate()
+        .map(|(idx, d)| PvItem {
+            name: d.name.clone().into(),
+            type_str: d.type_str.clone().into(),
+            initial_value: d.initial_value.clone().unwrap_or_else(|| "—".to_string()).into(),
+            raw_text: d.raw_text.clone().into(),
+            line: d.line as i32,
+            pv_index: idx as i32,
+        })
+        .collect();
+    ui.set_pv_variables(ModelRc::from(Rc::new(VecModel::from(pv_items))));
 
     Ok(())
 }
@@ -224,71 +255,129 @@ fn main() -> Result<(), slint::PlatformError> {
         }
     });
 
-    let ui_weak_toggle = ui.as_weak();
-    let state_toggle = Rc::clone(&state);
-    ui.on_toggle_pv_expanded(move |idx_i32| {
-        let ui = match ui_weak_toggle.upgrade() {
+    let ui_weak_open_src = ui.as_weak();
+    let state_open_src = Rc::clone(&state);
+    ui.on_open_pv_source_view(move |idx_i32| {
+        let ui = match ui_weak_open_src.upgrade() {
             Some(u) => u,
             None => return,
         };
         let idx = idx_i32 as usize;
-        let mut st = state_toggle.borrow_mut();
+        let mut st = state_open_src.borrow_mut();
         if idx >= st.pv_declarations.len() {
             return;
         }
 
-        if st.expanded_pv_index == Some(idx) {
-            st.expanded_pv_index = None;
-            st.inline_error = None;
-        } else {
-            st.expanded_pv_index = Some(idx);
-            st.inline_error = None;
-        }
-        update_pv_ui_model(&ui, &st);
+        let decl = st.pv_declarations[idx].clone();
+        let main_c_path = st.main_c_path.clone();
+        let user_regions = st.user_regions.clone();
+
+        let usages = find_variable_usages(&main_c_path, &decl.name, decl.byte_range)
+            .unwrap_or_default();
+        let usage_byte_ranges: Vec<(usize, usize)> = usages.iter().map(|u| u.byte_range).collect();
+
+        let rendered_lines = build_source_render_model(
+            &main_c_path,
+            &user_regions,
+            decl.byte_range,
+            &usage_byte_ranges,
+        )
+        .unwrap_or_default();
+
+        st.active_pv_index = Some(idx);
+        st.active_usages = usages;
+        st.rendered_lines = rendered_lines;
+        st.editing_line_index = None;
+        st.inline_error = None;
+
+        ui.set_active_pv_name(decl.name.into());
+        ui.set_active_pv_type(decl.type_str.into());
+        ui.set_showing_source_view(true);
+        ui.set_source_scroll_y(0.0_f32.into());
+
+
+        update_source_panel_ui(&ui, &st);
     });
 
-    let ui_weak_cancel = ui.as_weak();
-    let state_cancel = Rc::clone(&state);
-    ui.on_cancel_pv_inline_edit(move |_idx_i32| {
-        let ui = match ui_weak_cancel.upgrade() {
+    let ui_weak_close_src = ui.as_weak();
+    let state_close_src = Rc::clone(&state);
+    ui.on_close_pv_source_view(move || {
+        let ui = match ui_weak_close_src.upgrade() {
             Some(u) => u,
             None => return,
         };
-        let mut st = state_cancel.borrow_mut();
-        st.expanded_pv_index = None;
+        let mut st = state_close_src.borrow_mut();
+        st.active_pv_index = None;
+        st.editing_line_index = None;
         st.inline_error = None;
-        update_pv_ui_model(&ui, &st);
+        ui.set_showing_source_view(false);
     });
 
-    let ui_weak_save = ui.as_weak();
-    let state_save = Rc::clone(&state);
-    ui.on_save_pv_inline_edit(move |idx_i32, new_raw_text_slint| {
-        let ui = match ui_weak_save.upgrade() {
+    let ui_weak_click_decl = ui.as_weak();
+    let state_click_decl = Rc::clone(&state);
+    ui.on_click_declaration_line(move |idx_i32| {
+        let ui = match ui_weak_click_decl.upgrade() {
             Some(u) => u,
             None => return,
         };
         let idx = idx_i32 as usize;
+        let mut st = state_click_decl.borrow_mut();
+        st.editing_line_index = Some(idx);
+        st.inline_error = None;
+        update_source_panel_ui(&ui, &st);
+    });
+
+    let ui_weak_cancel_decl = ui.as_weak();
+    let state_cancel_decl = Rc::clone(&state);
+    ui.on_cancel_declaration_edit(move |_idx_i32| {
+        let ui = match ui_weak_cancel_decl.upgrade() {
+            Some(u) => u,
+            None => return,
+        };
+        let mut st = state_cancel_decl.borrow_mut();
+        st.editing_line_index = None;
+        st.inline_error = None;
+        update_source_panel_ui(&ui, &st);
+    });
+
+    let ui_weak_save_decl = ui.as_weak();
+    let state_save_decl = Rc::clone(&state);
+    ui.on_save_declaration_edit(move |_line_idx_i32, new_raw_text_slint| {
+        let ui = match ui_weak_save_decl.upgrade() {
+            Some(u) => u,
+            None => return,
+        };
         let new_raw_text = new_raw_text_slint.to_string();
 
-        let (main_c_path, ioc_path, loaded_pv_range, orig_decl) = {
-            let st = state_save.borrow();
-            if idx >= st.pv_declarations.len() {
-                return;
-            }
+        let (main_c_path, ioc_path, loaded_pv_range, active_pv_idx) = {
+            let st = state_save_decl.borrow();
             (
                 st.main_c_path.clone(),
                 st.ioc_path.clone(),
                 st.pv_region_byte_range,
-                st.pv_declarations[idx].clone(),
+                st.active_pv_index,
             )
+        };
+
+        let active_idx = match active_pv_idx {
+            Some(i) => i,
+            None => return,
+        };
+
+        let orig_decl = {
+            let st = state_save_decl.borrow();
+            if active_idx >= st.pv_declarations.len() {
+                return;
+            }
+            st.pv_declarations[active_idx].clone()
         };
 
         let fresh_regions = match scan_file(&main_c_path) {
             Ok(r) => r,
             Err(err) => {
-                let mut st = state_save.borrow_mut();
-                st.inline_error = Some((idx, err.to_string()));
-                update_pv_ui_model(&ui, &st);
+                let mut st = state_save_decl.borrow_mut();
+                st.inline_error = Some(err.to_string());
+                update_source_panel_ui(&ui, &st);
                 return;
             }
         };
@@ -296,41 +385,39 @@ fn main() -> Result<(), slint::PlatformError> {
         let fresh_pv_region = match fresh_regions.into_iter().find(|r| r.tag == "PV") {
             Some(r) => r,
             None => {
-                let mut st = state_save.borrow_mut();
-                st.inline_error = Some((idx, "No PV region found in fresh scan".to_string()));
-                update_pv_ui_model(&ui, &st);
+                let mut st = state_save_decl.borrow_mut();
+                st.inline_error = Some("No PV region found in fresh scan".to_string());
+                update_source_panel_ui(&ui, &st);
                 return;
             }
         };
 
         if let Some(loaded_range) = loaded_pv_range {
             if fresh_pv_region.byte_range != loaded_range {
-                let mut st = state_save.borrow_mut();
-                st.inline_error = Some((
-                    idx,
+                let mut st = state_save_decl.borrow_mut();
+                st.inline_error = Some(
                     "File has changed since project was loaded — reload project and try again"
                         .to_string(),
-                ));
-                update_pv_ui_model(&ui, &st);
+                );
+                update_source_panel_ui(&ui, &st);
                 return;
             }
         } else {
-            let mut st = state_save.borrow_mut();
-            st.inline_error = Some((
-                idx,
+            let mut st = state_save_decl.borrow_mut();
+            st.inline_error = Some(
                 "File has changed since project was loaded — reload project and try again"
                     .to_string(),
-            ));
-            update_pv_ui_model(&ui, &st);
+            );
+            update_source_panel_ui(&ui, &st);
             return;
         }
 
         let file_content = match fs::read_to_string(&main_c_path) {
             Ok(c) => c,
             Err(e) => {
-                let mut st = state_save.borrow_mut();
-                st.inline_error = Some((idx, e.to_string()));
-                update_pv_ui_model(&ui, &st);
+                let mut st = state_save_decl.borrow_mut();
+                st.inline_error = Some(e.to_string());
+                update_source_panel_ui(&ui, &st);
                 return;
             }
         };
@@ -339,9 +426,9 @@ fn main() -> Result<(), slint::PlatformError> {
         let pv_end = fresh_pv_region.byte_range.1;
 
         if pv_end > file_content.as_bytes().len() {
-            let mut st = state_save.borrow_mut();
-            st.inline_error = Some((idx, "PV region byte range out of file bounds".to_string()));
-            update_pv_ui_model(&ui, &st);
+            let mut st = state_save_decl.borrow_mut();
+            st.inline_error = Some("PV region byte range out of file bounds".to_string());
+            update_source_panel_ui(&ui, &st);
             return;
         }
 
@@ -351,12 +438,9 @@ fn main() -> Result<(), slint::PlatformError> {
         let decl_end = orig_decl.byte_range.1;
 
         if decl_start < pv_start || decl_end > pv_end {
-            let mut st = state_save.borrow_mut();
-            st.inline_error = Some((
-                idx,
-                "Declaration byte range out of PV region bounds".to_string(),
-            ));
-            update_pv_ui_model(&ui, &st);
+            let mut st = state_save_decl.borrow_mut();
+            st.inline_error = Some("Declaration byte range out of PV region bounds".to_string());
+            update_source_panel_ui(&ui, &st);
             return;
         }
 
@@ -370,15 +454,16 @@ fn main() -> Result<(), slint::PlatformError> {
 
         match write_region(&main_c_path, &fresh_pv_region, &new_pv_full_text) {
             Ok(()) => {
-                if let Err(err_msg) = load_project_into_ui(&ui, &ioc_path, &main_c_path, &state_save) {
+                ui.set_showing_source_view(false);
+                if let Err(err_msg) = load_project_into_ui(&ui, &ioc_path, &main_c_path, &state_save_decl) {
                     ui.set_has_error(true);
                     ui.set_error_message(err_msg.into());
                 }
             }
             Err(err) => {
-                let mut st = state_save.borrow_mut();
-                st.inline_error = Some((idx, err.to_string()));
-                update_pv_ui_model(&ui, &st);
+                let mut st = state_save_decl.borrow_mut();
+                st.inline_error = Some(err.to_string());
+                update_source_panel_ui(&ui, &st);
             }
         }
     });

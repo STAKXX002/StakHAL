@@ -20,15 +20,21 @@ export struct PvItem {
     raw_text: string,
     line: int,
     pv_index: int,
-    is_expanded: bool,
+}
+
+export struct SourceLineItem {
+    line_number: int,
+    text: string,
+    tier_str: string, // "generated", "normal", "declaration", "usage"
+    is_editing: bool,
     has_error: bool,
     error_message: string,
 }
 
 export component MainWindow inherits Window {
     title: "StakHAL - STM32 Project Viewer";
-    preferred-width: 1050px;
-    preferred-height: 650px;
+    preferred-width: 1150px;
+    preferred-height: 720px;
     background: #121212;
 
     in-out property <string> project_dir: "";
@@ -48,12 +54,21 @@ export component MainWindow inherits Window {
     in property <[RegionItem]> regions: [];
     in property <[PvItem]> pv_variables: [];
 
+    // Source Sub-Panel Properties
+    in property <bool> showing_source_view: false;
+    in property <string> active_pv_name: "";
+    in property <string> active_pv_type: "";
+    in property <[SourceLineItem]> source_lines: [];
+    in-out property <length> source_scroll_y: 0px;
+
     callback load_clicked();
     callback browse_folder_clicked();
 
-    callback toggle_pv_expanded(int);
-    callback save_pv_inline_edit(int, string);
-    callback cancel_pv_inline_edit(int);
+    callback open_pv_source_view(int);
+    callback close_pv_source_view();
+    callback click_declaration_line(int);
+    callback cancel_declaration_edit(int);
+    callback save_declaration_edit(int, string);
 
     VerticalLayout {
         padding: 16px;
@@ -201,8 +216,8 @@ export component MainWindow inherits Window {
             }
         }
 
-        // Content Area (Peripherals, User Regions, & PV Variables Accordion)
-        HorizontalLayout {
+        // Main Content View Mode Switch
+        if !root.showing_source_view : HorizontalLayout {
             spacing: 12px;
             vertical-stretch: 1;
 
@@ -379,7 +394,7 @@ export component MainWindow inherits Window {
                 }
             }
 
-            // Section 3: PV Variables Panel (Inline Accordion Editing)
+            // Section 3: PV Variables Panel (Click row to open Source Sub-Panel)
             Rectangle {
                 background: #181818;
                 border-radius: 8px;
@@ -415,117 +430,313 @@ export component MainWindow inherits Window {
                             }
 
                             for item in root.pv_variables : Rectangle {
-                                background: item.is_expanded ? #25282a : #222222;
+                                background: #222222;
                                 border-radius: 6px;
-                                border-color: item.is_expanded ? #3b82f6 : #333333;
+                                border-color: #333333;
                                 border-width: 1px;
+                                height: 42px;
 
-                                VerticalLayout {
-                                    padding: 8px;
-                                    spacing: 8px;
+                                TouchArea {
+                                    clicked => { root.open_pv_source_view(item.pv_index); }
 
-                                    // Collapsed Header Row (Whole row is clickable to toggle expansion)
-                                    TouchArea {
-                                        clicked => { root.toggle_pv_expanded(item.pv_index); }
+                                    HorizontalLayout {
+                                        padding-left: 10px;
+                                        padding-right: 10px;
+                                        spacing: 8px;
+
+                                        Text {
+                                            text: item.name;
+                                            font-size: 12px;
+                                            font-weight: 700;
+                                            color: #60a5fa;
+                                            vertical-alignment: center;
+                                            width: 110px;
+                                            overflow: elide;
+                                        }
+
+                                        Text {
+                                            text: item.type_str;
+                                            font-size: 11px;
+                                            color: #cccccc;
+                                            vertical-alignment: center;
+                                            width: 105px;
+                                            overflow: elide;
+                                        }
+
+                                        Text {
+                                            text: "Init: " + item.initial_value;
+                                            font-size: 11px;
+                                            color: #aaaaaa;
+                                            vertical-alignment: center;
+                                            horizontal-stretch: 1;
+                                            overflow: elide;
+                                        }
+
+                                        Text {
+                                            text: "L" + item.line;
+                                            font-size: 11px;
+                                            color: #777777;
+                                            vertical-alignment: center;
+                                            width: 35px;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // FULL SOURCE SUB-PANEL (Replaces main content view when showing_source_view is true)
+        if root.showing_source_view : Rectangle {
+            background: #141414;
+            border-radius: 8px;
+            border-width: 1px;
+            border-color: #3b82f6;
+            vertical-stretch: 1;
+
+            VerticalLayout {
+                padding: 12px;
+                spacing: 10px;
+
+                // Source View Header (Variable details + Close button)
+                HorizontalLayout {
+                    spacing: 12px;
+
+                    HorizontalLayout {
+                        spacing: 8px;
+                        horizontal-stretch: 1;
+
+                        Text {
+                            text: "PV Source View:";
+                            font-size: 14px;
+                            font-weight: 700;
+                            color: #81c784;
+                            vertical-alignment: center;
+                        }
+
+                        Text {
+                            text: root.active_pv_name;
+                            font-size: 14px;
+                            font-weight: 700;
+                            color: #60a5fa;
+                            vertical-alignment: center;
+                        }
+
+                        Text {
+                            text: "(" + root.active_pv_type + ")";
+                            font-size: 13px;
+                            color: #cccccc;
+                            vertical-alignment: center;
+                        }
+                    }
+
+                    // Legend Badges
+                    HorizontalLayout {
+                        spacing: 10px;
+                        alignment: center;
+
+                        Rectangle {
+                            background: #064e3b;
+                            border-color: #059669;
+                            border-width: 1px;
+                            border-radius: 3px;
+
+                            HorizontalLayout {
+                                padding-left: 6px;
+                                padding-right: 6px;
+
+                                Text {
+                                    text: "Declaration (click to edit)";
+                                    font-size: 10px;
+                                    font-weight: 700;
+                                    color: #a7f3d0;
+                                    vertical-alignment: center;
+                                }
+                            }
+                        }
+
+                        Rectangle {
+                            background: #0f2942;
+                            border-color: #0284c7;
+                            border-width: 1px;
+                            border-radius: 3px;
+
+                            HorizontalLayout {
+                                padding-left: 6px;
+                                padding-right: 6px;
+
+                                Text {
+                                    text: "Usage (click to scroll)";
+                                    font-size: 10px;
+                                    font-weight: 700;
+                                    color: #38bdf8;
+                                    vertical-alignment: center;
+                                }
+                            }
+                        }
+
+                        Rectangle {
+                            background: #1e1e1e;
+                            border-color: #444444;
+                            border-width: 1px;
+                            border-radius: 3px;
+
+                            HorizontalLayout {
+                                padding-left: 6px;
+                                padding-right: 6px;
+
+                                Text {
+                                    text: "User Code";
+                                    font-size: 10px;
+                                    color: #d1d5db;
+                                    vertical-alignment: center;
+                                }
+                            }
+                        }
+
+                        Rectangle {
+                            background: #181818;
+                            border-color: #2a2a2a;
+                            border-width: 1px;
+                            border-radius: 3px;
+
+                            HorizontalLayout {
+                                padding-left: 6px;
+                                padding-right: 6px;
+
+                                Text {
+                                    text: "Generated";
+                                    font-size: 10px;
+                                    color: #555555;
+                                    vertical-alignment: center;
+                                }
+                            }
+                        }
+
+                    }
+
+                    Button {
+                        text: "Close";
+                        clicked => { root.close_pv_source_view(); }
+                    }
+                }
+
+                Rectangle {
+                    height: 1px;
+                    background: #333333;
+                }
+
+                // Scrollable Code View
+                ScrollView {
+                    viewport-y: root.source_scroll_y;
+
+                    VerticalLayout {
+                        alignment: start;
+                        spacing: 2px;
+
+                        for item[idx] in root.source_lines : Rectangle {
+                            background: item.tier_str == "declaration" ? #064e3b : (item.tier_str == "usage" ? #0f2942 : (item.tier_str == "normal" ? #1a1a1a : #141414));
+                            border-color: item.tier_str == "declaration" ? #059669 : (item.tier_str == "usage" ? #0284c7 : #141414);
+                            border-width: (item.tier_str == "declaration" || item.tier_str == "usage") ? 1px : 0px;
+                            border-radius: 3px;
+
+                            VerticalLayout {
+                                padding-left: 6px;
+                                padding-right: 6px;
+                                padding-top: 2px;
+                                padding-bottom: 2px;
+                                spacing: 4px;
+
+                                TouchArea {
+                                    enabled: item.tier_str == "declaration" || item.tier_str == "usage";
+                                    clicked => {
+                                        if (item.tier_str == "declaration") {
+                                            root.click_declaration_line(idx);
+                                        } else if (item.tier_str == "usage") {
+                                            root.source_scroll_y = - (idx * 24px);
+                                        }
+                                    }
+
+                                    HorizontalLayout {
+                                        spacing: 12px;
+
+                                        // Line Number Column
+                                        Text {
+                                            text: item.line_number;
+                                            font-size: 12px;
+                                            font-family: "monospace";
+                                            color: item.tier_str == "declaration" ? #34d399 : (item.tier_str == "usage" ? #38bdf8 : (item.tier_str == "normal" ? #9ca3af : #4b5563));
+                                            width: 45px;
+                                            horizontal-alignment: end;
+                                            vertical-alignment: center;
+                                        }
+
+                                        // Line Content Column
+                                        if !item.is_editing : Text {
+                                            text: item.text;
+                                            font-size: 12px;
+                                            font-family: "monospace";
+                                            font-weight: (item.tier_str == "declaration" || item.tier_str == "usage") ? 700 : 400;
+                                            color: item.tier_str == "declaration" ? #a7f3d0 : (item.tier_str == "usage" ? #38bdf8 : (item.tier_str == "normal" ? #e5e7eb : #555555));
+                                            vertical-alignment: center;
+                                            horizontal-stretch: 1;
+                                        }
+                                    }
+                                }
+
+                                // Scoped Inline Declaration Edit Mode
+                                // Known limitation: assumes declaration is a single line — if a declaration spans multiple lines, editing may not render/behave perfectly; acceptable for v1 given typical PV declarations are single-line.
+                                if item.is_editing : VerticalLayout {
+                                    spacing: 6px;
+                                    padding-left: 57px; // align with code column
+
+                                    if item.has_error : Rectangle {
+                                        background: #3b1818;
+                                        border-radius: 4px;
+                                        border-width: 1px;
+                                        border-color: #991b1b;
 
                                         HorizontalLayout {
-                                            spacing: 8px;
+                                            padding: 6px;
+                                            spacing: 6px;
 
                                             Text {
-                                                text: (item.is_expanded ? "▼ " : "► ") + item.name;
-                                                font-size: 12px;
+                                                text: "Error:";
+                                                font-size: 11px;
                                                 font-weight: 700;
-                                                color: item.is_expanded ? #60a5fa : #eeeeee;
-                                                vertical-alignment: center;
-                                                width: 110px;
-                                                overflow: elide;
+                                                color: #f87171;
                                             }
 
                                             Text {
-                                                text: item.type_str;
+                                                text: item.error_message;
                                                 font-size: 11px;
-                                                color: #cccccc;
-                                                vertical-alignment: center;
-                                                width: 105px;
-                                                overflow: elide;
-                                            }
-
-                                            Text {
-                                                text: "Init: " + item.initial_value;
-                                                font-size: 11px;
-                                                color: #aaaaaa;
-                                                vertical-alignment: center;
+                                                color: #f87171;
+                                                wrap: word-wrap;
                                                 horizontal-stretch: 1;
-                                                overflow: elide;
-                                            }
-
-                                            Text {
-                                                text: "L" + item.line;
-                                                font-size: 11px;
-                                                color: #777777;
-                                                vertical-alignment: center;
-                                                width: 35px;
                                             }
                                         }
                                     }
 
-                                    // Inline Expanded Editor Body
-                                    if item.is_expanded : VerticalLayout {
+                                    edit_box := LineEdit {
+                                        text: item.text;
+                                        font-size: 12px;
+                                        font-family: "monospace";
+                                    }
+
+                                    HorizontalLayout {
                                         spacing: 8px;
 
-                                        if item.has_error : Rectangle {
-                                            background: #3b1818;
-                                            border-radius: 4px;
-                                            border-width: 1px;
-                                            border-color: #991b1b;
-
-                                            HorizontalLayout {
-                                                padding: 6px;
-                                                spacing: 6px;
-
-                                                Text {
-                                                    text: "Error:";
-                                                    font-size: 11px;
-                                                    font-weight: 700;
-                                                    color: #f87171;
-                                                }
-
-                                                Text {
-                                                    text: item.error_message;
-                                                    font-size: 11px;
-                                                    color: #f87171;
-                                                    wrap: word-wrap;
-                                                    horizontal-stretch: 1;
-                                                }
-                                            }
+                                        Button {
+                                            text: "Cancel";
+                                            clicked => { root.cancel_declaration_edit(idx); }
                                         }
 
-                                        Text {
-                                            text: "Edit Declaration Statement:";
-                                            font-size: 11px;
-                                            font-weight: 700;
-                                            color: #aaaaaa;
-                                        }
-
-                                        edit_box := LineEdit {
-                                            text: item.raw_text;
-                                            font-size: 12px;
-                                        }
-
-                                        HorizontalLayout {
-                                            spacing: 8px;
-                                            alignment: end;
-
-                                            Button {
-                                                text: "Cancel";
-                                                clicked => { root.cancel_pv_inline_edit(item.pv_index); }
-                                            }
-
-                                            Button {
-                                                text: "Save";
-                                                primary: true;
-                                                clicked => { root.save_pv_inline_edit(item.pv_index, edit_box.text); }
-                                            }
+                                        Button {
+                                            text: "Save";
+                                            primary: true;
+                                            clicked => { root.save_declaration_edit(idx, edit_box.text); }
                                         }
                                     }
                                 }
