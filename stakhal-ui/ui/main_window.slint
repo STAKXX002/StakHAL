@@ -620,114 +620,100 @@ export component MainWindow inherits Window {
                     background: #2a2a2a;
                 }
 
-                // Virtualized ListView Code View with Flat Editor Background
+                // Scrollable Code View
                 ListView {
                     viewport-y: root.source_scroll_y;
 
                     for item[idx] in root.source_lines : Rectangle {
+                        height: 22px;
                         background: item.tier_str == "declaration" ? #064e3b : (item.tier_str == "usage" ? #0f2942 : #111111);
 
-                        VerticalLayout {
+                        HorizontalLayout {
                             padding-left: 6px;
                             padding-right: 6px;
-                            padding-top: 1px;
-                            padding-bottom: 1px;
-                            spacing: 2px;
+                            spacing: 8px;
 
-                            TouchArea {
+                            // Line Number Column
+                            Text {
+                                text: item.line_number;
+                                font-size: 12px;
+                                font-family: "monospace";
+                                color: item.tier_str == "declaration" ? #34d399 : (item.tier_str == "usage" ? #38bdf8 : (item.tier_str == "normal" ? #9ca3af : #4b5563));
+                                width: 45px;
+                                horizontal-alignment: end;
+                                vertical-alignment: center;
+                            }
+
+                            // Line Content View Mode
+                            if !item.is_editing : TouchArea {
                                 enabled: item.tier_str == "declaration" || item.tier_str == "usage";
                                 clicked => {
                                     if (item.tier_str == "declaration") {
-                                        root.click_declaration_line(idx);
+                                        root.click_declaration_line(item.line_number);
                                     } else if (item.tier_str == "usage") {
                                         root.source_scroll_y = - (idx * 20px);
                                     }
                                 }
 
-                                HorizontalLayout {
-                                    spacing: 12px;
-
-                                    // Line Number Column
-                                    Text {
-                                        text: item.line_number;
-                                        font-size: 12px;
-                                        font-family: "monospace";
-                                        color: item.tier_str == "declaration" ? #34d399 : (item.tier_str == "usage" ? #38bdf8 : (item.tier_str == "normal" ? #9ca3af : #4b5563));
-                                        width: 45px;
-                                        horizontal-alignment: end;
-                                        vertical-alignment: center;
-                                    }
-
-                                    // Line Content Column
-                                    if !item.is_editing : Text {
-                                        text: item.text;
-                                        font-size: 12px;
-                                        font-family: "monospace";
-                                        font-weight: (item.tier_str == "declaration" || item.tier_str == "usage") ? 700 : 400;
-                                        color: item.tier_str == "declaration" ? #a7f3d0 : (item.tier_str == "usage" ? #38bdf8 : (item.tier_str == "normal" ? #e5e7eb : #555555));
-                                        vertical-alignment: center;
-                                        horizontal-stretch: 1;
-                                    }
-                                }
-                            }
-
-                            // Scoped Inline Declaration Edit Mode
-                            // Known limitation: assumes declaration is a single line — if a declaration spans multiple lines, editing may not render/behave perfectly; acceptable for v1 given typical PV declarations are single-line.
-                            if item.is_editing : VerticalLayout {
-                                spacing: 6px;
-                                padding-left: 57px;
-
-                                if item.has_error : Rectangle {
-                                    background: #3b1818;
-                                    border-radius: 4px;
-                                    border-width: 1px;
-                                    border-color: #991b1b;
-
-                                    HorizontalLayout {
-                                        padding: 6px;
-                                        spacing: 6px;
-
-                                        Text {
-                                            text: "Error:";
-                                            font-size: 11px;
-                                            font-weight: 700;
-                                            color: #f87171;
-                                        }
-
-                                        Text {
-                                            text: item.error_message;
-                                            font-size: 11px;
-                                            color: #f87171;
-                                            wrap: word-wrap;
-                                            horizontal-stretch: 1;
-                                        }
-                                    }
-                                }
-
-                                edit_box := LineEdit {
+                                Text {
                                     text: item.text;
                                     font-size: 12px;
                                     font-family: "monospace";
+                                    font-weight: (item.tier_str == "declaration" || item.tier_str == "usage") ? 700 : 400;
+                                    color: item.tier_str == "declaration" ? #a7f3d0 : (item.tier_str == "usage" ? #38bdf8 : (item.tier_str == "normal" ? #e5e7eb : #555555));
+                                    vertical-alignment: center;
+                                }
+                            }
+
+                            // Scoped Single-Line Declaration Edit Mode
+                            // Known limitation: assumes declaration is a single line — if a declaration spans multiple lines, editing may not render/behave perfectly; acceptable for v1 given typical PV declarations are single-line.
+                            if item.is_editing : FocusScope {
+                                horizontal-stretch: 1;
+
+                                key-pressed(event) => {
+                                    if (event.text == "\u{1b}") {
+                                        root.cancel_declaration_edit(item.line_number);
+                                        return accept;
+                                    }
+                                    return reject;
                                 }
 
                                 HorizontalLayout {
-                                    spacing: 8px;
+                                    spacing: 6px;
 
-                                    Button {
-                                        text: "Cancel";
-                                        clicked => { root.cancel_declaration_edit(idx); }
+                                    edit_box := LineEdit {
+                                        text: item.text;
+                                        font-size: 12px;
+                                        font-family: "monospace";
+                                        horizontal-stretch: 1;
+                                        accepted => { root.save_declaration_edit(item.line_number, edit_box.text); }
                                     }
 
                                     Button {
-                                        text: "Save";
-                                        primary: true;
-                                        clicked => { root.save_declaration_edit(idx, edit_box.text); }
+                                        text: "✓";
+                                        width: 24px;
+                                        clicked => { root.save_declaration_edit(item.line_number, edit_box.text); }
+                                    }
+
+                                    Button {
+                                        text: "✕";
+                                        width: 24px;
+                                        clicked => { root.cancel_declaration_edit(item.line_number); }
+                                    }
+
+                                    if item.has_error : Text {
+                                        text: "⚠️ " + item.error_message;
+                                        font-size: 11px;
+                                        color: #f87171;
+                                        vertical-alignment: center;
+                                        overflow: elide;
                                     }
                                 }
                             }
                         }
                     }
                 }
+
             }
         }
     }

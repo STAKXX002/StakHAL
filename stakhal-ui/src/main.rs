@@ -29,9 +29,10 @@ struct LoadedState {
     active_pv_index: Option<usize>,
     active_usages: Vec<UsageSite>,
     rendered_lines: Vec<RenderedLine>,
-    editing_line_index: Option<usize>,
+    editing_line_number: Option<usize>,
     inline_error: Option<String>,
 }
+
 
 fn get_config_file_path() -> Option<PathBuf> {
     let home = std::env::var_os("HOME")?;
@@ -67,9 +68,8 @@ fn update_source_panel_ui(ui: &MainWindow, state: &LoadedState) {
     let source_line_items: Vec<SourceLineItem> = state
         .rendered_lines
         .iter()
-        .enumerate()
-        .map(|(idx, line)| {
-            let is_editing = state.editing_line_index == Some(idx);
+        .map(|line| {
+            let is_editing = state.editing_line_number == Some(line.line_number);
             let (has_error, error_message) = if is_editing {
                 match &state.inline_error {
                     Some(err_msg) => (true, err_msg.clone()),
@@ -100,6 +100,7 @@ fn update_source_panel_ui(ui: &MainWindow, state: &LoadedState) {
     ui.set_source_lines(ModelRc::from(Rc::new(VecModel::from(source_line_items))));
 }
 
+
 fn load_project_into_ui(
     ui: &MainWindow,
     ioc_path: &Path,
@@ -123,7 +124,8 @@ fn load_project_into_ui(
     st.active_pv_index = None;
     st.active_usages.clear();
     st.rendered_lines.clear();
-    st.editing_line_index = None;
+    st.editing_line_number = None;
+
     st.inline_error = None;
 
     ui.set_showing_source_view(false);
@@ -285,16 +287,16 @@ fn main() -> Result<(), slint::PlatformError> {
         .unwrap_or_default();
 
         st.active_pv_index = Some(idx);
+
         st.active_usages = usages;
         st.rendered_lines = rendered_lines;
-        st.editing_line_index = None;
+        st.editing_line_number = None;
         st.inline_error = None;
 
         ui.set_active_pv_name(decl.name.into());
         ui.set_active_pv_type(decl.type_str.into());
         ui.set_showing_source_view(true);
         ui.set_source_scroll_y(0.0_f32.into());
-
 
         update_source_panel_ui(&ui, &st);
     });
@@ -308,37 +310,38 @@ fn main() -> Result<(), slint::PlatformError> {
         };
         let mut st = state_close_src.borrow_mut();
         st.active_pv_index = None;
-        st.editing_line_index = None;
+        st.editing_line_number = None;
         st.inline_error = None;
         ui.set_showing_source_view(false);
     });
 
     let ui_weak_click_decl = ui.as_weak();
     let state_click_decl = Rc::clone(&state);
-    ui.on_click_declaration_line(move |idx_i32| {
+    ui.on_click_declaration_line(move |line_num_i32| {
         let ui = match ui_weak_click_decl.upgrade() {
             Some(u) => u,
             None => return,
         };
-        let idx = idx_i32 as usize;
+        let line_num = line_num_i32 as usize;
         let mut st = state_click_decl.borrow_mut();
-        st.editing_line_index = Some(idx);
+        st.editing_line_number = Some(line_num);
         st.inline_error = None;
         update_source_panel_ui(&ui, &st);
     });
 
     let ui_weak_cancel_decl = ui.as_weak();
     let state_cancel_decl = Rc::clone(&state);
-    ui.on_cancel_declaration_edit(move |_idx_i32| {
+    ui.on_cancel_declaration_edit(move |_line_num_i32| {
         let ui = match ui_weak_cancel_decl.upgrade() {
             Some(u) => u,
             None => return,
         };
         let mut st = state_cancel_decl.borrow_mut();
-        st.editing_line_index = None;
+        st.editing_line_number = None;
         st.inline_error = None;
         update_source_panel_ui(&ui, &st);
     });
+
 
     let ui_weak_save_decl = ui.as_weak();
     let state_save_decl = Rc::clone(&state);
