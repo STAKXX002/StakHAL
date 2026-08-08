@@ -976,7 +976,7 @@ fn open_pv_source_view(pv_idx: usize, state: &Rc<RefCell<AppState>>, widgets: &R
                     runs.push(GeneratedRun {
                         start_line: start,
                         end_line: current_run_end,
-                        is_collapsed: false,
+                        is_collapsed: true,
                     });
                 }
                 current_run_start = None;
@@ -988,9 +988,13 @@ fn open_pv_source_view(pv_idx: usize, state: &Rc<RefCell<AppState>>, widgets: &R
             runs.push(GeneratedRun {
                 start_line: start,
                 end_line: current_run_end,
-                is_collapsed: false,
+                is_collapsed: true,
             });
         }
+    }
+
+    for run in &runs {
+        apply_run_collapse(run, widgets);
     }
 
     {
