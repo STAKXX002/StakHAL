@@ -90,8 +90,12 @@ fn build_ui(app: &adw::Application) {
          @define-color accent_color #ffffff;\
          @define-color accent_bg_color #3a3a3c;\
          @define-color accent_fg_color #ffffff;\
+         @define-color accent_fill_color #3a3a3c;\
          button.suggested-action { background-color: #3a3a3c; color: #ffffff; }\
          button.suggested-action:hover { background-color: #4a4a4c; }\
+         button.flat:hover, button:hover { background-color: rgba(255, 255, 255, 0.08); }\
+         button:focus, entry:focus, *:focus { outline-color: rgba(255, 255, 255, 0.3); }\
+         .accent, image.accent { color: #ffffff; }\
          .card, .boxed-list { border-radius: 12px; border: 1px solid rgba(255, 255, 255, 0.08); }\
          .implicit-badge { background-color: #d97706; color: #ffffff; font-size: 11px; font-weight: bold; padding: 2px 8px; border-radius: 6px; }",
     );
@@ -99,7 +103,7 @@ fn build_ui(app: &adw::Application) {
         gtk4::style_context_add_provider_for_display(
             &display,
             &css_provider,
-            gtk4::STYLE_PROVIDER_PRIORITY_APPLICATION,
+            gtk4::STYLE_PROVIDER_PRIORITY_USER,
         );
     }
 
