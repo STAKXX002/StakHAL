@@ -686,8 +686,6 @@ export component MainWindow inherits Window {
                                     }
                                 }
 
-
-
                                 // Scoped Single-Line Declaration Edit Mode
                                 if item.is_editing : FocusScope {
                                     horizontal-stretch: 1;
@@ -701,25 +699,27 @@ export component MainWindow inherits Window {
                                     }
 
                                     HorizontalLayout {
-                                        spacing: 6px;
+                                        padding-left: 2px;
+                                        padding-right: 8px;
+                                        spacing: 8px;
 
                                         edit_box := LineEdit {
                                             text: item.text;
                                             font-size: 12px;
-                                            font-family: "monospace";
+                                            font-family: "DejaVu Sans Mono";
                                             horizontal-stretch: 1;
                                             accepted => { root.save_declaration_edit(item.line_number, edit_box.text); }
                                         }
 
                                         Button {
                                             text: "✓";
-                                            width: 24px;
+                                            width: 26px;
                                             clicked => { root.save_declaration_edit(item.line_number, edit_box.text); }
                                         }
 
                                         Button {
                                             text: "✕";
-                                            width: 24px;
+                                            width: 26px;
                                             clicked => { root.cancel_declaration_edit(item.line_number); }
                                         }
 
