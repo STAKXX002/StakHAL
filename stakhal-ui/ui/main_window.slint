@@ -63,9 +63,15 @@ export component MainWindow inherits Window {
     in property <int> visible_start_index: 0;
     in-out property <length> source_scroll_y: 0px;
 
+    animate source_scroll_y {
+        duration: 250ms;
+        easing: ease-out;
+    }
+
     changed source_scroll_y => {
         root.source_scroll_changed(root.source_scroll_y);
     }
+
 
     callback load_clicked();
     callback browse_folder_clicked();
@@ -646,6 +652,12 @@ export component MainWindow inherits Window {
                             height: 20px;
                             width: 100%;
                             background: item.tier_str == "declaration" ? #064e3b : (item.tier_str == "usage" ? #0f2942 : #111111);
+
+                            animate background {
+                                duration: 150ms;
+                                easing: ease-in-out;
+                            }
+
 
                             HorizontalLayout {
                                 padding-left: 6px;
