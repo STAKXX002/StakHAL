@@ -94,43 +94,139 @@ fn build_ui(app: &adw::Application) {
 
     // btop-inspired Terminal/TUI Design System CSS Provider
     let css_provider = gtk4::CssProvider::new();
-    css_provider.load_from_string(
-        "* { font-family: 'DejaVu Sans Mono', 'Liberation Mono', monospace; font-size: 13px; border-radius: 0px !important; box-shadow: none !important; }\
-         window, .background, .main-window { background-color: #0a0a0a; color: #e0e0e0; }\
-         headerbar, .topbar { background-color: #0a0a0a; border-bottom: 1px solid #2a2a2a; color: #e0e0e0; }\
-         @define-color accent_color #ffffff;\
-         @define-color accent_bg_color #1a1a1a;\
-         @define-color accent_fg_color #ffffff;\
-         @define-color accent_fill_color #1a1a1a;\
-         @define-color window_bg_color #0a0a0a;\
-         @define-color window_fg_color #e0e0e0;\
-         @define-color view_bg_color #0a0a0a;\
-         @define-color view_fg_color #e0e0e0;\
-         @define-color card_bg_color #111111;\
-         @define-color card_fg_color #e0e0e0;\
-         @define-color dialog_bg_color #111111;\
-         @define-color popover_bg_color #111111;\
-         .card, .boxed-list, list { background-color: #111111; border: 1px solid #2a2a2a; border-radius: 0px !important; }\
-         list > row, row.adw-action-row { border-bottom: 1px solid #2a2a2a; background-color: #111111; color: #e0e0e0; padding: 6px 12px; transition: background-color 120ms ease-out, border-color 120ms ease-out, color 120ms ease-out; }\
-         list > row:last-child { border-bottom: none; }\
-         list > row:hover, row.adw-action-row:hover { background-color: #1a1a1a; }\
-         list > row:active, row.adw-action-row:active { background-color: #262626; }\
-         list > row:selected { background-color: #222222; color: #ffffff; }\
-         button { background-color: #111111; color: #e0e0e0; border: 1px solid #2a2a2a; border-radius: 0px !important; padding: 6px 12px; transition: background-color 120ms ease-out, border-color 120ms ease-out, color 120ms ease-out; }\
-         button:hover { background-color: #1a1a1a; color: #ffffff; border-color: #444444; }\
-         button:active { background-color: #262626; border-color: #555555; }\
-         button.suggested-action { background-color: #ffffff !important; color: #000000 !important; font-weight: bold; border: 1px solid #ffffff !important; border-radius: 0px !important; transition: background-color 120ms ease-out, border-color 120ms ease-out, color 120ms ease-out; }\
-         button.suggested-action:hover { background-color: #e0e0e0 !important; color: #000000 !important; }\
-         button.suggested-action:active { background-color: #cccccc !important; color: #000000 !important; }\
-         button.suggested-action:disabled { background-color: #222222 !important; color: #6e6e6e !important; border-color: #2a2a2a !important; }\
-         *:focus, button:focus, entry:focus { outline: 1px solid #ffffff !important; outline-offset: -1px; }\
-         .dim-label, .caption, subtitle { color: #6e6e6e; }\
-         .implicit-badge { background-color: #facc15; color: #000000; font-size: 11px; font-weight: bold; padding: 2px 6px; border-radius: 0px !important; }\
-         toast { background-color: #111111; color: #e0e0e0; border: 1px solid #2a2a2a; border-radius: 0px !important; }\
-         .toast-success { color: #4ade80 !important; }\
-         .toast-error { color: #f87171 !important; }\
-         textview, textview text { background-color: #0a0a0a; color: #e0e0e0; }",
-    );
+    css_provider.load_from_string(r#"
+* {
+    font-family: 'DejaVu Sans Mono', 'Liberation Mono', monospace;
+    font-size: 13px;
+    border-radius: 0px;
+    box-shadow: none;
+}
+window, .background, .main-window {
+    background-color: #0a0a0a;
+    color: #e0e0e0;
+}
+headerbar, .topbar {
+    background-color: #0a0a0a;
+    border-bottom: 1px solid #2a2a2a;
+    color: #e0e0e0;
+}
+@define-color accent_color #ffffff;
+@define-color accent_bg_color #1a1a1a;
+@define-color accent_fg_color #ffffff;
+@define-color accent_fill_color #1a1a1a;
+@define-color window_bg_color #0a0a0a;
+@define-color window_fg_color #e0e0e0;
+@define-color view_bg_color #0a0a0a;
+@define-color view_fg_color #e0e0e0;
+@define-color card_bg_color #111111;
+@define-color card_fg_color #e0e0e0;
+@define-color dialog_bg_color #111111;
+@define-color popover_bg_color #111111;
+.card, .boxed-list, list {
+    background-color: #111111;
+    border: 1px solid #2a2a2a;
+    border-radius: 0px;
+}
+list > row, row.adw-action-row {
+    border-bottom: 1px solid #2a2a2a;
+    background-color: #111111;
+    color: #e0e0e0;
+    padding: 6px 12px;
+    transition: background-color 120ms ease-out, border-color 120ms ease-out, color 120ms ease-out;
+}
+list > row:last-child {
+    border-bottom: none;
+}
+list > row:hover, row.adw-action-row:hover {
+    background-color: #1a1a1a;
+}
+list > row:active, row.adw-action-row:active {
+    background-color: #262626;
+}
+list > row:selected {
+    background-color: #222222;
+    color: #ffffff;
+}
+button {
+    background-color: #111111;
+    color: #e0e0e0;
+    border: 1px solid #2a2a2a;
+    border-radius: 0px;
+    padding: 6px 12px;
+    transition: background-color 120ms ease-out, border-color 120ms ease-out, color 120ms ease-out;
+}
+button:hover {
+    background-color: #1a1a1a;
+    color: #ffffff;
+    border-color: #444444;
+}
+button:active {
+    background-color: #262626;
+    border-color: #555555;
+}
+button.suggested-action {
+    background-color: #ffffff;
+    color: #000000;
+    font-weight: bold;
+    border: 1px solid #ffffff;
+    border-radius: 0px;
+    transition: background-color 120ms ease-out, border-color 120ms ease-out, color 120ms ease-out;
+}
+button.suggested-action:hover {
+    background-color: #e0e0e0;
+    color: #000000;
+}
+button.suggested-action:active {
+    background-color: #cccccc;
+    color: #000000;
+}
+button.suggested-action:disabled {
+    background-color: #222222;
+    color: #6e6e6e;
+    border-color: #2a2a2a;
+}
+*:focus, button:focus, entry:focus {
+    outline-color: #ffffff;
+    outline-offset: -1px;
+}
+.dim-label, .caption, subtitle {
+    color: #6e6e6e;
+}
+.implicit-badge {
+    background-color: #facc15;
+    color: #000000;
+    font-size: 11px;
+    font-weight: bold;
+    padding: 2px 6px;
+    border-radius: 0px;
+}
+toast {
+    background-color: #111111;
+    color: #e0e0e0;
+    border: 1px solid #2a2a2a;
+    border-radius: 0px;
+}
+.toast-success {
+    color: #4ade80;
+}
+.toast-error {
+    color: #f87171;
+}
+textview, textview text {
+    background-color: #0a0a0a;
+    color: #e0e0e0;
+}
+.status-bar-box {
+    background-color: #111111;
+    border: 1px solid #2a2a2a;
+    padding: 8px 14px;
+}
+.status-divider {
+    color: #2a2a2a;
+    font-weight: bold;
+    margin: 0 8px;
+}
+"#);
     if let Some(display) = gdk::Display::default() {
         gtk4::style_context_add_provider_for_display(
             &display,
