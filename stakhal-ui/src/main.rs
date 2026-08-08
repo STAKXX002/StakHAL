@@ -161,22 +161,24 @@ list > row, row.adw-action-row {
     background-color: #111111;
     color: #e0e0e0;
     padding: 6px 12px;
-    transition: background-color 120ms ease-out, border-color 120ms ease-out, color 120ms ease-out;
 }
 list > row:last-child {
     border-bottom: none;
 }
-list > row:hover, row.adw-action-row:hover {
+.clickable-row {
+    transition: background-color 120ms ease-out, border-color 120ms ease-out, color 120ms ease-out;
+}
+.clickable-row:hover {
     background-color: #1a1a1a;
 }
-list > row:active, row.adw-action-row:active {
+.clickable-row:active {
     background-color: #262626;
 }
-list > row:selected {
+.clickable-row:selected {
     background-color: #222222;
     color: #ffffff;
 }
-button:not(windowcontrols button):not(headerbar button.titlebutton) {
+button:not(.titlebutton) {
     background-color: #111111;
     color: #e0e0e0;
     border: 1px solid #2a2a2a;
@@ -184,16 +186,16 @@ button:not(windowcontrols button):not(headerbar button.titlebutton) {
     padding: 6px 12px;
     transition: background-color 120ms ease-out, border-color 120ms ease-out, color 120ms ease-out;
 }
-button:not(windowcontrols button):not(headerbar button.titlebutton):hover {
+button:not(.titlebutton):hover {
     background-color: #1a1a1a;
     color: #ffffff;
     border-color: #444444;
 }
-button:not(windowcontrols button):not(headerbar button.titlebutton):active {
+button:not(.titlebutton):active {
     background-color: #262626;
     border-color: #555555;
 }
-button.suggested-action:not(windowcontrols button) {
+button.suggested-action:not(.titlebutton) {
     background-color: #ffffff;
     color: #000000;
     font-weight: bold;
@@ -201,20 +203,20 @@ button.suggested-action:not(windowcontrols button) {
     border-radius: 0px;
     transition: background-color 120ms ease-out, border-color 120ms ease-out, color 120ms ease-out;
 }
-button.suggested-action:not(windowcontrols button):hover {
+button.suggested-action:not(.titlebutton):hover {
     background-color: #e0e0e0;
     color: #000000;
 }
-button.suggested-action:not(windowcontrols button):active {
+button.suggested-action:not(.titlebutton):active {
     background-color: #cccccc;
     color: #000000;
 }
-button.suggested-action:not(windowcontrols button):disabled {
+button.suggested-action:not(.titlebutton):disabled {
     background-color: #222222;
     color: #6e6e6e;
     border-color: #2a2a2a;
 }
-*:focus, button:not(windowcontrols button):focus, entry:focus {
+*:focus, button:not(.titlebutton):focus, entry:focus {
     outline-color: #ffffff;
     outline-offset: -1px;
 }
@@ -255,17 +257,17 @@ textview, textview text {
     font-weight: bold;
     margin: 0 8px;
 }
-button.flat:not(windowcontrols button) {
+button.flat:not(.titlebutton) {
     background-color: transparent;
     border: 1px solid #2a2a2a;
     color: #e0e0e0;
 }
-button.flat:not(windowcontrols button):hover {
+button.flat:not(.titlebutton):hover {
     background-color: #1a1a1a;
     border-color: #444444;
     color: #ffffff;
 }
-button.flat:not(windowcontrols button):active {
+button.flat:not(.titlebutton):active {
     background-color: #262626;
     border-color: #555555;
 }
@@ -1291,6 +1293,7 @@ fn create_pv_row(
         .title(name)
         .subtitle(&subtitle)
         .activatable(true)
+        .css_classes(vec!["clickable-row".to_string()])
         .build();
 
     let lbl_line = gtk4::Label::builder()
