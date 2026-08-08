@@ -388,10 +388,11 @@ fn build_ui(app: &adw::Application) {
     source_panel_box.append(&source_header_bar);
     source_panel_box.append(&source_overlay);
 
-    // View Stack with smooth transition
+    // View Stack with smooth panel-switch transitions (Overview ↔ Source View)
     let stack = gtk4::Stack::builder()
         .transition_type(gtk4::StackTransitionType::SlideLeftRight)
-        .transition_duration(300)
+        .transition_duration(350)
+        .interpolate_size(true)
         .build();
     stack.add_named(&overview_box, Some("overview"));
     stack.add_named(&source_panel_box, Some("source_view"));
