@@ -70,6 +70,9 @@ fn main() {
 }
 
 fn build_ui(app: &adw::Application) {
+    // Force dark mode consistently across all Libadwaita / GTK4 widgets and dialogs
+    adw::StyleManager::default().set_color_scheme(adw::ColorScheme::ForceDark);
+
     // Monospace font styling for GtkSourceView
     let css_provider = gtk4::CssProvider::new();
     css_provider.load_from_string(
