@@ -279,9 +279,18 @@ button.flat:active {
     }
 
     // PAGE 1: Overview Page
-    let btn_browse = create_icon_button("Browse Project Folder…", "folder-open-symbolic", false);
-    let btn_load = create_icon_button("Load Project", "system-run-symbolic", true);
-    btn_load.set_sensitive(false);
+    let btn_browse = gtk4::Button::builder()
+        .icon_name("folder-open-symbolic")
+        .tooltip_text("Browse Project Folder")
+        .css_classes(vec!["flat".to_string()])
+        .build();
+
+    let btn_load = gtk4::Button::builder()
+        .icon_name("system-run-symbolic")
+        .tooltip_text("Load Project")
+        .sensitive(false)
+        .css_classes(vec!["suggested-action".to_string()])
+        .build();
 
     let lbl_discovered_dir = gtk4::Label::builder()
         .label("No folder selected")
