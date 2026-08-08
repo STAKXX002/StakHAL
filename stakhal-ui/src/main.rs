@@ -6,6 +6,7 @@ use std::rc::Rc;
 
 use gtk4::gdk;
 use gtk4::gio;
+use gtk4::glib;
 use gtk4::prelude::*;
 use libadwaita as adw;
 use sourceview5::prelude::*;
@@ -31,6 +32,7 @@ struct AppState {
     active_pv_index: Option<usize>,
     active_decl: Option<PvDeclaration>,
     active_usage_lines: Vec<usize>,
+    is_inline_editing: bool,
 }
 
 struct AppWidgets {
@@ -58,6 +60,13 @@ struct AppWidgets {
     tag_declaration: gtk4::TextTag,
     tag_usage: gtk4::TextTag,
     tag_generated: gtk4::TextTag,
+    tag_readonly: gtk4::TextTag,
+
+    // Inline edit bar widgets
+    inline_edit_bar: gtk4::Box,
+    lbl_inline_error: gtk4::Label,
+    btn_inline_save: gtk4::Button,
+    btn_inline_cancel: gtk4::Button,
 }
 
 fn main() {
@@ -285,10 +294,16 @@ fn build_ui(app: &adw::Application) {
         .foreground("#6e6e6e")
         .build();
 
+    let tag_readonly = gtk4::TextTag::builder()
+        .name("readonly")
+        .editable(false)
+        .build();
+
     let tag_table = source_buffer.tag_table();
     tag_table.add(&tag_declaration);
     tag_table.add(&tag_usage);
     tag_table.add(&tag_generated);
+    tag_table.add(&tag_readonly);
 
     let source_scrolled = gtk4::ScrolledWindow::builder()
         .hscrollbar_policy(gtk4::PolicyType::Automatic)
@@ -297,15 +312,69 @@ fn build_ui(app: &adw::Application) {
         .child(&source_view)
         .build();
 
+    // Inline edit floating action bar
+    let lbl_edit_status = gtk4::Label::builder()
+        .label("Editing declaration (Enter to Save, Esc to Cancel)")
+        .halign(gtk4::Align::Start)
+        .css_classes(vec!["body".to_string(), "dim-label".to_string()])
+        .build();
+
+    let lbl_inline_error = gtk4::Label::builder()
+        .label("")
+        .halign(gtk4::Align::Start)
+        .css_classes(vec!["error".to_string()])
+        .visible(false)
+        .build();
+
+    let btn_inline_save = gtk4::Button::builder()
+        .label("Save")
+        .css_classes(vec!["suggested-action".to_string()])
+        .build();
+
+    let btn_inline_cancel = gtk4::Button::builder()
+        .label("Cancel")
+        .build();
+
+    let bar_inner = gtk4::Box::builder()
+        .orientation(gtk4::Orientation::Horizontal)
+        .spacing(12)
+        .margin_top(8)
+        .margin_bottom(8)
+        .margin_start(12)
+        .margin_end(12)
+        .build();
+    bar_inner.append(&lbl_edit_status);
+    bar_inner.append(&lbl_inline_error);
+    bar_inner.append(&btn_inline_cancel);
+    bar_inner.append(&btn_inline_save);
+
+    let inline_edit_bar = gtk4::Box::builder()
+        .orientation(gtk4::Orientation::Horizontal)
+        .halign(gtk4::Align::End)
+        .valign(gtk4::Align::End)
+        .margin_bottom(16)
+        .margin_end(24)
+        .css_classes(vec!["card".to_string()])
+        .visible(false)
+        .build();
+    inline_edit_bar.append(&bar_inner);
+
+    let source_overlay = gtk4::Overlay::builder()
+        .child(&source_scrolled)
+        .vexpand(true)
+        .build();
+    source_overlay.add_overlay(&inline_edit_bar);
+
     let source_panel_box = gtk4::Box::builder()
         .orientation(gtk4::Orientation::Vertical)
         .build();
     source_panel_box.append(&source_header_bar);
-    source_panel_box.append(&source_scrolled);
+    source_panel_box.append(&source_overlay);
 
-    // View Stack
+    // View Stack with smooth transition
     let stack = gtk4::Stack::builder()
         .transition_type(gtk4::StackTransitionType::SlideLeftRight)
+        .transition_duration(300)
         .build();
     stack.add_named(&overview_box, Some("overview"));
     stack.add_named(&source_panel_box, Some("source_view"));
@@ -354,6 +423,11 @@ fn build_ui(app: &adw::Application) {
         tag_declaration,
         tag_usage,
         tag_generated,
+        tag_readonly,
+        inline_edit_bar,
+        lbl_inline_error,
+        btn_inline_save,
+        btn_inline_cancel,
     });
 
     // Check last_project.json on startup
@@ -410,11 +484,46 @@ fn build_ui(app: &adw::Application) {
         open_pv_source_view(idx, &state_pv_click, &widgets_pv_click);
     });
 
+    // Connect Inline Edit Action Buttons
+    let state_save_btn = Rc::clone(&state);
+    let widgets_save_btn = Rc::clone(&widgets);
+    widgets.btn_inline_save.connect_clicked(move |_| {
+        save_inline_declaration_edit(&state_save_btn, &widgets_save_btn);
+    });
+
+    let state_cancel_btn = Rc::clone(&state);
+    let widgets_cancel_btn = Rc::clone(&widgets);
+    widgets.btn_inline_cancel.connect_clicked(move |_| {
+        cancel_inline_declaration_edit(&state_cancel_btn, &widgets_cancel_btn);
+    });
+
+    // Key controller for Enter/Escape during inline editing
+    let key_controller = gtk4::EventControllerKey::new();
+    let state_key = Rc::clone(&state);
+    let widgets_key = Rc::clone(&widgets);
+    key_controller.connect_key_pressed(move |_, key, _code, _state| {
+        let is_editing = state_key.borrow().is_inline_editing;
+        if !is_editing {
+            return glib::Propagation::Proceed;
+        }
+
+        if key == gdk::Key::Return || key == gdk::Key::KP_Enter {
+            save_inline_declaration_edit(&state_key, &widgets_key);
+            glib::Propagation::Stop
+        } else if key == gdk::Key::Escape {
+            cancel_inline_declaration_edit(&state_key, &widgets_key);
+            glib::Propagation::Stop
+        } else {
+            glib::Propagation::Proceed
+        }
+    });
+    widgets.source_view.add_controller(key_controller);
+
     // Connect Click Gesture on GtkSourceView
     let gesture = gtk4::GestureClick::new();
     let state_source_click = Rc::clone(&state);
     let widgets_source_click = Rc::clone(&widgets);
-    gesture.connect_pressed(move |g, _n_press, x, y| {
+    gesture.connect_pressed(move |_g, _n_press, x, y| {
         let widgets = &widgets_source_click;
         let st = state_source_click.borrow();
         let decl = match &st.active_decl {
@@ -432,7 +541,10 @@ fn build_ui(app: &adw::Application) {
             let clicked_line_1based = (iter.line() + 1) as usize;
 
             if clicked_line_1based == decl.line {
-                show_declaration_edit_popover(g, x, y, &decl, &state_source_click, &widgets_source_click);
+                if !st.is_inline_editing {
+                    drop(st);
+                    enter_inline_edit_mode(&state_source_click, &widgets_source_click);
+                }
             } else if st.active_usage_lines.contains(&clicked_line_1based) {
                 let mut scroll_iter = iter;
                 widgets.source_view.scroll_to_iter(&mut scroll_iter, 0.1, true, 0.0, 0.5);
@@ -619,6 +731,11 @@ fn open_pv_source_view(pv_idx: usize, state: &Rc<RefCell<AppState>>, widgets: &R
         return;
     }
 
+    widgets.inline_edit_bar.set_visible(false);
+    widgets.source_view.set_editable(false);
+    widgets.source_view.set_cursor_visible(false);
+    state.borrow_mut().is_inline_editing = false;
+
     let decl = project.pv_declarations[pv_idx].clone();
     let main_c_content = match std::fs::read_to_string(&main_c_path) {
         Ok(c) => c,
@@ -695,115 +812,108 @@ fn open_pv_source_view(pv_idx: usize, state: &Rc<RefCell<AppState>>, widgets: &R
     widgets.stack.set_visible_child_name("source_view");
 }
 
-fn show_declaration_edit_popover(
-    _gesture: &gtk4::GestureClick,
-    x: f64,
-    y: f64,
-    decl: &PvDeclaration,
-    state: &Rc<RefCell<AppState>>,
-    widgets: &Rc<AppWidgets>,
-) {
-    let popover = gtk4::Popover::builder()
-        .has_arrow(true)
-        .build();
-
-    popover.set_parent(&widgets.source_view);
-    popover.set_pointing_to(Some(&gdk::Rectangle::new(x as i32, y as i32, 1, 1)));
-
-    let title_lbl = gtk4::Label::builder()
-        .label("Edit Declaration Statement")
-        .halign(gtk4::Align::Start)
-        .css_classes(vec!["heading".to_string()])
-        .build();
-
-    let entry_edit = gtk4::Entry::builder()
-        .text(&decl.raw_text)
-        .width_chars(55)
-        .build();
-
-    let err_label = gtk4::Label::builder()
-        .label("")
-        .halign(gtk4::Align::Start)
-        .css_classes(vec!["error".to_string()])
-        .visible(false)
-        .build();
-
-    let btn_save = gtk4::Button::builder()
-        .label("Save")
-        .css_classes(vec!["suggested-action".to_string()])
-        .build();
-
-    let btn_cancel = gtk4::Button::builder()
-        .label("Cancel")
-        .build();
-
-    let btn_box = gtk4::Box::builder()
-        .orientation(gtk4::Orientation::Horizontal)
-        .spacing(8)
-        .halign(gtk4::Align::End)
-        .build();
-    btn_box.append(&btn_cancel);
-    btn_box.append(&btn_save);
-
-    let popover_box = gtk4::Box::builder()
-        .orientation(gtk4::Orientation::Vertical)
-        .spacing(8)
-        .margin_top(12)
-        .margin_bottom(12)
-        .margin_start(12)
-        .margin_end(12)
-        .build();
-    popover_box.append(&title_lbl);
-    popover_box.append(&entry_edit);
-    popover_box.append(&err_label);
-    popover_box.append(&btn_box);
-
-    popover.set_child(Some(&popover_box));
-
-    let popover_clone_cancel = popover.clone();
-    btn_cancel.connect_clicked(move |_| {
-        popover_clone_cancel.popdown();
-    });
-
-    let state_save = Rc::clone(state);
-    let widgets_save = Rc::clone(widgets);
-    let decl_save = decl.clone();
-    let popover_clone_save = popover.clone();
-    let entry_edit_save = entry_edit.clone();
-
-    btn_save.connect_clicked(move |_| {
-        let new_text = entry_edit_save.text().to_string();
-        let main_c_path = {
-            let st = state_save.borrow();
-            match &st.loaded_project {
-                Some(p) => p.meta.main_c_path.clone(),
-                None => return,
-            }
+fn enter_inline_edit_mode(state: &Rc<RefCell<AppState>>, widgets: &Rc<AppWidgets>) {
+    let (decl, line_count) = {
+        let st = state.borrow();
+        let decl = match &st.active_decl {
+            Some(d) => d.clone(),
+            None => return,
         };
+        (decl, widgets.source_buffer.line_count())
+    };
 
-        match save_pv_declaration_edit(&main_c_path, &decl_save, &new_text) {
-            Ok(_) => {
-                popover_clone_save.popdown();
-                // Reload project
-                do_load_project(&state_save, &widgets_save);
-                // Re-open source panel for this PV declaration
-                if let Some(active_idx) = state_save.borrow().active_pv_index {
-                    open_pv_source_view(active_idx, &state_save, &widgets_save);
-                }
+    widgets.source_view.set_editable(true);
+    widgets.source_view.set_cursor_visible(true);
+
+    let decl_line_idx = (decl.line.saturating_sub(1)) as i32;
+
+    // Apply tag_readonly to range before decl line
+    if decl_line_idx > 0 {
+        let start = widgets.source_buffer.start_iter();
+        if let Some(end) = widgets.source_buffer.iter_at_line(decl_line_idx) {
+            widgets.source_buffer.apply_tag(&widgets.tag_readonly, &start, &end);
+        }
+    }
+
+    // Apply tag_readonly to range after decl line
+    let after_line_idx = decl_line_idx + 1;
+    if after_line_idx < line_count {
+        if let Some(start) = widgets.source_buffer.iter_at_line(after_line_idx) {
+            let end = widgets.source_buffer.end_iter();
+            widgets.source_buffer.apply_tag(&widgets.tag_readonly, &start, &end);
+        }
+    }
+
+    // Place cursor on declaration line
+    if let Some(mut iter) = widgets.source_buffer.iter_at_line(decl_line_idx) {
+        widgets.source_buffer.place_cursor(&iter);
+        widgets.source_view.scroll_to_iter(&mut iter, 0.1, true, 0.0, 0.5);
+    }
+
+    widgets.lbl_inline_error.set_visible(false);
+    widgets.lbl_inline_error.set_text("");
+    widgets.inline_edit_bar.set_visible(true);
+    state.borrow_mut().is_inline_editing = true;
+}
+
+fn save_inline_declaration_edit(state: &Rc<RefCell<AppState>>, widgets: &Rc<AppWidgets>) {
+    let (decl, main_c_path, active_pv_idx) = {
+        let st = state.borrow();
+        let decl = match &st.active_decl {
+            Some(d) => d.clone(),
+            None => return,
+        };
+        let main_c_path = match &st.loaded_project {
+            Some(p) => p.meta.main_c_path.clone(),
+            None => return,
+        };
+        (decl, main_c_path, st.active_pv_index)
+    };
+
+    let decl_line_idx = (decl.line.saturating_sub(1)) as i32;
+    let new_text = match widgets.source_buffer.iter_at_line(decl_line_idx) {
+        Some(start) => {
+            let mut end = start;
+            if !end.ends_line() {
+                end.forward_to_line_end();
             }
-            Err(err_msg) => {
-                err_label.set_text(&format!("Save error: {}", err_msg));
-                err_label.set_visible(true);
+            widgets.source_buffer.text(&start, &end, false).to_string()
+        }
+        None => return,
+    };
+
+    let trimmed_text = new_text.trim_end_matches(['\r', '\n']);
+
+    match save_pv_declaration_edit(&main_c_path, &decl, trimmed_text) {
+        Ok(_) => {
+            widgets.inline_edit_bar.set_visible(false);
+            widgets.source_view.set_editable(false);
+            widgets.source_view.set_cursor_visible(false);
+            state.borrow_mut().is_inline_editing = false;
+
+            // Reload project and refresh view
+            do_load_project(state, widgets);
+            if let Some(idx) = active_pv_idx {
+                open_pv_source_view(idx, state, widgets);
             }
         }
-    });
+        Err(err_msg) => {
+            widgets.lbl_inline_error.set_text(&format!("Save error: {}", err_msg));
+            widgets.lbl_inline_error.set_visible(true);
+        }
+    }
+}
 
-    let btn_save_click = btn_save.clone();
-    entry_edit.connect_activate(move |_| {
-        btn_save_click.emit_clicked();
-    });
+fn cancel_inline_declaration_edit(state: &Rc<RefCell<AppState>>, widgets: &Rc<AppWidgets>) {
+    let active_pv_idx = state.borrow().active_pv_index;
+    widgets.inline_edit_bar.set_visible(false);
+    widgets.source_view.set_editable(false);
+    widgets.source_view.set_cursor_visible(false);
+    state.borrow_mut().is_inline_editing = false;
 
-    popover.popup();
+    if let Some(idx) = active_pv_idx {
+        open_pv_source_view(idx, state, widgets);
+    }
 }
 
 fn save_pv_declaration_edit(
