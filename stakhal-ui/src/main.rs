@@ -9,6 +9,7 @@ use gtk4::gio;
 use gtk4::glib;
 use gtk4::prelude::*;
 use libadwaita as adw;
+use libadwaita::prelude::*;
 use sourceview5::prelude::*;
 
 use stakhal_core::ioc::discovery::discover_project_files;
@@ -48,7 +49,7 @@ struct AppState {
 struct AppWidgets {
     window: adw::ApplicationWindow,
     stack: gtk4::Stack,
-    banner: adw::Banner,
+    toast_overlay: adw::ToastOverlay,
     lbl_discovered_dir: gtk4::Label,
     lbl_ioc_path: gtk4::Label,
     lbl_main_c_path: gtk4::Label,
@@ -106,11 +107,6 @@ fn build_ui(app: &adw::Application) {
         );
     }
 
-    // Top Banner for Inline Errors
-    let banner = adw::Banner::builder()
-        .revealed(false)
-        .build();
-
     // PAGE 1: Overview Page
     let btn_browse = gtk4::Button::builder()
         .label("Browse Project Folder…")
@@ -144,7 +140,7 @@ fn build_ui(app: &adw::Application) {
 
     let path_info_box = gtk4::Box::builder()
         .orientation(gtk4::Orientation::Vertical)
-        .spacing(2)
+        .spacing(6)
         .hexpand(true)
         .build();
     path_info_box.append(&lbl_discovered_dir);
@@ -156,49 +152,59 @@ fn build_ui(app: &adw::Application) {
         .spacing(12)
         .margin_top(12)
         .margin_bottom(12)
-        .margin_start(16)
-        .margin_end(16)
+        .margin_start(18)
+        .margin_end(18)
         .build();
     toolbar_box.append(&btn_browse);
     toolbar_box.append(&path_info_box);
     toolbar_box.append(&btn_load);
 
-    // Project Header Summary Cards (Project Name, MCU Family, MCU Name)
+    // Project Summary Section (Native Libadwaita PreferencesGroup)
     let lbl_project_name = gtk4::Label::builder()
         .label("—")
-        .halign(gtk4::Align::Start)
-        .css_classes(vec!["title-3".to_string()])
+        .halign(gtk4::Align::End)
+        .valign(gtk4::Align::Center)
+        .css_classes(vec!["title-4".to_string()])
         .build();
-
-    let card_project = create_summary_card("PROJECT NAME", &lbl_project_name);
 
     let lbl_mcu_family = gtk4::Label::builder()
         .label("—")
-        .halign(gtk4::Align::Start)
-        .css_classes(vec!["title-3".to_string()])
+        .halign(gtk4::Align::End)
+        .valign(gtk4::Align::Center)
+        .css_classes(vec!["title-4".to_string()])
         .build();
-
-    let card_family = create_summary_card("MCU FAMILY", &lbl_mcu_family);
 
     let lbl_mcu_name = gtk4::Label::builder()
         .label("—")
-        .halign(gtk4::Align::Start)
-        .css_classes(vec!["title-3".to_string()])
+        .halign(gtk4::Align::End)
+        .valign(gtk4::Align::Center)
+        .css_classes(vec!["title-4".to_string()])
         .build();
 
-    let card_mcu = create_summary_card("MCU PART", &lbl_mcu_name);
+    let row_project = adw::ActionRow::builder()
+        .title("Project Name")
+        .build();
+    row_project.add_suffix(&lbl_project_name);
 
-    let header_cards_box = gtk4::Box::builder()
-        .orientation(gtk4::Orientation::Horizontal)
-        .homogeneous(true)
-        .spacing(12)
+    let row_family = adw::ActionRow::builder()
+        .title("MCU Family")
+        .build();
+    row_family.add_suffix(&lbl_mcu_family);
+
+    let row_mcu = adw::ActionRow::builder()
+        .title("MCU Part")
+        .build();
+    row_mcu.add_suffix(&lbl_mcu_name);
+
+    let pref_group_header = adw::PreferencesGroup::builder()
+        .title("Project Metadata")
         .margin_bottom(12)
-        .margin_start(16)
-        .margin_end(16)
+        .margin_start(18)
+        .margin_end(18)
         .build();
-    header_cards_box.append(&card_project);
-    header_cards_box.append(&card_family);
-    header_cards_box.append(&card_mcu);
+    pref_group_header.add(&row_project);
+    pref_group_header.add(&row_family);
+    pref_group_header.add(&row_mcu);
 
     // Three Column Setup: Peripherals, User Regions, PV Variables
     let lbl_periph_header = gtk4::Label::builder()
@@ -245,9 +251,9 @@ fn build_ui(app: &adw::Application) {
         .homogeneous(true)
         .spacing(12)
         .vexpand(true)
-        .margin_start(16)
-        .margin_end(16)
-        .margin_bottom(16)
+        .margin_start(18)
+        .margin_end(18)
+        .margin_bottom(18)
         .build();
     columns_box.append(&col_peripherals);
     columns_box.append(&col_regions);
@@ -257,7 +263,7 @@ fn build_ui(app: &adw::Application) {
         .orientation(gtk4::Orientation::Vertical)
         .build();
     overview_box.append(&toolbar_box);
-    overview_box.append(&header_cards_box);
+    overview_box.append(&pref_group_header);
     overview_box.append(&columns_box);
 
     // PAGE 2: PV Source Panel
@@ -274,11 +280,11 @@ fn build_ui(app: &adw::Application) {
 
     let source_header_bar = gtk4::Box::builder()
         .orientation(gtk4::Orientation::Horizontal)
-        .spacing(16)
+        .spacing(18)
         .margin_top(12)
         .margin_bottom(12)
-        .margin_start(16)
-        .margin_end(16)
+        .margin_start(18)
+        .margin_end(18)
         .build();
     source_header_bar.append(&btn_back);
     source_header_bar.append(&lbl_active_pv);
@@ -312,7 +318,7 @@ fn build_ui(app: &adw::Application) {
 
     let tag_generated = gtk4::TextTag::builder()
         .name("generated")
-        .foreground("#6e6e6e")
+        .foreground("#808080")
         .build();
 
     let tag_readonly = gtk4::TextTag::builder()
@@ -365,8 +371,8 @@ fn build_ui(app: &adw::Application) {
     let bar_inner = gtk4::Box::builder()
         .orientation(gtk4::Orientation::Horizontal)
         .spacing(12)
-        .margin_top(8)
-        .margin_bottom(8)
+        .margin_top(6)
+        .margin_bottom(6)
         .margin_start(12)
         .margin_end(12)
         .build();
@@ -379,7 +385,7 @@ fn build_ui(app: &adw::Application) {
         .orientation(gtk4::Orientation::Horizontal)
         .halign(gtk4::Align::End)
         .valign(gtk4::Align::End)
-        .margin_bottom(16)
+        .margin_bottom(18)
         .margin_end(24)
         .css_classes(vec!["card".to_string()])
         .visible(false)
@@ -411,27 +417,31 @@ fn build_ui(app: &adw::Application) {
     // HeaderBar
     let header_bar = adw::HeaderBar::new();
 
+    // ToastOverlay for transient feedback
+    let toast_overlay = adw::ToastOverlay::new();
+
     // Root Content Layout
     let content_box = gtk4::Box::builder()
         .orientation(gtk4::Orientation::Vertical)
         .build();
     content_box.append(&header_bar);
-    content_box.append(&banner);
     content_box.append(&stack);
+
+    toast_overlay.set_child(Some(&content_box));
 
     let window = adw::ApplicationWindow::builder()
         .application(app)
         .title("StakHAL - STM32 Project Viewer")
         .default_width(1200)
         .default_height(800)
-        .content(&content_box)
+        .content(&toast_overlay)
         .build();
 
     let state = Rc::new(RefCell::new(AppState::default()));
     let widgets = Rc::new(AppWidgets {
         window: window.clone(),
         stack,
-        banner,
+        toast_overlay,
         lbl_discovered_dir,
         lbl_ioc_path,
         lbl_main_c_path,
@@ -601,36 +611,6 @@ fn build_ui(app: &adw::Application) {
     window.present();
 }
 
-fn create_summary_card(title: &str, value_label: &gtk4::Label) -> gtk4::Box {
-    let title_lbl = gtk4::Label::builder()
-        .label(title)
-        .halign(gtk4::Align::Start)
-        .css_classes(vec!["dim-label".to_string(), "caption-heading".to_string()])
-        .build();
-
-    let box_card = gtk4::Box::builder()
-        .orientation(gtk4::Orientation::Vertical)
-        .spacing(4)
-        .css_classes(vec!["card".to_string()])
-        .margin_top(4)
-        .margin_bottom(4)
-        .build();
-
-    let inner_box = gtk4::Box::builder()
-        .orientation(gtk4::Orientation::Vertical)
-        .spacing(4)
-        .margin_top(12)
-        .margin_bottom(12)
-        .margin_start(16)
-        .margin_end(16)
-        .build();
-    inner_box.append(&title_lbl);
-    inner_box.append(value_label);
-
-    box_card.append(&inner_box);
-    box_card
-}
-
 fn create_column_box(header_label: &gtk4::Label, list_box: &gtk4::ListBox) -> gtk4::Box {
     let scrolled = gtk4::ScrolledWindow::builder()
         .hscrollbar_policy(gtk4::PolicyType::Never)
@@ -641,7 +621,7 @@ fn create_column_box(header_label: &gtk4::Label, list_box: &gtk4::ListBox) -> gt
 
     let col_box = gtk4::Box::builder()
         .orientation(gtk4::Orientation::Vertical)
-        .spacing(8)
+        .spacing(6)
         .hexpand(true)
         .vexpand(true)
         .build();
@@ -658,7 +638,6 @@ fn try_discover_folder(dir: &Path, state: &Rc<RefCell<AppState>>, widgets: &Rc<A
 
     match discover_project_files(dir) {
         Ok((ioc_path, main_c_path)) => {
-            widgets.banner.set_revealed(false);
             widgets
                 .lbl_ioc_path
                 .set_text(&format!("IOC: {}", ioc_path.display()));
@@ -671,8 +650,7 @@ fn try_discover_folder(dir: &Path, state: &Rc<RefCell<AppState>>, widgets: &Rc<A
             widgets.btn_load.set_sensitive(true);
         }
         Err(err) => {
-            widgets.banner.set_title(&format!("Discovery Error: {}", err));
-            widgets.banner.set_revealed(true);
+            widgets.toast_overlay.add_toast(adw::Toast::new(&format!("Discovery Error: {}", err)));
             widgets.lbl_ioc_path.set_text("IOC Path: —");
             widgets.lbl_main_c_path.set_text("Main C Path: —");
             st.discovered_ioc = None;
@@ -695,8 +673,6 @@ fn do_load_project(state: &Rc<RefCell<AppState>>, widgets: &Rc<AppWidgets>) {
 
     match load_project(&ioc_path, &main_c_path) {
         Ok(project) => {
-            widgets.banner.set_revealed(false);
-
             if let Some(dir) = dir_opt {
                 save_app_config(&dir.display().to_string());
             }
@@ -705,7 +681,7 @@ fn do_load_project(state: &Rc<RefCell<AppState>>, widgets: &Rc<AppWidgets>) {
             widgets.lbl_mcu_family.set_text(&project.meta.mcu_family);
             widgets.lbl_mcu_name.set_text(&project.meta.mcu_name);
 
-            // Populate Peripherals List
+            // Populate Peripherals List using adw::ActionRow
             widgets.lbl_periph_header.set_text(&format!("Peripherals ({})", project.peripherals.len()));
             clear_list_box(&widgets.list_peripherals);
             for p in &project.peripherals {
@@ -713,7 +689,7 @@ fn do_load_project(state: &Rc<RefCell<AppState>>, widgets: &Rc<AppWidgets>) {
                 widgets.list_peripherals.append(&row);
             }
 
-            // Populate User Regions List
+            // Populate User Regions List using adw::ActionRow
             let mut total_regions = project.user_regions.len();
             if project.loop_body.is_some() {
                 total_regions += 1;
@@ -746,7 +722,7 @@ fn do_load_project(state: &Rc<RefCell<AppState>>, widgets: &Rc<AppWidgets>) {
                 widgets.list_user_regions.append(&row);
             }
 
-            // Populate PV Variables List
+            // Populate PV Variables List using adw::ActionRow
             widgets.lbl_pv_header.set_text(&format!("PV Variables ({})", project.pv_declarations.len()));
             clear_list_box(&widgets.list_pv_variables);
             for pv in &project.pv_declarations {
@@ -755,10 +731,10 @@ fn do_load_project(state: &Rc<RefCell<AppState>>, widgets: &Rc<AppWidgets>) {
             }
 
             state.borrow_mut().loaded_project = Some(project);
+            widgets.toast_overlay.add_toast(adw::Toast::new("Project loaded successfully"));
         }
         Err(err) => {
-            widgets.banner.set_title(&format!("Load Error: {}", err));
-            widgets.banner.set_revealed(true);
+            widgets.toast_overlay.add_toast(adw::Toast::new(&format!("Load Error: {}", err)));
         }
     }
 }
@@ -785,8 +761,7 @@ fn open_pv_source_view(pv_idx: usize, state: &Rc<RefCell<AppState>>, widgets: &R
     let main_c_content = match std::fs::read_to_string(&main_c_path) {
         Ok(c) => c,
         Err(e) => {
-            widgets.banner.set_title(&format!("Error reading main.c: {}", e));
-            widgets.banner.set_revealed(true);
+            widgets.toast_overlay.add_toast(adw::Toast::new(&format!("Error reading main.c: {}", e)));
             return;
         }
     };
@@ -1008,6 +983,9 @@ fn save_inline_declaration_edit(state: &Rc<RefCell<AppState>>, widgets: &Rc<AppW
             widgets.source_view.set_cursor_visible(false);
             state.borrow_mut().is_inline_editing = false;
 
+            // Display toast notification for save success
+            widgets.toast_overlay.add_toast(adw::Toast::new("Declaration saved successfully"));
+
             // Reload project and refresh view
             do_load_project(state, widgets);
             if let Some(idx) = active_pv_idx {
@@ -1017,6 +995,7 @@ fn save_inline_declaration_edit(state: &Rc<RefCell<AppState>>, widgets: &Rc<AppW
         Err(err_msg) => {
             widgets.lbl_inline_error.set_text(&format!("Save error: {}", err_msg));
             widgets.lbl_inline_error.set_visible(true);
+            widgets.toast_overlay.add_toast(adw::Toast::new(&format!("Save Error: {}", err_msg)));
         }
     }
 }
@@ -1069,49 +1048,20 @@ fn clear_list_box(list_box: &gtk4::ListBox) {
     }
 }
 
-fn create_peripheral_row(name: &str, mode: Option<&str>, param_count: usize) -> gtk4::ListBoxRow {
-    let lbl_name = gtk4::Label::builder()
-        .label(name)
-        .halign(gtk4::Align::Start)
-        .css_classes(vec!["body".to_string()])
+fn create_peripheral_row(name: &str, mode: Option<&str>, param_count: usize) -> adw::ActionRow {
+    let row = adw::ActionRow::builder()
+        .title(name)
+        .subtitle(mode.unwrap_or("—"))
         .build();
 
-    let mode_str = mode.unwrap_or("—");
-    let lbl_mode = gtk4::Label::builder()
-        .label(mode_str)
-        .halign(gtk4::Align::Start)
-        .css_classes(vec!["dim-label".to_string(), "caption".to_string()])
-        .build();
-
-    let name_box = gtk4::Box::builder()
-        .orientation(gtk4::Orientation::Vertical)
-        .spacing(2)
-        .hexpand(true)
-        .build();
-    name_box.append(&lbl_name);
-    name_box.append(&lbl_mode);
-
-    let lbl_count = gtk4::Label::builder()
+    let badge = gtk4::Label::builder()
         .label(&format!("{} params", param_count))
-        .halign(gtk4::Align::End)
         .valign(gtk4::Align::Center)
         .css_classes(vec!["dim-label".to_string(), "caption".to_string()])
         .build();
 
-    let row_box = gtk4::Box::builder()
-        .orientation(gtk4::Orientation::Horizontal)
-        .spacing(8)
-        .margin_top(8)
-        .margin_bottom(8)
-        .margin_start(12)
-        .margin_end(12)
-        .build();
-    row_box.append(&name_box);
-    row_box.append(&lbl_count);
-
-    gtk4::ListBoxRow::builder()
-        .child(&row_box)
-        .build()
+    row.add_suffix(&badge);
+    row
 }
 
 fn create_region_row(
@@ -1121,36 +1071,12 @@ fn create_region_row(
     line_start: usize,
     line_end: usize,
     is_implicit: bool,
-) -> gtk4::ListBoxRow {
-    let lbl_tag = gtk4::Label::builder()
-        .label(tag)
-        .halign(gtk4::Align::Start)
-        .css_classes(vec!["body".to_string()])
+) -> adw::ActionRow {
+    let details = format!("L{}-L{} (bytes {}..{})", line_start, line_end, byte_start, byte_end);
+    let row = adw::ActionRow::builder()
+        .title(tag)
+        .subtitle(&details)
         .build();
-
-    let lbl_details = gtk4::Label::builder()
-        .label(&format!("L{}-L{} (bytes {}..{})", line_start, line_end, byte_start, byte_end))
-        .halign(gtk4::Align::Start)
-        .css_classes(vec!["dim-label".to_string(), "caption".to_string()])
-        .build();
-
-    let tag_box = gtk4::Box::builder()
-        .orientation(gtk4::Orientation::Vertical)
-        .spacing(2)
-        .hexpand(true)
-        .build();
-    tag_box.append(&lbl_tag);
-    tag_box.append(&lbl_details);
-
-    let row_box = gtk4::Box::builder()
-        .orientation(gtk4::Orientation::Horizontal)
-        .spacing(8)
-        .margin_top(8)
-        .margin_bottom(8)
-        .margin_start(12)
-        .margin_end(12)
-        .build();
-    row_box.append(&tag_box);
 
     if is_implicit {
         let badge = gtk4::Label::builder()
@@ -1158,12 +1084,10 @@ fn create_region_row(
             .valign(gtk4::Align::Center)
             .css_classes(vec!["badge".to_string(), "accent".to_string()])
             .build();
-        row_box.append(&badge);
+        row.add_suffix(&badge);
     }
 
-    gtk4::ListBoxRow::builder()
-        .child(&row_box)
-        .build()
+    row
 }
 
 fn create_pv_row(
@@ -1171,51 +1095,24 @@ fn create_pv_row(
     type_str: &str,
     initial_value: Option<&str>,
     line: usize,
-) -> gtk4::ListBoxRow {
-    let lbl_name = gtk4::Label::builder()
-        .label(name)
-        .halign(gtk4::Align::Start)
-        .css_classes(vec!["body".to_string()])
-        .build();
-
-    let val_info = match initial_value {
+) -> adw::ActionRow {
+    let subtitle = match initial_value {
         Some(val) => format!("{} = {}", type_str, val),
         None => type_str.to_string(),
     };
 
-    let lbl_type = gtk4::Label::builder()
-        .label(&val_info)
-        .halign(gtk4::Align::Start)
-        .css_classes(vec!["dim-label".to_string(), "caption".to_string()])
+    let row = adw::ActionRow::builder()
+        .title(name)
+        .subtitle(&subtitle)
+        .activatable(true)
         .build();
-
-    let name_box = gtk4::Box::builder()
-        .orientation(gtk4::Orientation::Vertical)
-        .spacing(2)
-        .hexpand(true)
-        .build();
-    name_box.append(&lbl_name);
-    name_box.append(&lbl_type);
 
     let lbl_line = gtk4::Label::builder()
         .label(&format!("Line {}", line))
-        .halign(gtk4::Align::End)
         .valign(gtk4::Align::Center)
         .css_classes(vec!["dim-label".to_string(), "caption".to_string()])
         .build();
 
-    let row_box = gtk4::Box::builder()
-        .orientation(gtk4::Orientation::Horizontal)
-        .spacing(8)
-        .margin_top(8)
-        .margin_bottom(8)
-        .margin_start(12)
-        .margin_end(12)
-        .build();
-    row_box.append(&name_box);
-    row_box.append(&lbl_line);
-
-    gtk4::ListBoxRow::builder()
-        .child(&row_box)
-        .build()
+    row.add_suffix(&lbl_line);
+    row
 }
