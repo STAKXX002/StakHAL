@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<style-scheme id="stakhal-dark" _name="StakHAL Dark+" version="1.0">
+  <author>StakHAL Team</author>
+  <_description>VS Code Dark+ inspired theme palette for StakHAL</_description>
+
+  <!-- Palette definitions -->
+  <color name="background" value="#0a0a0a"/>
+  <color name="foreground" value="#e0e0e0"/>
+  <color name="keyword" value="#569CD6"/>
+  <color name="type" value="#4EC9B0"/>
+  <color name="string" value="#CE9178"/>
+  <color name="comment" value="#6A9955"/>
+  <color name="number" value="#B5CEA8"/>
+  <color name="preprocessor" value="#C586C0"/>
+  <color name="function" value="#DCDCAA"/>
+  <color name="current-line" value="#111111"/>
+  <color name="selection" value="#262626"/>
+  <color name="line-numbers" value="#6e6e6e"/>
+
+  <!-- Global Settings -->
+  <style name="text" foreground="foreground" background="background"/>
+  <style name="selection" background="selection"/>
+  <style name="current-line" background="current-line"/>
+  <style name="line-numbers" foreground="line-numbers" background="background"/>
+
+  <!-- Language Highlighting Styles -->
+  <style name="c:keyword" foreground="keyword"/>
+  <style name="def:keyword" foreground="keyword"/>
+  <style name="def:type" foreground="type"/>
+  <style name="def:string" foreground="string"/>
+  <style name="def:comment" foreground="comment"/>
+  <style name="def:number" foreground="number"/>
+  <style name="def:decimal" foreground="number"/>
+  <style name="def:base-n" foreground="number"/>
+  <style name="def:floating-point" foreground="number"/>
+  <style name="def:preprocessor" foreground="preprocessor"/>
+  <style name="def:identifier" foreground="foreground"/>
+  <style name="def:function" foreground="function"/>
+  <style name="def:statement" foreground="keyword"/>
+  <style name="def:constant" foreground="number"/>
+</style-scheme>

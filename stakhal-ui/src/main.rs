@@ -407,8 +407,22 @@ textview, textview text {
 
     let source_buffer = sourceview5::Buffer::new(None);
     let scheme_mgr = sourceview5::StyleSchemeManager::default();
+
+    let res_path_1 = PathBuf::from("stakhal-ui/resources");
+    let res_path_2 = PathBuf::from("resources");
+    if res_path_1.exists() {
+        scheme_mgr.append_search_path(&res_path_1.display().to_string());
+    }
+    if res_path_2.exists() {
+        scheme_mgr.append_search_path(&res_path_2.display().to_string());
+    }
+
     let dark_scheme = scheme_mgr
-        .scheme("Adwaita-dark")
+        .scheme("stakhal-dark")
+        .or_else(|| {
+            eprintln!("Warning: Could not load 'stakhal-dark' style scheme, falling back to system dark scheme.");
+            scheme_mgr.scheme("Adwaita-dark")
+        })
         .or_else(|| scheme_mgr.scheme("oblivion"))
         .or_else(|| scheme_mgr.scheme("solarized-dark"))
         .or_else(|| scheme_mgr.scheme("classic-dark"));
