@@ -102,14 +102,17 @@ fn build_ui(app: &adw::Application) {
          @define-color dialog_bg_color #111111;\
          @define-color popover_bg_color #111111;\
          .card, .boxed-list, list { background-color: #111111; border: 1px solid #2a2a2a; border-radius: 0px !important; }\
-         list > row, row.adw-action-row { border-bottom: 1px solid #2a2a2a; background-color: #111111; color: #e0e0e0; padding: 6px 12px; }\
+         list > row, row.adw-action-row { border-bottom: 1px solid #2a2a2a; background-color: #111111; color: #e0e0e0; padding: 6px 12px; transition: background-color 120ms ease-out, border-color 120ms ease-out, color 120ms ease-out; }\
          list > row:last-child { border-bottom: none; }\
          list > row:hover, row.adw-action-row:hover { background-color: #1a1a1a; }\
+         list > row:active, row.adw-action-row:active { background-color: #262626; }\
          list > row:selected { background-color: #222222; color: #ffffff; }\
-         button { background-color: #111111; color: #e0e0e0; border: 1px solid #2a2a2a; border-radius: 0px !important; padding: 6px 12px; }\
+         button { background-color: #111111; color: #e0e0e0; border: 1px solid #2a2a2a; border-radius: 0px !important; padding: 6px 12px; transition: background-color 120ms ease-out, border-color 120ms ease-out, color 120ms ease-out; }\
          button:hover { background-color: #1a1a1a; color: #ffffff; border-color: #444444; }\
-         button.suggested-action { background-color: #ffffff !important; color: #000000 !important; font-weight: bold; border: 1px solid #ffffff !important; border-radius: 0px !important; }\
+         button:active { background-color: #262626; border-color: #555555; }\
+         button.suggested-action { background-color: #ffffff !important; color: #000000 !important; font-weight: bold; border: 1px solid #ffffff !important; border-radius: 0px !important; transition: background-color 120ms ease-out, border-color 120ms ease-out, color 120ms ease-out; }\
          button.suggested-action:hover { background-color: #e0e0e0 !important; color: #000000 !important; }\
+         button.suggested-action:active { background-color: #cccccc !important; color: #000000 !important; }\
          button.suggested-action:disabled { background-color: #222222 !important; color: #6e6e6e !important; border-color: #2a2a2a !important; }\
          *:focus, button:focus, entry:focus { outline: 1px solid #ffffff !important; outline-offset: -1px; }\
          .dim-label, .caption, subtitle { color: #6e6e6e; }\
