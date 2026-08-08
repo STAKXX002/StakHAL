@@ -4,7 +4,8 @@ use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
 use serde::{Deserialize, Serialize};
-use slint::{ModelRc, VecModel};
+use slint::{Model, ModelRc, VecModel};
+
 
 
 use stakhal_core::ioc::discover_project_files;
@@ -37,6 +38,7 @@ struct LoadedState {
     last_window: Option<(usize, usize)>,
     last_editing_line: Option<usize>,
     last_inline_error: Option<Option<String>>,
+    source_lines_model: Option<Rc<VecModel<SourceLineItem>>>,
 }
 
 fn get_config_file_path() -> Option<PathBuf> {
@@ -75,11 +77,21 @@ fn update_source_window_slice(ui: &MainWindow, state: &mut LoadedState, override
         ui.set_total_line_count(total_lines as i32);
     }
 
+    let vec_model = match &state.source_lines_model {
+        Some(m) => Rc::clone(m),
+        None => {
+            let m = Rc::new(VecModel::default());
+            state.source_lines_model = Some(Rc::clone(&m));
+            ui.set_source_lines(ModelRc::from(Rc::clone(&m)));
+            m
+        }
+    };
+
     if total_lines == 0 {
         if state.last_window != Some((0, 0)) {
             state.last_window = Some((0, 0));
             ui.set_visible_start_index(0);
-            ui.set_source_lines(ModelRc::from(Rc::new(VecModel::from(vec![]))));
+            vec_model.set_vec(vec![]);
         }
         return;
     }
@@ -144,8 +156,18 @@ fn update_source_window_slice(ui: &MainWindow, state: &mut LoadedState, override
         })
         .collect();
 
-    ui.set_source_lines(ModelRc::from(Rc::new(VecModel::from(source_line_items))));
+    let current_len = vec_model.row_count();
+    let new_len = source_line_items.len();
+
+    if current_len == new_len {
+        for (i, item) in source_line_items.into_iter().enumerate() {
+            vec_model.set_row_data(i, item);
+        }
+    } else {
+        vec_model.set_vec(source_line_items);
+    }
 }
+
 
 
 
