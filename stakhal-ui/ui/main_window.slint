@@ -656,7 +656,7 @@ export component MainWindow inherits Window {
                                 Text {
                                     text: item.line_number;
                                     font-size: 12px;
-                                    font-family: "monospace";
+                                    font-family: "DejaVu Sans Mono";
                                     color: item.tier_str == "declaration" ? #34d399 : (item.tier_str == "usage" ? #38bdf8 : (item.tier_str == "normal" ? #9ca3af : #4b5563));
                                     width: 45px;
                                     horizontal-alignment: end;
@@ -665,6 +665,7 @@ export component MainWindow inherits Window {
 
                                 // Line Content View Mode
                                 if !item.is_editing : TouchArea {
+                                    horizontal-stretch: 1;
                                     enabled: item.tier_str == "declaration" || item.tier_str == "usage";
                                     clicked => {
                                         if (item.tier_str == "declaration") {
@@ -677,12 +678,15 @@ export component MainWindow inherits Window {
                                     Text {
                                         text: item.text;
                                         font-size: 12px;
-                                        font-family: "monospace";
+                                        font-family: "DejaVu Sans Mono";
                                         font-weight: (item.tier_str == "declaration" || item.tier_str == "usage") ? 700 : 400;
                                         color: item.tier_str == "declaration" ? #a7f3d0 : (item.tier_str == "usage" ? #38bdf8 : (item.tier_str == "normal" ? #e5e7eb : #555555));
+                                        horizontal-alignment: left;
                                         vertical-alignment: center;
                                     }
                                 }
+
+
 
                                 // Scoped Single-Line Declaration Edit Mode
                                 if item.is_editing : FocusScope {
