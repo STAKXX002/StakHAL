@@ -910,20 +910,21 @@ fn toggle_generated_fold_run(run: &GeneratedFoldRun, collapse: bool, widgets: &R
         return;
     }
 
-    // Hide/show lines after the first line of the run
-    let start_idx = run.start_line as i32; // 0-based start for line 2 of run
-    let end_idx = run.end_line as i32;     // 0-based end for run
+    // Hide/show lines from (start_line + 1) through end_line (1-based).
+    // start_idx = run.start_line (0-based index for line start_line + 1)
+    // end_idx   = run.end_line   (0-based index for start of line end_line + 1)
+    let start_idx = run.start_line as i32;
+    let end_idx = run.end_line as i32;
 
     if let Some(start_iter) = widgets.source_buffer.iter_at_line(start_idx) {
-        if let Some(mut end_iter) = widgets.source_buffer.iter_at_line(end_idx) {
-            if !end_iter.ends_line() {
-                end_iter.forward_to_line_end();
-            }
-            if collapse {
-                widgets.source_buffer.apply_tag(&widgets.tag_invisible, &start_iter, &end_iter);
-            } else {
-                widgets.source_buffer.remove_tag(&widgets.tag_invisible, &start_iter, &end_iter);
-            }
+        let end_iter = widgets.source_buffer
+            .iter_at_line(end_idx)
+            .unwrap_or_else(|| widgets.source_buffer.end_iter());
+
+        if collapse {
+            widgets.source_buffer.apply_tag(&widgets.tag_invisible, &start_iter, &end_iter);
+        } else {
+            widgets.source_buffer.remove_tag(&widgets.tag_invisible, &start_iter, &end_iter);
         }
     }
 }
