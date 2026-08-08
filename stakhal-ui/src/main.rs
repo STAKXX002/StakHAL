@@ -42,6 +42,7 @@ struct AppState {
     active_usage_lines: Vec<usize>,
     is_inline_editing: bool,
     generated_runs: Vec<GeneratedRun>,
+    is_generated_hidden: bool,
 }
 
 struct AppWidgets {
@@ -66,6 +67,7 @@ struct AppWidgets {
     source_view: sourceview5::View,
     source_buffer: sourceview5::Buffer,
     lbl_active_pv: gtk4::Label,
+    btn_toggle_generated: gtk4::Button,
     tag_declaration: gtk4::TextTag,
     tag_usage: gtk4::TextTag,
     tag_generated: gtk4::TextTag,
@@ -401,12 +403,19 @@ button.flat:active {
     let btn_back = gtk4::Button::builder()
         .label("← Back to Overview")
         .icon_name("go-previous-symbolic")
+        .css_classes(vec!["flat".to_string()])
         .build();
 
     let lbl_active_pv = gtk4::Label::builder()
         .label("PV Variable Source View")
         .halign(gtk4::Align::Start)
+        .hexpand(true)
         .css_classes(vec!["title-3".to_string()])
+        .build();
+
+    let btn_toggle_generated = gtk4::Button::builder()
+        .label("[ Show Generated ]")
+        .css_classes(vec!["flat".to_string()])
         .build();
 
     let source_header_bar = gtk4::Box::builder()
@@ -419,6 +428,7 @@ button.flat:active {
         .build();
     source_header_bar.append(&btn_back);
     source_header_bar.append(&lbl_active_pv);
+    source_header_bar.append(&btn_toggle_generated);
 
     let source_buffer = sourceview5::Buffer::new(None);
     let scheme_mgr = sourceview5::StyleSchemeManager::default();
@@ -605,6 +615,7 @@ button.flat:active {
         source_view,
         source_buffer,
         lbl_active_pv,
+        btn_toggle_generated,
         tag_declaration,
         tag_usage,
         tag_generated,
@@ -670,30 +681,12 @@ button.flat:active {
         open_pv_source_view(idx, &state_pv_click, &widgets_pv_click);
     });
 
-    // Attach gesture controller to source_view for gutter fold toggling
-    let gesture_gutter = gtk4::GestureClick::new();
-    gesture_gutter.set_button(1);
-    let state_gutter = Rc::clone(&state);
-    let widgets_gutter = Rc::clone(&widgets);
-    gesture_gutter.connect_pressed(move |gesture, _n_press, _x, y| {
-        let (_, window_y) = widgets_gutter.source_view.window_to_buffer_coords(
-            gtk4::TextWindowType::Widget,
-            0,
-            y as i32,
-        );
-
-        let (iter, _) = widgets_gutter.source_view.line_at_y(window_y);
-        let line_num = (iter.line() + 1) as usize;
-        let st = state_gutter.borrow();
-        let matching_run_idx = st.generated_runs.iter().position(|r| line_num >= r.start_line && line_num <= r.end_line);
-        drop(st);
-
-        if let Some(idx) = matching_run_idx {
-            toggle_generated_run(idx, &state_gutter, &widgets_gutter);
-            gesture.set_state(gtk4::EventSequenceState::Claimed);
-        }
+    // Connect Global Toggle Generated Code Button Callback
+    let state_toggle = Rc::clone(&state);
+    let widgets_toggle = Rc::clone(&widgets);
+    widgets.btn_toggle_generated.connect_clicked(move |_| {
+        toggle_all_generated_runs(&state_toggle, &widgets_toggle);
     });
-    widgets.source_view.add_controller(gesture_gutter);
 
     // Connect Inline Edit Action Buttons
     let state_save_btn = Rc::clone(&state);
@@ -1011,6 +1004,7 @@ fn open_pv_source_view(pv_idx: usize, state: &Rc<RefCell<AppState>>, widgets: &R
     for run in &runs {
         apply_run_collapse(run, widgets);
     }
+    widgets.btn_toggle_generated.set_label("[ Show Generated ]");
 
     {
         let mut st = state.borrow_mut();
@@ -1018,6 +1012,7 @@ fn open_pv_source_view(pv_idx: usize, state: &Rc<RefCell<AppState>>, widgets: &R
         st.active_decl = Some(decl.clone());
         st.active_usage_lines = usage_lines;
         st.generated_runs = runs;
+        st.is_generated_hidden = true;
     }
 
     widgets.stack.set_visible_child_full("source_view", gtk4::StackTransitionType::SlideLeft);
@@ -1053,19 +1048,22 @@ fn apply_run_collapse(run: &GeneratedRun, widgets: &Rc<AppWidgets>) {
     }
 }
 
-fn toggle_generated_run(run_idx: usize, state: &Rc<RefCell<AppState>>, widgets: &Rc<AppWidgets>) {
-    let run_opt = {
+fn toggle_all_generated_runs(state: &Rc<RefCell<AppState>>, widgets: &Rc<AppWidgets>) {
+    let (is_hidden, runs) = {
         let mut st = state.borrow_mut();
-        if run_idx < st.generated_runs.len() {
-            st.generated_runs[run_idx].is_collapsed = !st.generated_runs[run_idx].is_collapsed;
-            Some(st.generated_runs[run_idx].clone())
-        } else {
-            None
-        }
+        st.is_generated_hidden = !st.is_generated_hidden;
+        (st.is_generated_hidden, st.generated_runs.clone())
     };
 
-    if let Some(run) = run_opt {
+    for mut run in runs {
+        run.is_collapsed = is_hidden;
         apply_run_collapse(&run, widgets);
+    }
+
+    if is_hidden {
+        widgets.btn_toggle_generated.set_label("[ Show Generated ]");
+    } else {
+        widgets.btn_toggle_generated.set_label("[ Hide Generated ]");
     }
 }
 
