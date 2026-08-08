@@ -90,6 +90,33 @@ fn main() {
     app.run();
 }
 
+fn create_icon_button(label_text: &str, icon_name: &str, is_suggested: bool) -> gtk4::Button {
+    let bx = gtk4::Box::builder()
+        .orientation(gtk4::Orientation::Horizontal)
+        .spacing(8)
+        .halign(gtk4::Align::Center)
+        .valign(gtk4::Align::Center)
+        .build();
+
+    let img = gtk4::Image::from_icon_name(icon_name);
+    let lbl = gtk4::Label::new(Some(label_text));
+
+    bx.append(&img);
+    bx.append(&lbl);
+
+    let btn = gtk4::Button::builder()
+        .child(&bx)
+        .build();
+
+    if is_suggested {
+        btn.add_css_class("suggested-action");
+    } else {
+        btn.add_css_class("flat");
+    }
+
+    btn
+}
+
 fn build_ui(app: &adw::Application) {
     // Force dark mode consistently across all Libadwaita / GTK4 widgets and dialogs
     adw::StyleManager::default().set_color_scheme(adw::ColorScheme::ForceDark);
@@ -252,18 +279,9 @@ button.flat:active {
     }
 
     // PAGE 1: Overview Page
-    let btn_browse = gtk4::Button::builder()
-        .label("Browse Project Folder…")
-        .icon_name("folder-open-symbolic")
-        .css_classes(vec!["flat".to_string()])
-        .build();
-
-    let btn_load = gtk4::Button::builder()
-        .label("Load Project")
-        .icon_name("system-run-symbolic")
-        .sensitive(false)
-        .css_classes(vec!["suggested-action".to_string()])
-        .build();
+    let btn_browse = create_icon_button("Browse Project Folder…", "folder-open-symbolic", false);
+    let btn_load = create_icon_button("Load Project", "system-run-symbolic", true);
+    btn_load.set_sensitive(false);
 
     let lbl_discovered_dir = gtk4::Label::builder()
         .label("No folder selected")
@@ -400,11 +418,7 @@ button.flat:active {
     overview_box.append(&columns_box);
 
     // PAGE 2: PV Source Panel
-    let btn_back = gtk4::Button::builder()
-        .label("← Back to Overview")
-        .icon_name("go-previous-symbolic")
-        .css_classes(vec!["flat".to_string()])
-        .build();
+    let btn_back = create_icon_button("Back to Overview", "go-previous-symbolic", false);
 
     let lbl_active_pv = gtk4::Label::builder()
         .label("PV Variable Source View")
