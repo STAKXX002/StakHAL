@@ -92,6 +92,7 @@ fn build_ui(app: &adw::Application) {
          @define-color accent_fg_color #ffffff;\
          button.suggested-action { background-color: #3a3a3c; color: #ffffff; }\
          button.suggested-action:hover { background-color: #4a4a4c; }\
+         .card, .boxed-list { border-radius: 12px; border: 1px solid rgba(255, 255, 255, 0.08); }\
          .implicit-badge { background-color: #d97706; color: #ffffff; font-size: 11px; font-weight: bold; padding: 2px 8px; border-radius: 6px; }",
     );
     if let Some(display) = gdk::Display::default() {
