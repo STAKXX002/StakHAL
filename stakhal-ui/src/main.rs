@@ -226,6 +226,20 @@ textview, textview text {
     font-weight: bold;
     margin: 0 8px;
 }
+button.flat {
+    background-color: transparent;
+    border: 1px solid #2a2a2a;
+    color: #e0e0e0;
+}
+button.flat:hover {
+    background-color: #1a1a1a;
+    border-color: #444444;
+    color: #ffffff;
+}
+button.flat:active {
+    background-color: #262626;
+    border-color: #555555;
+}
 "#);
     if let Some(display) = gdk::Display::default() {
         gtk4::style_context_add_provider_for_display(
@@ -239,6 +253,7 @@ textview, textview text {
     let btn_browse = gtk4::Button::builder()
         .label("Browse Project Folder…")
         .icon_name("folder-open-symbolic")
+        .css_classes(vec!["flat".to_string()])
         .build();
 
     let btn_load = gtk4::Button::builder()
