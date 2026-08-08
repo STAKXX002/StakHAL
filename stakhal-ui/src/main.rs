@@ -24,6 +24,13 @@ use config::{load_app_config, save_app_config};
 
 const APP_ID: &str = "org.stakhal.StakHAL";
 
+#[derive(Clone, Debug)]
+struct GeneratedRun {
+    start_line: usize,
+    end_line: usize,
+    is_collapsed: bool,
+}
+
 #[derive(Default)]
 struct AppState {
     project_dir: Option<PathBuf>,
@@ -34,6 +41,7 @@ struct AppState {
     active_decl: Option<PvDeclaration>,
     active_usage_lines: Vec<usize>,
     is_inline_editing: bool,
+    generated_runs: Vec<GeneratedRun>,
 }
 
 struct AppWidgets {
@@ -62,6 +70,7 @@ struct AppWidgets {
     tag_usage: gtk4::TextTag,
     tag_generated: gtk4::TextTag,
     tag_readonly: gtk4::TextTag,
+    tag_invisible: gtk4::TextTag,
 
     // Inline edit bar widgets
     inline_edit_bar: gtk4::Box,
@@ -337,11 +346,17 @@ fn build_ui(app: &adw::Application) {
         .editable(false)
         .build();
 
+    let tag_invisible = gtk4::TextTag::builder()
+        .name("invisible")
+        .invisible(true)
+        .build();
+
     let tag_table = source_buffer.tag_table();
     tag_table.add(&tag_declaration);
     tag_table.add(&tag_usage);
     tag_table.add(&tag_generated);
     tag_table.add(&tag_readonly);
+    tag_table.add(&tag_invisible);
 
     let source_scrolled = gtk4::ScrolledWindow::builder()
         .hscrollbar_policy(gtk4::PolicyType::Automatic)
@@ -469,6 +484,7 @@ fn build_ui(app: &adw::Application) {
         tag_usage,
         tag_generated,
         tag_readonly,
+        tag_invisible,
         inline_edit_bar,
         lbl_inline_error,
         btn_inline_save,
@@ -528,6 +544,31 @@ fn build_ui(app: &adw::Application) {
         let idx = row.index() as usize;
         open_pv_source_view(idx, &state_pv_click, &widgets_pv_click);
     });
+
+    // Attach gesture controller to source_view for gutter fold toggling
+    let gesture_gutter = gtk4::GestureClick::new();
+    gesture_gutter.set_button(1);
+    let state_gutter = Rc::clone(&state);
+    let widgets_gutter = Rc::clone(&widgets);
+    gesture_gutter.connect_pressed(move |gesture, _n_press, _x, y| {
+        let (_, window_y) = widgets_gutter.source_view.window_to_buffer_coords(
+            gtk4::TextWindowType::Widget,
+            0,
+            y as i32,
+        );
+
+        let (iter, _) = widgets_gutter.source_view.line_at_y(window_y);
+        let line_num = (iter.line() + 1) as usize;
+        let st = state_gutter.borrow();
+        let matching_run_idx = st.generated_runs.iter().position(|r| line_num >= r.start_line && line_num <= r.end_line);
+        drop(st);
+
+        if let Some(idx) = matching_run_idx {
+            toggle_generated_run(idx, &state_gutter, &widgets_gutter);
+            gesture.set_state(gtk4::EventSequenceState::Claimed);
+        }
+    });
+    widgets.source_view.add_controller(gesture_gutter);
 
     // Connect Inline Edit Action Buttons
     let state_save_btn = Rc::clone(&state);
@@ -806,11 +847,48 @@ fn open_pv_source_view(pv_idx: usize, state: &Rc<RefCell<AppState>>, widgets: &R
         }
     }
 
+    // Group generated lines into runs
+    let mut runs: Vec<GeneratedRun> = Vec::new();
+    let mut current_run_start: Option<usize> = None;
+    let mut current_run_end: usize = 0;
+
+    for item in &rendered_lines {
+        if item.tier == LineTier::Generated {
+            if current_run_start.is_some() {
+                current_run_end = item.line_number;
+            } else {
+                current_run_start = Some(item.line_number);
+                current_run_end = item.line_number;
+            }
+        } else {
+            if let Some(start) = current_run_start {
+                if current_run_end >= start {
+                    runs.push(GeneratedRun {
+                        start_line: start,
+                        end_line: current_run_end,
+                        is_collapsed: false,
+                    });
+                }
+                current_run_start = None;
+            }
+        }
+    }
+    if let Some(start) = current_run_start {
+        if current_run_end >= start {
+            runs.push(GeneratedRun {
+                start_line: start,
+                end_line: current_run_end,
+                is_collapsed: false,
+            });
+        }
+    }
+
     {
         let mut st = state.borrow_mut();
         st.active_pv_index = Some(pv_idx);
         st.active_decl = Some(decl.clone());
         st.active_usage_lines = usage_lines;
+        st.generated_runs = runs;
     }
 
     // Scroll view to declaration line
@@ -820,6 +898,41 @@ fn open_pv_source_view(pv_idx: usize, state: &Rc<RefCell<AppState>>, widgets: &R
     }
 
     widgets.stack.set_visible_child_full("source_view", gtk4::StackTransitionType::SlideLeft);
+}
+
+fn apply_run_collapse(run: &GeneratedRun, widgets: &Rc<AppWidgets>) {
+    let start_line_idx = (run.start_line.saturating_sub(1)) as i32;
+    let end_line_idx = run.end_line as i32;
+
+    let start_iter = widgets.source_buffer.iter_at_line(start_line_idx);
+    let mut end_iter = widgets.source_buffer.iter_at_line(end_line_idx);
+    if end_iter.is_none() {
+        end_iter = Some(widgets.source_buffer.end_iter());
+    }
+
+    if let (Some(start_it), Some(end_it)) = (start_iter, end_iter) {
+        if run.is_collapsed {
+            widgets.source_buffer.apply_tag(&widgets.tag_invisible, &start_it, &end_it);
+        } else {
+            widgets.source_buffer.remove_tag(&widgets.tag_invisible, &start_it, &end_it);
+        }
+    }
+}
+
+fn toggle_generated_run(run_idx: usize, state: &Rc<RefCell<AppState>>, widgets: &Rc<AppWidgets>) {
+    let run_opt = {
+        let mut st = state.borrow_mut();
+        if run_idx < st.generated_runs.len() {
+            st.generated_runs[run_idx].is_collapsed = !st.generated_runs[run_idx].is_collapsed;
+            Some(st.generated_runs[run_idx].clone())
+        } else {
+            None
+        }
+    };
+
+    if let Some(run) = run_opt {
+        apply_run_collapse(&run, widgets);
+    }
 }
 
 fn enter_inline_edit_mode(state: &Rc<RefCell<AppState>>, widgets: &Rc<AppWidgets>) {
