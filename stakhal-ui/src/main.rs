@@ -358,6 +358,8 @@ fn build_ui(app: &adw::Application) {
     let source_scrolled = gtk4::ScrolledWindow::builder()
         .hscrollbar_policy(gtk4::PolicyType::Automatic)
         .vscrollbar_policy(gtk4::PolicyType::Automatic)
+        .kinetic_scrolling(true)
+        .overlay_scrolling(true)
         .vexpand(true)
         .child(&source_view)
         .build();
@@ -424,7 +426,7 @@ fn build_ui(app: &adw::Application) {
     // View Stack with smooth panel-switch transitions (Overview ↔ Source View)
     let stack = gtk4::Stack::builder()
         .transition_type(gtk4::StackTransitionType::SlideLeftRight)
-        .transition_duration(350)
+        .transition_duration(220)
         .interpolate_size(true)
         .build();
     stack.add_named(&overview_box, Some("overview"));
@@ -528,7 +530,7 @@ fn build_ui(app: &adw::Application) {
     // Connect Back Button Callback
     let widgets_back = Rc::clone(&widgets);
     btn_back.connect_clicked(move |_| {
-        widgets_back.stack.set_visible_child_name("overview");
+        widgets_back.stack.set_visible_child_full("overview", gtk4::StackTransitionType::SlideRight);
     });
 
     // Connect PV Row Click Callback
@@ -829,7 +831,7 @@ fn open_pv_source_view(pv_idx: usize, state: &Rc<RefCell<AppState>>, widgets: &R
         widgets.source_view.scroll_to_iter(&mut decl_iter, 0.1, true, 0.0, 0.3);
     }
 
-    widgets.stack.set_visible_child_name("source_view");
+    widgets.stack.set_visible_child_full("source_view", gtk4::StackTransitionType::SlideLeft);
 }
 
 fn enter_inline_edit_mode(state: &Rc<RefCell<AppState>>, widgets: &Rc<AppWidgets>) {
