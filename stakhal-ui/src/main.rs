@@ -83,10 +83,16 @@ fn build_ui(app: &adw::Application) {
     // Force dark mode consistently across all Libadwaita / GTK4 widgets and dialogs
     adw::StyleManager::default().set_color_scheme(adw::ColorScheme::ForceDark);
 
-    // Monospace font styling for GtkSourceView
+    // Strict Monochrome UI Palette + Monospace font for GtkSourceView
     let css_provider = gtk4::CssProvider::new();
     css_provider.load_from_string(
-        "textview { font-family: 'DejaVu Sans Mono', monospace; font-size: 13px; }",
+        "textview { font-family: 'DejaVu Sans Mono', monospace; font-size: 13px; }\
+         @define-color accent_color #ffffff;\
+         @define-color accent_bg_color #3a3a3c;\
+         @define-color accent_fg_color #ffffff;\
+         button.suggested-action { background-color: #3a3a3c; color: #ffffff; }\
+         button.suggested-action:hover { background-color: #4a4a4c; }\
+         .implicit-badge { background-color: #d97706; color: #ffffff; font-size: 11px; font-weight: bold; padding: 2px 8px; border-radius: 6px; }",
     );
     if let Some(display) = gdk::Display::default() {
         gtk4::style_context_add_provider_for_display(
@@ -297,12 +303,12 @@ fn build_ui(app: &adw::Application) {
 
     let tag_declaration = gtk4::TextTag::builder()
         .name("declaration")
-        .paragraph_background("rgba(16, 185, 129, 0.25)")
+        .paragraph_background("rgba(255, 255, 255, 0.14)")
         .build();
 
     let tag_usage = gtk4::TextTag::builder()
         .name("usage")
-        .paragraph_background("rgba(59, 130, 246, 0.18)")
+        .paragraph_background("rgba(255, 255, 255, 0.05)")
         .build();
 
     let tag_generated = gtk4::TextTag::builder()
@@ -976,7 +982,7 @@ fn create_region_row(
         let badge = gtk4::Label::builder()
             .label("implicit")
             .valign(gtk4::Align::Center)
-            .css_classes(vec!["badge".to_string(), "accent".to_string()])
+            .css_classes(vec!["implicit-badge".to_string()])
             .build();
         row.add_suffix(&badge);
     }
