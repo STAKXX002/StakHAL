@@ -182,56 +182,43 @@ fn build_ui(app: &adw::Application) {
     toolbar_box.append(&path_info_box);
     toolbar_box.append(&btn_load);
 
-    // Project Summary Section (Native Libadwaita PreferencesGroup)
+    // Compact Status Bar Row (btop info bar pattern)
     let lbl_project_name = gtk4::Label::builder()
-        .label("—")
-        .halign(gtk4::Align::End)
-        .valign(gtk4::Align::Center)
-        .css_classes(vec!["title-4".to_string()])
+        .label("NAME: —")
+        .halign(gtk4::Align::Start)
         .build();
+
+    let div_1 = gtk4::Label::builder().label("|").css_classes(vec!["status-divider".to_string()]).build();
 
     let lbl_mcu_family = gtk4::Label::builder()
-        .label("—")
-        .halign(gtk4::Align::End)
-        .valign(gtk4::Align::Center)
-        .css_classes(vec!["title-4".to_string()])
+        .label("FAMILY: —")
+        .halign(gtk4::Align::Start)
         .build();
+
+    let div_2 = gtk4::Label::builder().label("|").css_classes(vec!["status-divider".to_string()]).build();
 
     let lbl_mcu_name = gtk4::Label::builder()
-        .label("—")
-        .halign(gtk4::Align::End)
-        .valign(gtk4::Align::Center)
-        .css_classes(vec!["title-4".to_string()])
+        .label("PART: —")
+        .halign(gtk4::Align::Start)
         .build();
 
-    let row_project = adw::ActionRow::builder()
-        .title("Project Name")
-        .build();
-    row_project.add_suffix(&lbl_project_name);
-
-    let row_family = adw::ActionRow::builder()
-        .title("MCU Family")
-        .build();
-    row_family.add_suffix(&lbl_mcu_family);
-
-    let row_mcu = adw::ActionRow::builder()
-        .title("MCU Part")
-        .build();
-    row_mcu.add_suffix(&lbl_mcu_name);
-
-    let pref_group_header = adw::PreferencesGroup::builder()
-        .title("[ PROJECT METADATA ]")
+    let status_bar_box = gtk4::Box::builder()
+        .orientation(gtk4::Orientation::Horizontal)
+        .spacing(12)
         .margin_bottom(12)
         .margin_start(18)
         .margin_end(18)
+        .css_classes(vec!["status-bar-box".to_string()])
         .build();
-    pref_group_header.add(&row_project);
-    pref_group_header.add(&row_family);
-    pref_group_header.add(&row_mcu);
+    status_bar_box.append(&lbl_project_name);
+    status_bar_box.append(&div_1);
+    status_bar_box.append(&lbl_mcu_family);
+    status_bar_box.append(&div_2);
+    status_bar_box.append(&lbl_mcu_name);
 
-    // Three Column Setup: Peripherals, User Regions, PV Variables
+    // Three Column Setup: Peripherals, User Regions, PV Variables (Balanced weights)
     let lbl_periph_header = gtk4::Label::builder()
-        .label("[ PERIPHERALS ]")
+        .label("[ ▸ PERIPHERALS ]")
         .halign(gtk4::Align::Start)
         .css_classes(vec!["heading".to_string()])
         .build();
@@ -244,7 +231,7 @@ fn build_ui(app: &adw::Application) {
     let col_peripherals = create_column_box(&lbl_periph_header, &list_peripherals);
 
     let lbl_region_header = gtk4::Label::builder()
-        .label("[ USER REGIONS ]")
+        .label("[ ▸ USER REGIONS ]")
         .halign(gtk4::Align::Start)
         .css_classes(vec!["heading".to_string()])
         .build();
@@ -257,7 +244,7 @@ fn build_ui(app: &adw::Application) {
     let col_regions = create_column_box(&lbl_region_header, &list_user_regions);
 
     let lbl_pv_header = gtk4::Label::builder()
-        .label("[ PV VARIABLES ]")
+        .label("[ ▸ PV VARIABLES ]")
         .halign(gtk4::Align::Start)
         .css_classes(vec!["heading".to_string()])
         .build();
@@ -268,10 +255,11 @@ fn build_ui(app: &adw::Application) {
         .build();
 
     let col_pv = create_column_box(&lbl_pv_header, &list_pv_variables);
+    col_pv.set_hexpand(true);
 
     let columns_box = gtk4::Box::builder()
         .orientation(gtk4::Orientation::Horizontal)
-        .homogeneous(true)
+        .homogeneous(false)
         .spacing(12)
         .vexpand(true)
         .margin_start(18)
@@ -286,7 +274,7 @@ fn build_ui(app: &adw::Application) {
         .orientation(gtk4::Orientation::Vertical)
         .build();
     overview_box.append(&toolbar_box);
-    overview_box.append(&pref_group_header);
+    overview_box.append(&status_bar_box);
     overview_box.append(&columns_box);
 
     // PAGE 2: PV Source Panel
@@ -679,12 +667,12 @@ fn do_load_project(state: &Rc<RefCell<AppState>>, widgets: &Rc<AppWidgets>) {
                 save_app_config(&dir.display().to_string());
             }
 
-            widgets.lbl_project_name.set_text(&project.meta.name);
-            widgets.lbl_mcu_family.set_text(&project.meta.mcu_family);
-            widgets.lbl_mcu_name.set_text(&project.meta.mcu_name);
+            widgets.lbl_project_name.set_text(&format!("NAME: {}", project.meta.name));
+            widgets.lbl_mcu_family.set_text(&format!("FAMILY: {}", project.meta.mcu_family));
+            widgets.lbl_mcu_name.set_text(&format!("PART: {}", project.meta.mcu_name));
 
             // Populate Peripherals List using adw::ActionRow
-            widgets.lbl_periph_header.set_text(&format!("[ PERIPHERALS ({}) ]", project.peripherals.len()));
+            widgets.lbl_periph_header.set_text(&format!("[ ▸ PERIPHERALS ({}) ]", project.peripherals.len()));
             clear_list_box(&widgets.list_peripherals);
             for p in &project.peripherals {
                 let row = create_peripheral_row(&p.name, p.mode.as_deref(), p.parameters.len());
@@ -697,7 +685,7 @@ fn do_load_project(state: &Rc<RefCell<AppState>>, widgets: &Rc<AppWidgets>) {
                 total_regions += 1;
             }
 
-            widgets.lbl_region_header.set_text(&format!("[ USER REGIONS ({}) ]", total_regions));
+            widgets.lbl_region_header.set_text(&format!("[ ▸ USER REGIONS ({}) ]", total_regions));
             clear_list_box(&widgets.list_user_regions);
 
             for r in &project.user_regions {
@@ -725,7 +713,7 @@ fn do_load_project(state: &Rc<RefCell<AppState>>, widgets: &Rc<AppWidgets>) {
             }
 
             // Populate PV Variables List using adw::ActionRow
-            widgets.lbl_pv_header.set_text(&format!("[ PV VARIABLES ({}) ]", project.pv_declarations.len()));
+            widgets.lbl_pv_header.set_text(&format!("[ ▸ PV VARIABLES ({}) ]", project.pv_declarations.len()));
             clear_list_box(&widgets.list_pv_variables);
             for pv in &project.pv_declarations {
                 let row = create_pv_row(&pv.name, &pv.type_str, pv.initial_value.as_deref(), pv.line);
