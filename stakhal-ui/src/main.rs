@@ -104,7 +104,8 @@ fn update_source_window_slice(ui: &MainWindow, state: &mut LoadedState, override
     let buffer = 15;
     let window_size = 50;
 
-    let start_idx = first_visible_line.saturating_sub(buffer).min(total_lines.saturating_sub(1));
+    let max_start = total_lines.saturating_sub(window_size);
+    let start_idx = first_visible_line.saturating_sub(buffer).min(max_start);
     let end_idx = (start_idx + window_size).min(total_lines);
 
     let window_changed = state.last_window != Some((start_idx, end_idx));
@@ -159,14 +160,21 @@ fn update_source_window_slice(ui: &MainWindow, state: &mut LoadedState, override
     let current_len = vec_model.row_count();
     let new_len = source_line_items.len();
 
-    if current_len == new_len {
-        for (i, item) in source_line_items.into_iter().enumerate() {
-            vec_model.set_row_data(i, item);
+    if current_len > new_len {
+        for _ in 0..(current_len - new_len) {
+            vec_model.remove(vec_model.row_count() - 1);
         }
-    } else {
-        vec_model.set_vec(source_line_items);
+    } else if current_len < new_len {
+        for _ in 0..(new_len - current_len) {
+            vec_model.push(SourceLineItem::default());
+        }
+    }
+
+    for (i, item) in source_line_items.into_iter().enumerate() {
+        vec_model.set_row_data(i, item);
     }
 }
+
 
 
 
