@@ -23,6 +23,15 @@ use config::{load_app_config, save_app_config};
 
 const APP_ID: &str = "org.stakhal.StakHAL";
 
+#[derive(Clone, Debug)]
+struct GeneratedFoldRun {
+    _id: usize,
+    start_line: usize, // 1-based start line
+    end_line: usize,   // 1-based end line
+    _count: usize,
+    is_collapsed: bool,
+}
+
 #[derive(Default)]
 struct AppState {
     project_dir: Option<PathBuf>,
@@ -32,6 +41,7 @@ struct AppState {
     active_pv_index: Option<usize>,
     active_decl: Option<PvDeclaration>,
     active_usage_lines: Vec<usize>,
+    fold_runs: Vec<GeneratedFoldRun>,
     is_inline_editing: bool,
 }
 
@@ -61,6 +71,7 @@ struct AppWidgets {
     tag_usage: gtk4::TextTag,
     tag_generated: gtk4::TextTag,
     tag_readonly: gtk4::TextTag,
+    tag_invisible: gtk4::TextTag,
 
     // Inline edit bar widgets
     inline_edit_bar: gtk4::Box,
@@ -299,11 +310,17 @@ fn build_ui(app: &adw::Application) {
         .editable(false)
         .build();
 
+    let tag_invisible = gtk4::TextTag::builder()
+        .name("invisible")
+        .invisible(true)
+        .build();
+
     let tag_table = source_buffer.tag_table();
     tag_table.add(&tag_declaration);
     tag_table.add(&tag_usage);
     tag_table.add(&tag_generated);
     tag_table.add(&tag_readonly);
+    tag_table.add(&tag_invisible);
 
     let source_scrolled = gtk4::ScrolledWindow::builder()
         .hscrollbar_policy(gtk4::PolicyType::Automatic)
@@ -424,6 +441,7 @@ fn build_ui(app: &adw::Application) {
         tag_usage,
         tag_generated,
         tag_readonly,
+        tag_invisible,
         inline_edit_bar,
         lbl_inline_error,
         btn_inline_save,
@@ -525,7 +543,7 @@ fn build_ui(app: &adw::Application) {
     let widgets_source_click = Rc::clone(&widgets);
     gesture.connect_pressed(move |_g, _n_press, x, y| {
         let widgets = &widgets_source_click;
-        let st = state_source_click.borrow();
+        let mut st = state_source_click.borrow_mut();
         let decl = match &st.active_decl {
             Some(d) => d.clone(),
             None => return,
@@ -539,6 +557,22 @@ fn build_ui(app: &adw::Application) {
 
         if let Some(iter) = widgets.source_view.iter_at_location(buffer_x, buffer_y) {
             let clicked_line_1based = (iter.line() + 1) as usize;
+
+            // Check if clicking a Generated fold run toggle
+            let fold_match = st.fold_runs.iter().position(|r| {
+                clicked_line_1based == r.start_line
+                    || (!r.is_collapsed && clicked_line_1based > r.start_line && clicked_line_1based <= r.end_line)
+            });
+
+            if let Some(run_idx) = fold_match {
+                let is_now_collapsed = !st.fold_runs[run_idx].is_collapsed;
+                st.fold_runs[run_idx].is_collapsed = is_now_collapsed;
+                let run = st.fold_runs[run_idx].clone();
+                drop(st);
+
+                toggle_generated_fold_run(&run, is_now_collapsed, widgets);
+                return;
+            }
 
             if clicked_line_1based == decl.line {
                 if !st.is_inline_editing {
@@ -772,6 +806,48 @@ fn open_pv_source_view(pv_idx: usize, state: &Rc<RefCell<AppState>>, widgets: &R
 
     let mut usage_lines = Vec::new();
 
+    // Find Generated line runs (minimum threshold: 3+ consecutive lines)
+    let mut fold_runs: Vec<GeneratedFoldRun> = Vec::new();
+    let mut current_run_start: Option<usize> = None;
+    let mut current_run_end: Option<usize> = None;
+    let mut current_count = 0;
+
+    for line in &rendered_lines {
+        if line.tier == LineTier::Generated {
+            if current_run_start.is_none() {
+                current_run_start = Some(line.line_number);
+            }
+            current_run_end = Some(line.line_number);
+            current_count += 1;
+        } else {
+            if let (Some(start), Some(end)) = (current_run_start, current_run_end) {
+                if current_count >= 3 {
+                    fold_runs.push(GeneratedFoldRun {
+                        _id: fold_runs.len(),
+                        start_line: start,
+                        end_line: end,
+                        _count: current_count,
+                        is_collapsed: true,
+                    });
+                }
+            }
+            current_run_start = None;
+            current_run_end = None;
+            current_count = 0;
+        }
+    }
+    if let (Some(start), Some(end)) = (current_run_start, current_run_end) {
+        if current_count >= 3 {
+            fold_runs.push(GeneratedFoldRun {
+                _id: fold_runs.len(),
+                start_line: start,
+                end_line: end,
+                _count: current_count,
+                is_collapsed: true,
+            });
+        }
+    }
+
     for line in &rendered_lines {
         let line_idx = (line.line_number.saturating_sub(1)) as i32;
         if let Some(line_start) = widgets.source_buffer.iter_at_line(line_idx) {
@@ -796,11 +872,17 @@ fn open_pv_source_view(pv_idx: usize, state: &Rc<RefCell<AppState>>, widgets: &R
         }
     }
 
+    // Apply invisible tag to collapsed Generated runs
+    for run in &fold_runs {
+        toggle_generated_fold_run(run, true, widgets);
+    }
+
     {
         let mut st = state.borrow_mut();
         st.active_pv_index = Some(pv_idx);
         st.active_decl = Some(decl.clone());
         st.active_usage_lines = usage_lines;
+        st.fold_runs = fold_runs;
     }
 
     // Scroll view to declaration line
@@ -810,6 +892,29 @@ fn open_pv_source_view(pv_idx: usize, state: &Rc<RefCell<AppState>>, widgets: &R
     }
 
     widgets.stack.set_visible_child_name("source_view");
+}
+
+fn toggle_generated_fold_run(run: &GeneratedFoldRun, collapse: bool, widgets: &Rc<AppWidgets>) {
+    if run.start_line >= run.end_line {
+        return;
+    }
+
+    // Hide/show lines after the first line of the run
+    let start_idx = run.start_line as i32; // 0-based start for line 2 of run
+    let end_idx = run.end_line as i32;     // 0-based end for run
+
+    if let Some(start_iter) = widgets.source_buffer.iter_at_line(start_idx) {
+        if let Some(mut end_iter) = widgets.source_buffer.iter_at_line(end_idx) {
+            if !end_iter.ends_line() {
+                end_iter.forward_to_line_end();
+            }
+            if collapse {
+                widgets.source_buffer.apply_tag(&widgets.tag_invisible, &start_iter, &end_iter);
+            } else {
+                widgets.source_buffer.remove_tag(&widgets.tag_invisible, &start_iter, &end_iter);
+            }
+        }
+    }
 }
 
 fn enter_inline_edit_mode(state: &Rc<RefCell<AppState>>, widgets: &Rc<AppWidgets>) {
