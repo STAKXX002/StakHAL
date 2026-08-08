@@ -1031,12 +1031,12 @@ fn open_pv_source_view(pv_idx: usize, state: &Rc<RefCell<AppState>>, widgets: &R
 
     widgets.stack.set_visible_child_full("source_view", gtk4::StackTransitionType::SlideLeft);
 
-    // Defer scroll_to_iter until after GTK maps and allocates layout geometry for source_view
+    // Sequence transition: wait for horizontal slide animation to complete fully (260ms), THEN scroll vertically to target declaration line
     let decl_line_idx = (decl.line.saturating_sub(1)) as i32;
     let source_view_clone = widgets.source_view.clone();
     let source_buffer_clone = widgets.source_buffer.clone();
 
-    glib::idle_add_local_once(move || {
+    glib::timeout_add_local_once(std::time::Duration::from_millis(260), move || {
         if let Some(mut decl_iter) = source_buffer_clone.iter_at_line(decl_line_idx) {
             source_view_clone.scroll_to_iter(&mut decl_iter, 0.1, true, 0.0, 0.3);
         }
