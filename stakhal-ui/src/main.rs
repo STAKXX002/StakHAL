@@ -269,20 +269,17 @@ fn build_ui(app: &adw::Application) {
 
     let tag_declaration = gtk4::TextTag::builder()
         .name("declaration")
-        .background("#064e3b")
-        .paragraph_background("#064e3b")
+        .paragraph_background("rgba(16, 185, 129, 0.25)")
         .build();
 
     let tag_usage = gtk4::TextTag::builder()
         .name("usage")
-        .background("#0f2942")
-        .paragraph_background("#0f2942")
+        .paragraph_background("rgba(59, 130, 246, 0.18)")
         .build();
 
     let tag_generated = gtk4::TextTag::builder()
         .name("generated")
-        .background("#18181b")
-        .paragraph_background("#18181b")
+        .foreground("#6e6e6e")
         .build();
 
     let tag_table = source_buffer.tag_table();
