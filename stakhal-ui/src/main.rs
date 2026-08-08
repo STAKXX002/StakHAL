@@ -1001,13 +1001,18 @@ fn open_pv_source_view(pv_idx: usize, state: &Rc<RefCell<AppState>>, widgets: &R
         st.generated_runs = runs;
     }
 
-    // Scroll view to declaration line
-    let decl_line_idx = (decl.line.saturating_sub(1)) as i32;
-    if let Some(mut decl_iter) = widgets.source_buffer.iter_at_line(decl_line_idx) {
-        widgets.source_view.scroll_to_iter(&mut decl_iter, 0.1, true, 0.0, 0.3);
-    }
-
     widgets.stack.set_visible_child_full("source_view", gtk4::StackTransitionType::SlideLeft);
+
+    // Defer scroll_to_iter until after GTK maps and allocates layout geometry for source_view
+    let decl_line_idx = (decl.line.saturating_sub(1)) as i32;
+    let source_view_clone = widgets.source_view.clone();
+    let source_buffer_clone = widgets.source_buffer.clone();
+
+    glib::idle_add_local_once(move || {
+        if let Some(mut decl_iter) = source_buffer_clone.iter_at_line(decl_line_idx) {
+            source_view_clone.scroll_to_iter(&mut decl_iter, 0.1, true, 0.0, 0.3);
+        }
+    });
 }
 
 fn apply_run_collapse(run: &GeneratedRun, widgets: &Rc<AppWidgets>) {
