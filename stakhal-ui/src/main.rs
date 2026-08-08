@@ -12,6 +12,8 @@ use libadwaita as adw;
 use libadwaita::prelude::*;
 use sourceview5::prelude::*;
 
+use gtk4::cairo;
+use stakhal_core::graph::builder::{EdgeType, GraphEdge};
 use stakhal_core::ioc::discovery::discover_project_files;
 use stakhal_core::ir::schema::{load_project, Project};
 use stakhal_core::source::marker_scan::scan_file;
@@ -31,6 +33,23 @@ struct GeneratedRun {
     is_collapsed: bool,
 }
 
+#[derive(Clone, Debug)]
+struct GraphNodeLayout {
+    id: String,
+    label: String,
+    x: f64,
+    y: f64,
+    w: f64,
+    h: f64,
+}
+
+#[derive(Clone, Debug)]
+struct GraphEdgeLayout {
+    from_id: String,
+    to_id: String,
+    edge_type: EdgeType,
+}
+
 #[derive(Default)]
 struct AppState {
     project_dir: Option<PathBuf>,
@@ -43,6 +62,7 @@ struct AppState {
     is_inline_editing: bool,
     generated_runs: Vec<GeneratedRun>,
     is_generated_hidden: bool,
+    selected_graph_node: Option<String>,
 }
 
 struct AppWidgets {
@@ -53,6 +73,7 @@ struct AppWidgets {
     lbl_ioc_path: gtk4::Label,
     lbl_main_c_path: gtk4::Label,
     btn_load: gtk4::Button,
+    btn_call_graph: gtk4::Button,
     lbl_project_name: gtk4::Label,
     lbl_mcu_family: gtk4::Label,
     lbl_mcu_name: gtk4::Label,
@@ -79,6 +100,9 @@ struct AppWidgets {
     lbl_inline_error: gtk4::Label,
     btn_inline_save: gtk4::Button,
     btn_inline_cancel: gtk4::Button,
+
+    // Call graph widgets
+    graph_drawing_area: gtk4::DrawingArea,
 }
 
 fn main() {
@@ -321,6 +345,13 @@ button.flat:not(.titlebutton):active {
     path_info_box.append(&lbl_ioc_path);
     path_info_box.append(&lbl_main_c_path);
 
+    let btn_call_graph = gtk4::Button::builder()
+        .icon_name("network-workgroup-symbolic")
+        .tooltip_text("Call Graph")
+        .sensitive(false)
+        .css_classes(vec!["flat".to_string()])
+        .build();
+
     let toolbar_box = gtk4::Box::builder()
         .orientation(gtk4::Orientation::Horizontal)
         .spacing(12)
@@ -332,6 +363,7 @@ button.flat:not(.titlebutton):active {
     toolbar_box.append(&btn_browse);
     toolbar_box.append(&path_info_box);
     toolbar_box.append(&btn_load);
+    toolbar_box.append(&btn_call_graph);
 
     // Compact Status Bar Row (btop info bar pattern)
     let lbl_project_name = gtk4::Label::builder()
@@ -586,7 +618,54 @@ button.flat:not(.titlebutton):active {
     source_panel_box.append(&source_header_bar);
     source_panel_box.append(&source_overlay);
 
-    // View Stack with smooth panel-switch transitions (Overview ↔ Source View)
+    // PAGE 3: Call Graph Panel
+    let btn_graph_back = create_icon_button("Back to Overview", "go-previous-symbolic", false);
+
+    let lbl_graph_title = gtk4::Label::builder()
+        .label("[ CALL GRAPH DIAGRAM ]")
+        .halign(gtk4::Align::Start)
+        .hexpand(true)
+        .css_classes(vec!["title-3".to_string()])
+        .build();
+
+    let lbl_graph_hint = gtk4::Label::builder()
+        .label("Click node to highlight connections")
+        .halign(gtk4::Align::End)
+        .css_classes(vec!["dim-label".to_string(), "caption".to_string()])
+        .build();
+
+    let graph_header_bar = gtk4::Box::builder()
+        .orientation(gtk4::Orientation::Horizontal)
+        .spacing(18)
+        .margin_top(12)
+        .margin_bottom(12)
+        .margin_start(18)
+        .margin_end(18)
+        .build();
+    graph_header_bar.append(&btn_graph_back);
+    graph_header_bar.append(&lbl_graph_title);
+    graph_header_bar.append(&lbl_graph_hint);
+
+    let graph_drawing_area = gtk4::DrawingArea::builder()
+        .content_width(1100)
+        .content_height(600)
+        .hexpand(true)
+        .vexpand(true)
+        .build();
+
+    let graph_scrolled = gtk4::ScrolledWindow::builder()
+        .child(&graph_drawing_area)
+        .hexpand(true)
+        .vexpand(true)
+        .build();
+
+    let graph_panel_box = gtk4::Box::builder()
+        .orientation(gtk4::Orientation::Vertical)
+        .build();
+    graph_panel_box.append(&graph_header_bar);
+    graph_panel_box.append(&graph_scrolled);
+
+    // View Stack with smooth panel-switch transitions (Overview ↔ Source View ↔ Call Graph)
     let stack = gtk4::Stack::builder()
         .transition_type(gtk4::StackTransitionType::SlideLeftRight)
         .transition_duration(220)
@@ -594,6 +673,7 @@ button.flat:not(.titlebutton):active {
         .build();
     stack.add_named(&overview_box, Some("overview"));
     stack.add_named(&source_panel_box, Some("source_view"));
+    stack.add_named(&graph_panel_box, Some("call_graph"));
     stack.set_visible_child_name("overview");
 
     // HeaderBar
@@ -628,6 +708,7 @@ button.flat:not(.titlebutton):active {
         lbl_ioc_path,
         lbl_main_c_path,
         btn_load,
+        btn_call_graph,
         lbl_project_name,
         lbl_mcu_family,
         lbl_mcu_name,
@@ -650,46 +731,210 @@ button.flat:not(.titlebutton):active {
         lbl_inline_error,
         btn_inline_save,
         btn_inline_cancel,
+        graph_drawing_area: graph_drawing_area.clone(),
     });
 
-    // Check last_project.json on startup
-    let config = load_app_config();
-    if let Some(dir_str) = config.project_dir {
-        let path = PathBuf::from(dir_str);
-        if path.exists() {
-            try_discover_folder(&path, &state, &widgets);
+    // Cairo Draw Callback for Call Graph
+    let state_draw = Rc::clone(&state);
+    graph_drawing_area.set_draw_func(move |_area, cr, width, height| {
+        let (edges, selected_node) = {
+            let st = state_draw.borrow();
+            let edges = match &st.loaded_project {
+                Some(p) => p.call_graph_edges.clone(),
+                None => return,
+            };
+            (edges, st.selected_graph_node.clone())
+        };
+
+        if edges.is_empty() {
+            return;
         }
-    }
 
-    // Connect Browse Button Callback
-    let state_browse = Rc::clone(&state);
-    let widgets_browse = Rc::clone(&widgets);
-    btn_browse.connect_clicked(move |_| {
-        let dialog = gtk4::FileDialog::builder()
-            .title("Select STM32 Project Directory")
-            .build();
+        let (nodes, layout_edges, (content_w, content_h)) = compute_graph_layout(&edges);
 
-        let state = Rc::clone(&state_browse);
-        let widgets = Rc::clone(&widgets_browse);
-        let parent_win = widgets.window.clone();
-        dialog.select_folder(
-            Some(&parent_win),
-            None::<&gio::Cancellable>,
-            move |result| {
-                if let Ok(file) = result {
-                    if let Some(path) = file.path() {
-                        try_discover_folder(&path, &state, &widgets);
-                    }
+        let canvas_w = (width as f64).max(content_w);
+        let canvas_h = (height as f64).max(content_h);
+
+        // Background (#0a0a0a)
+        cr.set_source_rgb(0.04, 0.04, 0.04);
+        cr.rectangle(0.0, 0.0, canvas_w, canvas_h);
+        let _ = cr.fill();
+
+        // Section Headers
+        cr.select_font_face("monospace", cairo::FontSlant::Normal, cairo::FontWeight::Bold);
+        cr.set_font_size(13.0);
+        cr.set_source_rgb(0.43, 0.43, 0.43);
+        let _ = cr.move_to(20.0, 30.0);
+        let _ = cr.show_text("[ INITIALIZATION GRAPH ]");
+
+        let _ = cr.move_to(20.0, 220.0);
+        let _ = cr.show_text("[ INTERRUPT CHAINS ]");
+
+        // Highlights computation
+        let (highlighted_nodes, highlighted_edges) = if let Some(ref sel) = selected_node {
+            let mut connected_n = std::collections::HashSet::new();
+            let mut connected_e = std::collections::HashSet::new();
+            connected_n.insert(sel.clone());
+
+            for (idx, e) in layout_edges.iter().enumerate() {
+                if e.from_id == *sel || e.to_id == *sel {
+                    connected_e.insert(idx);
+                    connected_n.insert(e.from_id.clone());
+                    connected_n.insert(e.to_id.clone());
                 }
-            },
-        );
+            }
+            (Some(connected_n), Some(connected_e))
+        } else {
+            (None, None)
+        };
+
+        // Draw Edges
+        for (idx, e) in layout_edges.iter().enumerate() {
+            let from_node = nodes.iter().find(|n| n.id == e.from_id);
+            let to_node = nodes.iter().find(|n| n.id == e.to_id);
+
+            if let (Some(from), Some(to)) = (from_node, to_node) {
+                let is_hl = match &highlighted_edges {
+                    Some(hl_set) => hl_set.contains(&idx),
+                    None => false,
+                };
+                let is_dimmed = highlighted_edges.is_some() && !is_hl;
+
+                if is_hl {
+                    cr.set_source_rgb(1.0, 1.0, 1.0);
+                    cr.set_line_width(2.0);
+                } else if is_dimmed {
+                    cr.set_source_rgb(0.16, 0.16, 0.16);
+                    cr.set_line_width(1.0);
+                } else {
+                    cr.set_source_rgb(0.43, 0.43, 0.43);
+                    cr.set_line_width(1.5);
+                }
+
+                let start_x = from.x + (from.w / 2.0);
+                let start_y = from.y + from.h;
+                let end_x = to.x + (to.w / 2.0);
+                let end_y = to.y;
+
+                let mid_y = start_y + (end_y - start_y) / 2.0;
+                let _ = cr.move_to(start_x, start_y);
+                let _ = cr.line_to(start_x, mid_y);
+                let _ = cr.line_to(end_x, mid_y);
+                let _ = cr.line_to(end_x, end_y);
+                let _ = cr.stroke();
+
+                let arrow_size = if is_hl { 6.0 } else { 5.0 };
+                let _ = cr.move_to(end_x, end_y);
+                let _ = cr.line_to(end_x - arrow_size, end_y - arrow_size * 1.4);
+                let _ = cr.line_to(end_x + arrow_size, end_y - arrow_size * 1.4);
+                let _ = cr.close_path();
+                let _ = cr.fill();
+            }
+        }
+
+        // Draw Nodes
+        for n in &nodes {
+            let is_selected = selected_node.as_deref() == Some(&n.id);
+            let is_connected = match &highlighted_nodes {
+                Some(set) => set.contains(&n.id),
+                None => false,
+            };
+            let is_dimmed = highlighted_nodes.is_some() && !is_connected;
+
+            if is_selected {
+                cr.set_source_rgb(0.13, 0.13, 0.13);
+                let _ = cr.rectangle(n.x, n.y, n.w, n.h);
+                let _ = cr.fill_preserve();
+                cr.set_source_rgb(1.0, 1.0, 1.0);
+                cr.set_line_width(2.0);
+                let _ = cr.stroke();
+
+                cr.set_source_rgb(1.0, 1.0, 1.0);
+            } else if is_connected {
+                cr.set_source_rgb(0.10, 0.10, 0.10);
+                let _ = cr.rectangle(n.x, n.y, n.w, n.h);
+                let _ = cr.fill_preserve();
+                cr.set_source_rgb(0.67, 0.67, 0.67);
+                cr.set_line_width(1.5);
+                let _ = cr.stroke();
+
+                cr.set_source_rgb(1.0, 1.0, 1.0);
+            } else if is_dimmed {
+                cr.set_source_rgb(0.05, 0.05, 0.05);
+                let _ = cr.rectangle(n.x, n.y, n.w, n.h);
+                let _ = cr.fill_preserve();
+                cr.set_source_rgb(0.12, 0.12, 0.12);
+                cr.set_line_width(1.0);
+                let _ = cr.stroke();
+
+                cr.set_source_rgb(0.33, 0.33, 0.33);
+            } else {
+                cr.set_source_rgb(0.07, 0.07, 0.07);
+                let _ = cr.rectangle(n.x, n.y, n.w, n.h);
+                let _ = cr.fill_preserve();
+                cr.set_source_rgb(0.16, 0.16, 0.16);
+                cr.set_line_width(1.0);
+                let _ = cr.stroke();
+
+                cr.set_source_rgb(0.88, 0.88, 0.88);
+            }
+
+            cr.select_font_face("monospace", cairo::FontSlant::Normal, if is_selected { cairo::FontWeight::Bold } else { cairo::FontWeight::Normal });
+            cr.set_font_size(11.5);
+            if let Ok(extents) = cr.text_extents(&n.label) {
+                let tx = n.x + (n.w - extents.width()) / 2.0;
+                let ty = n.y + (n.h + extents.height()) / 2.0 - 2.0;
+                let _ = cr.move_to(tx, ty);
+                let _ = cr.show_text(&n.label);
+            }
+        }
     });
 
-    // Connect Load Project Button Callback
-    let state_load = Rc::clone(&state);
-    let widgets_load = Rc::clone(&widgets);
-    widgets.btn_load.connect_clicked(move |_| {
-        do_load_project(&state_load, &widgets_load);
+    // Gesture controller for node click selection
+    let gesture_graph_click = gtk4::GestureClick::new();
+    gesture_graph_click.set_button(1);
+    let state_graph_click = Rc::clone(&state);
+    let area_clone = graph_drawing_area.clone();
+
+    gesture_graph_click.connect_pressed(move |_, _n_press, x, y| {
+        let st = state_graph_click.borrow();
+        let edges = match &st.loaded_project {
+            Some(p) => p.call_graph_edges.clone(),
+            None => return,
+        };
+        drop(st);
+
+        let (nodes, _, _) = compute_graph_layout(&edges);
+        let clicked_node = nodes.iter().find(|n| {
+            x >= n.x && x <= (n.x + n.w) && y >= n.y && y <= (n.y + n.h)
+        });
+
+        let mut st = state_graph_click.borrow_mut();
+        if let Some(n) = clicked_node {
+            if st.selected_graph_node.as_deref() == Some(&n.id) {
+                st.selected_graph_node = None;
+            } else {
+                st.selected_graph_node = Some(n.id.clone());
+            }
+        } else {
+            st.selected_graph_node = None;
+        }
+        drop(st);
+
+        area_clone.queue_draw();
+    });
+
+    graph_drawing_area.add_controller(gesture_graph_click);
+
+    // Connect Call Graph navigation buttons
+    let widgets_graph_open = Rc::clone(&widgets);
+    widgets.btn_call_graph.connect_clicked(move |_| {
+        widgets_graph_open.stack.set_visible_child_full("call_graph", gtk4::StackTransitionType::SlideLeft);
+    });
+
+    let widgets_graph_back = Rc::clone(&widgets);
+    btn_graph_back.connect_clicked(move |_| {
+        widgets_graph_back.stack.set_visible_child_full("overview", gtk4::StackTransitionType::SlideRight);
     });
 
     // Connect Back Button Callback
@@ -834,6 +1079,155 @@ fn try_discover_folder(dir: &Path, state: &Rc<RefCell<AppState>>, widgets: &Rc<A
     }
 }
 
+fn compute_graph_layout(edges: &[GraphEdge]) -> (Vec<GraphNodeLayout>, Vec<GraphEdgeLayout>, (f64, f64)) {
+    let mut nodes = Vec::new();
+    let mut layout_edges = Vec::new();
+
+    let node_h = 34.0;
+    let mut max_x: f64 = 800.0;
+    let mut max_y: f64 = 520.0;
+
+    // 1. INITIALIZATION SECTION
+    let init_edges: Vec<&GraphEdge> = edges.iter().filter(|e| e.edge_type == EdgeType::Init).collect();
+
+    if !init_edges.is_empty() {
+        let mut target_nodes: Vec<String> = init_edges.iter().map(|e| e.to.clone()).collect();
+        target_nodes.sort();
+        target_nodes.dedup();
+
+        let spacing_x = 24.0;
+        let mut curr_x = 40.0;
+        let child_y = 120.0;
+        let mut child_positions = Vec::new();
+
+        for target in &target_nodes {
+            let label = target.clone();
+            let w = (label.len() as f64 * 8.5 + 28.0).max(110.0);
+            child_positions.push((target.clone(), label, curr_x, child_y, w));
+            curr_x += w + spacing_x;
+        }
+
+        let init_total_width = curr_x;
+        if init_total_width > max_x {
+            max_x = init_total_width;
+        }
+
+        let main_w = 110.0;
+        let main_x = ((init_total_width / 2.0) - (main_w / 2.0)).max(40.0);
+        nodes.push(GraphNodeLayout {
+            id: "main".to_string(),
+            label: "main".to_string(),
+            x: main_x,
+            y: 50.0,
+            w: main_w,
+            h: node_h,
+        });
+
+        for (id, label, x, y, w) in child_positions {
+            nodes.push(GraphNodeLayout {
+                id: id.clone(),
+                label,
+                x,
+                y,
+                w,
+                h: node_h,
+            });
+            layout_edges.push(GraphEdgeLayout {
+                from_id: "main".to_string(),
+                to_id: id,
+                edge_type: EdgeType::Init,
+            });
+        }
+    }
+
+    // 2. INTERRUPT CHAINS SECTION
+    let irq_entry_edges: Vec<&GraphEdge> = edges.iter().filter(|e| e.edge_type == EdgeType::IrqEntry).collect();
+
+    let mut curr_chain_x = 40.0;
+    let chain_y_l1 = 260.0;
+    let chain_y_l2 = 340.0;
+    let chain_y_l3 = 420.0;
+
+    for irq_edge in &irq_entry_edges {
+        let handler_id = irq_edge.from.clone();
+        let dispatch_id = irq_edge.to.clone();
+
+        let override_targets: Vec<String> = edges
+            .iter()
+            .filter(|e| e.edge_type == EdgeType::WeakOverride && e.from == dispatch_id)
+            .map(|e| e.to.clone())
+            .collect();
+
+        let handler_w = (handler_id.len() as f64 * 8.5 + 28.0).max(130.0);
+        let dispatch_w = (dispatch_id.len() as f64 * 8.5 + 28.0).max(130.0);
+
+        let mut override_w_sum = 0.0;
+        let mut override_nodes_info = Vec::new();
+        let mut curr_ov_x = curr_chain_x;
+
+        for ov in &override_targets {
+            let w = (ov.len() as f64 * 8.5 + 28.0).max(130.0);
+            override_nodes_info.push((ov.clone(), curr_ov_x, w));
+            curr_ov_x += w + 20.0;
+            override_w_sum += w + 20.0;
+        }
+
+        let chain_max_width = handler_w.max(dispatch_w).max(override_w_sum).max(160.0);
+        let center_x = curr_chain_x + (chain_max_width / 2.0);
+
+        nodes.push(GraphNodeLayout {
+            id: handler_id.clone(),
+            label: handler_id.clone(),
+            x: center_x - (handler_w / 2.0),
+            y: chain_y_l1,
+            w: handler_w,
+            h: node_h,
+        });
+
+        nodes.push(GraphNodeLayout {
+            id: dispatch_id.clone(),
+            label: dispatch_id.clone(),
+            x: center_x - (dispatch_w / 2.0),
+            y: chain_y_l2,
+            w: dispatch_w,
+            h: node_h,
+        });
+
+        layout_edges.push(GraphEdgeLayout {
+            from_id: handler_id.clone(),
+            to_id: dispatch_id.clone(),
+            edge_type: EdgeType::IrqEntry,
+        });
+
+        for (ov_id, ov_x, ov_w) in override_nodes_info {
+            nodes.push(GraphNodeLayout {
+                id: ov_id.clone(),
+                label: ov_id.clone(),
+                x: ov_x,
+                y: chain_y_l3,
+                w: ov_w,
+                h: node_h,
+            });
+            layout_edges.push(GraphEdgeLayout {
+                from_id: dispatch_id.clone(),
+                to_id: ov_id,
+                edge_type: EdgeType::WeakOverride,
+            });
+        }
+
+        curr_chain_x += chain_max_width + 60.0;
+    }
+
+    if curr_chain_x > max_x {
+        max_x = curr_chain_x;
+    }
+    if chain_y_l3 + node_h + 60.0 > max_y {
+        max_y = chain_y_l3 + node_h + 60.0;
+    }
+
+    (nodes, layout_edges, (max_x + 60.0, max_y))
+}
+
 fn do_load_project(state: &Rc<RefCell<AppState>>, widgets: &Rc<AppWidgets>) {
     let (ioc_path, main_c_path, dir_opt) = {
         let st = state.borrow();
@@ -903,6 +1297,12 @@ fn do_load_project(state: &Rc<RefCell<AppState>>, widgets: &Rc<AppWidgets>) {
                 let row = create_pv_row(&pv.name, &pv.type_str, pv.initial_value.as_deref(), pv.line);
                 widgets.list_pv_variables.append(&row);
             }
+
+            let (_, _, (cw, ch)) = compute_graph_layout(&project.call_graph_edges);
+            widgets.graph_drawing_area.set_content_width(cw as i32);
+            widgets.graph_drawing_area.set_content_height(ch as i32);
+            widgets.btn_call_graph.set_sensitive(true);
+            widgets.graph_drawing_area.queue_draw();
 
             state.borrow_mut().loaded_project = Some(project);
             widgets.toast_overlay.add_toast(adw::Toast::new("✓ Project loaded successfully"));
