@@ -4,12 +4,19 @@ use std::cell::RefCell;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
+use gtk4::gdk;
 use gtk4::gio;
 use gtk4::prelude::*;
 use libadwaita as adw;
+use sourceview5::prelude::*;
 
 use stakhal_core::ioc::discovery::discover_project_files;
 use stakhal_core::ir::schema::{load_project, Project};
+use stakhal_core::source::marker_scan::scan_file;
+use stakhal_core::source::pv_extract::PvDeclaration;
+use stakhal_core::source::render_model::{build_source_render_model, LineTier};
+use stakhal_core::source::usage_finder::find_variable_usages;
+use stakhal_core::source::writeback::write_region;
 
 use config::{load_app_config, save_app_config};
 
@@ -21,10 +28,14 @@ struct AppState {
     discovered_ioc: Option<PathBuf>,
     discovered_main_c: Option<PathBuf>,
     loaded_project: Option<Project>,
+    active_pv_index: Option<usize>,
+    active_decl: Option<PvDeclaration>,
+    active_usage_lines: Vec<usize>,
 }
 
 struct AppWidgets {
     window: adw::ApplicationWindow,
+    stack: gtk4::Stack,
     banner: adw::Banner,
     lbl_discovered_dir: gtk4::Label,
     lbl_ioc_path: gtk4::Label,
@@ -39,6 +50,14 @@ struct AppWidgets {
     list_peripherals: gtk4::ListBox,
     list_user_regions: gtk4::ListBox,
     list_pv_variables: gtk4::ListBox,
+
+    // Source view widgets
+    source_view: sourceview5::View,
+    source_buffer: sourceview5::Buffer,
+    lbl_active_pv: gtk4::Label,
+    tag_declaration: gtk4::TextTag,
+    tag_usage: gtk4::TextTag,
+    tag_generated: gtk4::TextTag,
 }
 
 fn main() {
@@ -51,12 +70,25 @@ fn main() {
 }
 
 fn build_ui(app: &adw::Application) {
+    // Monospace font styling for GtkSourceView
+    let css_provider = gtk4::CssProvider::new();
+    css_provider.load_from_string(
+        "textview { font-family: 'DejaVu Sans Mono', monospace; font-size: 13px; }",
+    );
+    if let Some(display) = gdk::Display::default() {
+        gtk4::style_context_add_provider_for_display(
+            &display,
+            &css_provider,
+            gtk4::STYLE_PROVIDER_PRIORITY_APPLICATION,
+        );
+    }
+
     // Top Banner for Inline Errors
     let banner = adw::Banner::builder()
         .revealed(false)
         .build();
 
-    // Top Action Controls: Browse Folder & Load Project
+    // PAGE 1: Overview Page
     let btn_browse = gtk4::Button::builder()
         .label("Browse Project Folder…")
         .icon_name("folder-open-symbolic")
@@ -173,14 +205,14 @@ fn build_ui(app: &adw::Application) {
     let col_regions = create_column_box(&lbl_region_header, &list_user_regions);
 
     let lbl_pv_header = gtk4::Label::builder()
-        .label("PV Variables")
+        .label("PV Variables (click variable to inspect code)")
         .halign(gtk4::Align::Start)
         .css_classes(vec!["heading".to_string()])
         .build();
 
     let list_pv_variables = gtk4::ListBox::builder()
         .css_classes(vec!["boxed-list".to_string()])
-        .selection_mode(gtk4::SelectionMode::None)
+        .selection_mode(gtk4::SelectionMode::Single)
         .build();
 
     let col_pv = create_column_box(&lbl_pv_header, &list_pv_variables);
@@ -198,18 +230,97 @@ fn build_ui(app: &adw::Application) {
     columns_box.append(&col_regions);
     columns_box.append(&col_pv);
 
+    let overview_box = gtk4::Box::builder()
+        .orientation(gtk4::Orientation::Vertical)
+        .build();
+    overview_box.append(&toolbar_box);
+    overview_box.append(&header_cards_box);
+    overview_box.append(&columns_box);
+
+    // PAGE 2: PV Source Panel
+    let btn_back = gtk4::Button::builder()
+        .label("← Back to Overview")
+        .icon_name("go-previous-symbolic")
+        .build();
+
+    let lbl_active_pv = gtk4::Label::builder()
+        .label("PV Variable Source View")
+        .halign(gtk4::Align::Start)
+        .css_classes(vec!["title-3".to_string()])
+        .build();
+
+    let source_header_bar = gtk4::Box::builder()
+        .orientation(gtk4::Orientation::Horizontal)
+        .spacing(16)
+        .margin_top(12)
+        .margin_bottom(12)
+        .margin_start(16)
+        .margin_end(16)
+        .build();
+    source_header_bar.append(&btn_back);
+    source_header_bar.append(&lbl_active_pv);
+
+    let source_buffer = sourceview5::Buffer::new(None);
+    let source_view = sourceview5::View::with_buffer(&source_buffer);
+    source_view.set_show_line_numbers(true);
+    source_view.set_editable(false);
+    source_view.set_cursor_visible(false);
+    source_view.set_monospace(true);
+
+    let tag_declaration = gtk4::TextTag::builder()
+        .name("declaration")
+        .background("#064e3b")
+        .paragraph_background("#064e3b")
+        .build();
+
+    let tag_usage = gtk4::TextTag::builder()
+        .name("usage")
+        .background("#0f2942")
+        .paragraph_background("#0f2942")
+        .build();
+
+    let tag_generated = gtk4::TextTag::builder()
+        .name("generated")
+        .background("#18181b")
+        .paragraph_background("#18181b")
+        .build();
+
+    let tag_table = source_buffer.tag_table();
+    tag_table.add(&tag_declaration);
+    tag_table.add(&tag_usage);
+    tag_table.add(&tag_generated);
+
+    let source_scrolled = gtk4::ScrolledWindow::builder()
+        .hscrollbar_policy(gtk4::PolicyType::Automatic)
+        .vscrollbar_policy(gtk4::PolicyType::Automatic)
+        .vexpand(true)
+        .child(&source_view)
+        .build();
+
+    let source_panel_box = gtk4::Box::builder()
+        .orientation(gtk4::Orientation::Vertical)
+        .build();
+    source_panel_box.append(&source_header_bar);
+    source_panel_box.append(&source_scrolled);
+
+    // View Stack
+    let stack = gtk4::Stack::builder()
+        .transition_type(gtk4::StackTransitionType::SlideLeftRight)
+        .build();
+    stack.add_named(&overview_box, Some("overview"));
+    stack.add_named(&source_panel_box, Some("source_view"));
+    stack.set_visible_child_name("overview");
+
     // HeaderBar
     let header_bar = adw::HeaderBar::new();
 
-    // Content Vertical Layout
+    // Root Content Layout
     let content_box = gtk4::Box::builder()
         .orientation(gtk4::Orientation::Vertical)
         .build();
     content_box.append(&header_bar);
     content_box.append(&banner);
-    content_box.append(&toolbar_box);
-    content_box.append(&header_cards_box);
-    content_box.append(&columns_box);
+    content_box.append(&stack);
 
     let window = adw::ApplicationWindow::builder()
         .application(app)
@@ -222,6 +333,7 @@ fn build_ui(app: &adw::Application) {
     let state = Rc::new(RefCell::new(AppState::default()));
     let widgets = Rc::new(AppWidgets {
         window: window.clone(),
+        stack,
         banner,
         lbl_discovered_dir,
         lbl_ioc_path,
@@ -236,6 +348,12 @@ fn build_ui(app: &adw::Application) {
         list_peripherals,
         list_user_regions,
         list_pv_variables,
+        source_view,
+        source_buffer,
+        lbl_active_pv,
+        tag_declaration,
+        tag_usage,
+        tag_generated,
     });
 
     // Check last_project.json on startup
@@ -277,6 +395,51 @@ fn build_ui(app: &adw::Application) {
     widgets.btn_load.connect_clicked(move |_| {
         do_load_project(&state_load, &widgets_load);
     });
+
+    // Connect Back Button Callback
+    let widgets_back = Rc::clone(&widgets);
+    btn_back.connect_clicked(move |_| {
+        widgets_back.stack.set_visible_child_name("overview");
+    });
+
+    // Connect PV Row Click Callback
+    let state_pv_click = Rc::clone(&state);
+    let widgets_pv_click = Rc::clone(&widgets);
+    widgets.list_pv_variables.connect_row_activated(move |_, row| {
+        let idx = row.index() as usize;
+        open_pv_source_view(idx, &state_pv_click, &widgets_pv_click);
+    });
+
+    // Connect Click Gesture on GtkSourceView
+    let gesture = gtk4::GestureClick::new();
+    let state_source_click = Rc::clone(&state);
+    let widgets_source_click = Rc::clone(&widgets);
+    gesture.connect_pressed(move |g, _n_press, x, y| {
+        let widgets = &widgets_source_click;
+        let st = state_source_click.borrow();
+        let decl = match &st.active_decl {
+            Some(d) => d.clone(),
+            None => return,
+        };
+
+        let (buffer_x, buffer_y) = widgets.source_view.window_to_buffer_coords(
+            gtk4::TextWindowType::Text,
+            x as i32,
+            y as i32,
+        );
+
+        if let Some(iter) = widgets.source_view.iter_at_location(buffer_x, buffer_y) {
+            let clicked_line_1based = (iter.line() + 1) as usize;
+
+            if clicked_line_1based == decl.line {
+                show_declaration_edit_popover(g, x, y, &decl, &state_source_click, &widgets_source_click);
+            } else if st.active_usage_lines.contains(&clicked_line_1based) {
+                let mut scroll_iter = iter;
+                widgets.source_view.scroll_to_iter(&mut scroll_iter, 0.1, true, 0.0, 0.5);
+            }
+        }
+    });
+    widgets.source_view.add_controller(gesture);
 
     window.present();
 }
@@ -393,7 +556,7 @@ fn do_load_project(state: &Rc<RefCell<AppState>>, widgets: &Rc<AppWidgets>) {
                 widgets.list_peripherals.append(&row);
             }
 
-            // Populate User Regions List (including loop_body if present)
+            // Populate User Regions List
             let mut total_regions = project.user_regions.len();
             if project.loop_body.is_some() {
                 total_regions += 1;
@@ -441,6 +604,236 @@ fn do_load_project(state: &Rc<RefCell<AppState>>, widgets: &Rc<AppWidgets>) {
             widgets.banner.set_revealed(true);
         }
     }
+}
+
+fn open_pv_source_view(pv_idx: usize, state: &Rc<RefCell<AppState>>, widgets: &Rc<AppWidgets>) {
+    let (project, main_c_path) = {
+        let st = state.borrow();
+        match &st.loaded_project {
+            Some(p) => (p.clone(), p.meta.main_c_path.clone()),
+            None => return,
+        }
+    };
+
+    if pv_idx >= project.pv_declarations.len() {
+        return;
+    }
+
+    let decl = project.pv_declarations[pv_idx].clone();
+    let main_c_content = match std::fs::read_to_string(&main_c_path) {
+        Ok(c) => c,
+        Err(e) => {
+            widgets.banner.set_title(&format!("Error reading main.c: {}", e));
+            widgets.banner.set_revealed(true);
+            return;
+        }
+    };
+
+    widgets.lbl_active_pv.set_text(&format!("PV Variable: {} {} (Line {})", decl.type_str, decl.name, decl.line));
+    widgets.source_buffer.set_text(&main_c_content);
+
+    // Apply C language syntax definition
+    if let Some(lang) = sourceview5::LanguageManager::default().language("c") {
+        widgets.source_buffer.set_language(Some(&lang));
+    }
+
+    let usages = find_variable_usages(&main_c_path, &decl.name, decl.byte_range).unwrap_or_default();
+    let usage_byte_ranges: Vec<(usize, usize)> = usages.iter().map(|u| u.byte_range).collect();
+
+    let rendered_lines = build_source_render_model(
+        &main_c_path,
+        &project.user_regions,
+        decl.byte_range,
+        &usage_byte_ranges,
+    )
+    .unwrap_or_default();
+
+    // Clear existing line tags
+    let start_iter = widgets.source_buffer.start_iter();
+    let end_iter = widgets.source_buffer.end_iter();
+    widgets.source_buffer.remove_all_tags(&start_iter, &end_iter);
+
+    let mut usage_lines = Vec::new();
+
+    for line in &rendered_lines {
+        let line_idx = (line.line_number.saturating_sub(1)) as i32;
+        if let Some(line_start) = widgets.source_buffer.iter_at_line(line_idx) {
+            let mut line_end = line_start;
+            if !line_end.ends_line() {
+                line_end.forward_to_line_end();
+            }
+
+            match line.tier {
+                LineTier::Declaration => {
+                    widgets.source_buffer.apply_tag(&widgets.tag_declaration, &line_start, &line_end);
+                }
+                LineTier::Usage => {
+                    widgets.source_buffer.apply_tag(&widgets.tag_usage, &line_start, &line_end);
+                    usage_lines.push(line.line_number);
+                }
+                LineTier::Generated => {
+                    widgets.source_buffer.apply_tag(&widgets.tag_generated, &line_start, &line_end);
+                }
+                LineTier::Normal => {}
+            }
+        }
+    }
+
+    {
+        let mut st = state.borrow_mut();
+        st.active_pv_index = Some(pv_idx);
+        st.active_decl = Some(decl.clone());
+        st.active_usage_lines = usage_lines;
+    }
+
+    // Scroll view to declaration line
+    let decl_line_idx = (decl.line.saturating_sub(1)) as i32;
+    if let Some(mut decl_iter) = widgets.source_buffer.iter_at_line(decl_line_idx) {
+        widgets.source_view.scroll_to_iter(&mut decl_iter, 0.1, true, 0.0, 0.3);
+    }
+
+    widgets.stack.set_visible_child_name("source_view");
+}
+
+fn show_declaration_edit_popover(
+    _gesture: &gtk4::GestureClick,
+    x: f64,
+    y: f64,
+    decl: &PvDeclaration,
+    state: &Rc<RefCell<AppState>>,
+    widgets: &Rc<AppWidgets>,
+) {
+    let popover = gtk4::Popover::builder()
+        .has_arrow(true)
+        .build();
+
+    popover.set_parent(&widgets.source_view);
+    popover.set_pointing_to(Some(&gdk::Rectangle::new(x as i32, y as i32, 1, 1)));
+
+    let title_lbl = gtk4::Label::builder()
+        .label("Edit Declaration Statement")
+        .halign(gtk4::Align::Start)
+        .css_classes(vec!["heading".to_string()])
+        .build();
+
+    let entry_edit = gtk4::Entry::builder()
+        .text(&decl.raw_text)
+        .width_chars(55)
+        .build();
+
+    let err_label = gtk4::Label::builder()
+        .label("")
+        .halign(gtk4::Align::Start)
+        .css_classes(vec!["error".to_string()])
+        .visible(false)
+        .build();
+
+    let btn_save = gtk4::Button::builder()
+        .label("Save")
+        .css_classes(vec!["suggested-action".to_string()])
+        .build();
+
+    let btn_cancel = gtk4::Button::builder()
+        .label("Cancel")
+        .build();
+
+    let btn_box = gtk4::Box::builder()
+        .orientation(gtk4::Orientation::Horizontal)
+        .spacing(8)
+        .halign(gtk4::Align::End)
+        .build();
+    btn_box.append(&btn_cancel);
+    btn_box.append(&btn_save);
+
+    let popover_box = gtk4::Box::builder()
+        .orientation(gtk4::Orientation::Vertical)
+        .spacing(8)
+        .margin_top(12)
+        .margin_bottom(12)
+        .margin_start(12)
+        .margin_end(12)
+        .build();
+    popover_box.append(&title_lbl);
+    popover_box.append(&entry_edit);
+    popover_box.append(&err_label);
+    popover_box.append(&btn_box);
+
+    popover.set_child(Some(&popover_box));
+
+    let popover_clone_cancel = popover.clone();
+    btn_cancel.connect_clicked(move |_| {
+        popover_clone_cancel.popdown();
+    });
+
+    let state_save = Rc::clone(state);
+    let widgets_save = Rc::clone(widgets);
+    let decl_save = decl.clone();
+    let popover_clone_save = popover.clone();
+    let entry_edit_save = entry_edit.clone();
+
+    btn_save.connect_clicked(move |_| {
+        let new_text = entry_edit_save.text().to_string();
+        let main_c_path = {
+            let st = state_save.borrow();
+            match &st.loaded_project {
+                Some(p) => p.meta.main_c_path.clone(),
+                None => return,
+            }
+        };
+
+        match save_pv_declaration_edit(&main_c_path, &decl_save, &new_text) {
+            Ok(_) => {
+                popover_clone_save.popdown();
+                // Reload project
+                do_load_project(&state_save, &widgets_save);
+                // Re-open source panel for this PV declaration
+                if let Some(active_idx) = state_save.borrow().active_pv_index {
+                    open_pv_source_view(active_idx, &state_save, &widgets_save);
+                }
+            }
+            Err(err_msg) => {
+                err_label.set_text(&format!("Save error: {}", err_msg));
+                err_label.set_visible(true);
+            }
+        }
+    });
+
+    let btn_save_click = btn_save.clone();
+    entry_edit.connect_activate(move |_| {
+        btn_save_click.emit_clicked();
+    });
+
+    popover.popup();
+}
+
+fn save_pv_declaration_edit(
+    main_c_path: &Path,
+    decl: &PvDeclaration,
+    new_text: &str,
+) -> Result<(), String> {
+    let fresh_regions = scan_file(main_c_path).map_err(|e| e.to_string())?;
+    let pv_region = fresh_regions
+        .iter()
+        .find(|r| r.tag == "PV")
+        .ok_or_else(|| "PV region not found in main.c".to_string())?;
+
+    let full_content = std::fs::read_to_string(main_c_path).map_err(|e| e.to_string())?;
+
+    if decl.byte_range.0 < pv_region.byte_range.0 || decl.byte_range.1 > pv_region.byte_range.1 {
+        return Err("Declaration byte range is outside current PV region".to_string());
+    }
+
+    let offset_start = decl.byte_range.0 - pv_region.byte_range.0;
+    let offset_end = decl.byte_range.1 - pv_region.byte_range.0;
+
+    let mut pv_content = full_content[pv_region.byte_range.0..pv_region.byte_range.1].to_string();
+    if offset_start > pv_content.len() || offset_end > pv_content.len() {
+        return Err("Invalid byte range offsets inside PV region".to_string());
+    }
+
+    pv_content.replace_range(offset_start..offset_end, new_text);
+
+    write_region(main_c_path, pv_region, &pv_content).map_err(|e| e.to_string())
 }
 
 fn clear_list_box(list_box: &gtk4::ListBox) {
