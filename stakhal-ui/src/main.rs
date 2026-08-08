@@ -176,7 +176,7 @@ list > row:selected {
     background-color: #222222;
     color: #ffffff;
 }
-button {
+button:not(windowcontrols button):not(headerbar button.titlebutton) {
     background-color: #111111;
     color: #e0e0e0;
     border: 1px solid #2a2a2a;
@@ -184,16 +184,16 @@ button {
     padding: 6px 12px;
     transition: background-color 120ms ease-out, border-color 120ms ease-out, color 120ms ease-out;
 }
-button:hover {
+button:not(windowcontrols button):not(headerbar button.titlebutton):hover {
     background-color: #1a1a1a;
     color: #ffffff;
     border-color: #444444;
 }
-button:active {
+button:not(windowcontrols button):not(headerbar button.titlebutton):active {
     background-color: #262626;
     border-color: #555555;
 }
-button.suggested-action {
+button.suggested-action:not(windowcontrols button) {
     background-color: #ffffff;
     color: #000000;
     font-weight: bold;
@@ -201,20 +201,20 @@ button.suggested-action {
     border-radius: 0px;
     transition: background-color 120ms ease-out, border-color 120ms ease-out, color 120ms ease-out;
 }
-button.suggested-action:hover {
+button.suggested-action:not(windowcontrols button):hover {
     background-color: #e0e0e0;
     color: #000000;
 }
-button.suggested-action:active {
+button.suggested-action:not(windowcontrols button):active {
     background-color: #cccccc;
     color: #000000;
 }
-button.suggested-action:disabled {
+button.suggested-action:not(windowcontrols button):disabled {
     background-color: #222222;
     color: #6e6e6e;
     border-color: #2a2a2a;
 }
-*:focus, button:focus, entry:focus {
+*:focus, button:not(windowcontrols button):focus, entry:focus {
     outline-color: #ffffff;
     outline-offset: -1px;
 }
@@ -255,17 +255,17 @@ textview, textview text {
     font-weight: bold;
     margin: 0 8px;
 }
-button.flat {
+button.flat:not(windowcontrols button) {
     background-color: transparent;
     border: 1px solid #2a2a2a;
     color: #e0e0e0;
 }
-button.flat:hover {
+button.flat:not(windowcontrols button):hover {
     background-color: #1a1a1a;
     border-color: #444444;
     color: #ffffff;
 }
-button.flat:active {
+button.flat:not(windowcontrols button):active {
     background-color: #262626;
     border-color: #555555;
 }
