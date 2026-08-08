@@ -284,6 +284,16 @@ fn build_ui(app: &adw::Application) {
     source_header_bar.append(&lbl_active_pv);
 
     let source_buffer = sourceview5::Buffer::new(None);
+    let scheme_mgr = sourceview5::StyleSchemeManager::default();
+    let dark_scheme = scheme_mgr
+        .scheme("Adwaita-dark")
+        .or_else(|| scheme_mgr.scheme("oblivion"))
+        .or_else(|| scheme_mgr.scheme("solarized-dark"))
+        .or_else(|| scheme_mgr.scheme("classic-dark"));
+    if let Some(ref scheme) = dark_scheme {
+        source_buffer.set_style_scheme(Some(scheme));
+    }
+
     let source_view = sourceview5::View::with_buffer(&source_buffer);
     source_view.set_show_line_numbers(true);
     source_view.set_editable(false);
