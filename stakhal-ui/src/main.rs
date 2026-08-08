@@ -83,21 +83,41 @@ fn build_ui(app: &adw::Application) {
     // Force dark mode consistently across all Libadwaita / GTK4 widgets and dialogs
     adw::StyleManager::default().set_color_scheme(adw::ColorScheme::ForceDark);
 
-    // Strict Monochrome UI Palette + Monospace font for GtkSourceView
+    // btop-inspired Terminal/TUI Design System CSS Provider
     let css_provider = gtk4::CssProvider::new();
     css_provider.load_from_string(
-        "textview { font-family: 'DejaVu Sans Mono', monospace; font-size: 13px; }\
+        "* { font-family: 'DejaVu Sans Mono', 'Liberation Mono', monospace; font-size: 13px; border-radius: 0px !important; box-shadow: none !important; }\
+         window, .background, .main-window { background-color: #0a0a0a; color: #e0e0e0; }\
+         headerbar, .topbar { background-color: #0a0a0a; border-bottom: 1px solid #2a2a2a; color: #e0e0e0; }\
          @define-color accent_color #ffffff;\
-         @define-color accent_bg_color #3a3a3c;\
+         @define-color accent_bg_color #1a1a1a;\
          @define-color accent_fg_color #ffffff;\
-         @define-color accent_fill_color #3a3a3c;\
-         button.suggested-action { background-color: #3a3a3c; color: #ffffff; }\
-         button.suggested-action:hover { background-color: #4a4a4c; }\
-         button.flat:hover, button:hover { background-color: rgba(255, 255, 255, 0.08); }\
-         button:focus, entry:focus, *:focus { outline-color: rgba(255, 255, 255, 0.3); }\
-         .accent, image.accent { color: #ffffff; }\
-         .card, .boxed-list { border-radius: 12px; border: 1px solid rgba(255, 255, 255, 0.08); }\
-         .implicit-badge { background-color: #d97706; color: #ffffff; font-size: 11px; font-weight: bold; padding: 2px 8px; border-radius: 6px; }",
+         @define-color accent_fill_color #1a1a1a;\
+         @define-color window_bg_color #0a0a0a;\
+         @define-color window_fg_color #e0e0e0;\
+         @define-color view_bg_color #0a0a0a;\
+         @define-color view_fg_color #e0e0e0;\
+         @define-color card_bg_color #111111;\
+         @define-color card_fg_color #e0e0e0;\
+         @define-color dialog_bg_color #111111;\
+         @define-color popover_bg_color #111111;\
+         .card, .boxed-list, list { background-color: #111111; border: 1px solid #2a2a2a; border-radius: 0px !important; }\
+         list > row, row.adw-action-row { border-bottom: 1px solid #2a2a2a; background-color: #111111; color: #e0e0e0; padding: 6px 12px; }\
+         list > row:last-child { border-bottom: none; }\
+         list > row:hover, row.adw-action-row:hover { background-color: #1a1a1a; }\
+         list > row:selected { background-color: #222222; color: #ffffff; }\
+         button { background-color: #111111; color: #e0e0e0; border: 1px solid #2a2a2a; border-radius: 0px !important; padding: 6px 12px; }\
+         button:hover { background-color: #1a1a1a; color: #ffffff; border-color: #444444; }\
+         button.suggested-action { background-color: #ffffff !important; color: #000000 !important; font-weight: bold; border: 1px solid #ffffff !important; border-radius: 0px !important; }\
+         button.suggested-action:hover { background-color: #e0e0e0 !important; color: #000000 !important; }\
+         button.suggested-action:disabled { background-color: #222222 !important; color: #6e6e6e !important; border-color: #2a2a2a !important; }\
+         *:focus, button:focus, entry:focus { outline: 1px solid #ffffff !important; outline-offset: -1px; }\
+         .dim-label, .caption, subtitle { color: #6e6e6e; }\
+         .implicit-badge { background-color: #facc15; color: #000000; font-size: 11px; font-weight: bold; padding: 2px 6px; border-radius: 0px !important; }\
+         toast { background-color: #111111; color: #e0e0e0; border: 1px solid #2a2a2a; border-radius: 0px !important; }\
+         .toast-success { color: #4ade80 !important; }\
+         .toast-error { color: #f87171 !important; }\
+         textview, textview text { background-color: #0a0a0a; color: #e0e0e0; }",
     );
     if let Some(display) = gdk::Display::default() {
         gtk4::style_context_add_provider_for_display(
@@ -197,7 +217,7 @@ fn build_ui(app: &adw::Application) {
     row_mcu.add_suffix(&lbl_mcu_name);
 
     let pref_group_header = adw::PreferencesGroup::builder()
-        .title("Project Metadata")
+        .title("[ PROJECT METADATA ]")
         .margin_bottom(12)
         .margin_start(18)
         .margin_end(18)
@@ -208,7 +228,7 @@ fn build_ui(app: &adw::Application) {
 
     // Three Column Setup: Peripherals, User Regions, PV Variables
     let lbl_periph_header = gtk4::Label::builder()
-        .label("Peripherals")
+        .label("[ PERIPHERALS ]")
         .halign(gtk4::Align::Start)
         .css_classes(vec!["heading".to_string()])
         .build();
@@ -221,7 +241,7 @@ fn build_ui(app: &adw::Application) {
     let col_peripherals = create_column_box(&lbl_periph_header, &list_peripherals);
 
     let lbl_region_header = gtk4::Label::builder()
-        .label("User Regions")
+        .label("[ USER REGIONS ]")
         .halign(gtk4::Align::Start)
         .css_classes(vec!["heading".to_string()])
         .build();
@@ -234,7 +254,7 @@ fn build_ui(app: &adw::Application) {
     let col_regions = create_column_box(&lbl_region_header, &list_user_regions);
 
     let lbl_pv_header = gtk4::Label::builder()
-        .label("PV Variables (click variable to inspect code)")
+        .label("[ PV VARIABLES ]")
         .halign(gtk4::Align::Start)
         .css_classes(vec!["heading".to_string()])
         .build();
@@ -318,7 +338,7 @@ fn build_ui(app: &adw::Application) {
 
     let tag_generated = gtk4::TextTag::builder()
         .name("generated")
-        .foreground("#808080")
+        .foreground("#6e6e6e")
         .build();
 
     let tag_readonly = gtk4::TextTag::builder()
@@ -659,7 +679,7 @@ fn do_load_project(state: &Rc<RefCell<AppState>>, widgets: &Rc<AppWidgets>) {
             widgets.lbl_mcu_name.set_text(&project.meta.mcu_name);
 
             // Populate Peripherals List using adw::ActionRow
-            widgets.lbl_periph_header.set_text(&format!("Peripherals ({})", project.peripherals.len()));
+            widgets.lbl_periph_header.set_text(&format!("[ PERIPHERALS ({}) ]", project.peripherals.len()));
             clear_list_box(&widgets.list_peripherals);
             for p in &project.peripherals {
                 let row = create_peripheral_row(&p.name, p.mode.as_deref(), p.parameters.len());
@@ -672,7 +692,7 @@ fn do_load_project(state: &Rc<RefCell<AppState>>, widgets: &Rc<AppWidgets>) {
                 total_regions += 1;
             }
 
-            widgets.lbl_region_header.set_text(&format!("User Regions ({})", total_regions));
+            widgets.lbl_region_header.set_text(&format!("[ USER REGIONS ({}) ]", total_regions));
             clear_list_box(&widgets.list_user_regions);
 
             for r in &project.user_regions {
@@ -700,7 +720,7 @@ fn do_load_project(state: &Rc<RefCell<AppState>>, widgets: &Rc<AppWidgets>) {
             }
 
             // Populate PV Variables List using adw::ActionRow
-            widgets.lbl_pv_header.set_text(&format!("PV Variables ({})", project.pv_declarations.len()));
+            widgets.lbl_pv_header.set_text(&format!("[ PV VARIABLES ({}) ]", project.pv_declarations.len()));
             clear_list_box(&widgets.list_pv_variables);
             for pv in &project.pv_declarations {
                 let row = create_pv_row(&pv.name, &pv.type_str, pv.initial_value.as_deref(), pv.line);
@@ -708,10 +728,10 @@ fn do_load_project(state: &Rc<RefCell<AppState>>, widgets: &Rc<AppWidgets>) {
             }
 
             state.borrow_mut().loaded_project = Some(project);
-            widgets.toast_overlay.add_toast(adw::Toast::new("Project loaded successfully"));
+            widgets.toast_overlay.add_toast(adw::Toast::new("✓ Project loaded successfully"));
         }
         Err(err) => {
-            widgets.toast_overlay.add_toast(adw::Toast::new(&format!("Load Error: {}", err)));
+            widgets.toast_overlay.add_toast(adw::Toast::new(&format!("✗ Load Error: {}", err)));
         }
     }
 }
@@ -738,12 +758,12 @@ fn open_pv_source_view(pv_idx: usize, state: &Rc<RefCell<AppState>>, widgets: &R
     let main_c_content = match std::fs::read_to_string(&main_c_path) {
         Ok(c) => c,
         Err(e) => {
-            widgets.toast_overlay.add_toast(adw::Toast::new(&format!("Error reading main.c: {}", e)));
+            widgets.toast_overlay.add_toast(adw::Toast::new(&format!("✗ Error reading main.c: {}", e)));
             return;
         }
     };
 
-    widgets.lbl_active_pv.set_text(&format!("PV Variable: {} {} (Line {})", decl.type_str, decl.name, decl.line));
+    widgets.lbl_active_pv.set_text(&format!("[ PV VARIABLE: {} {} (Line {}) ]", decl.type_str, decl.name, decl.line));
     widgets.source_buffer.set_text(&main_c_content);
 
     // Apply C language syntax definition
