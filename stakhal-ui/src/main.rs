@@ -1359,19 +1359,15 @@ fn compute_initial_graph_layout(
         init_bottom_y = row_start_y;
     }
 
-    let irq_start_y = init_bottom_y + 50.0;
-
-    // 2. INTERRUPT CHAINS SECTION
+    // 2. INTERRUPT CHAINS SECTION (Stacked vertically, left-aligned)
     let irq_entry_edges: Vec<&GraphEdge> = edges
         .iter()
         .filter(|e| e.edge_type == EdgeType::IrqEntry)
         .collect();
 
-    let max_chains_per_row = 3;
-    let mut current_chain_x = 40.0;
-    let mut current_chain_row = 0;
+    let mut current_chain_y = init_bottom_y + 45.0;
 
-    for (i, irq_edge) in irq_entry_edges.iter().enumerate() {
+    for irq_edge in &irq_entry_edges {
         let handler_id = irq_edge.from.clone();
         let dispatch_id = irq_edge.to.clone();
 
@@ -1384,18 +1380,14 @@ fn compute_initial_graph_layout(
         let handler_w = (handler_id.len() as f64 * 8.5 + 28.0).max(130.0);
         let dispatch_w = (dispatch_id.len() as f64 * 8.5 + 28.0).max(130.0);
 
-        if i > 0 && i % max_chains_per_row == 0 {
-            current_chain_row += 1;
-            current_chain_x = 40.0;
-        }
-
-        let chain_y_l1 = irq_start_y + (current_chain_row as f64 * 230.0);
+        let chain_x = 40.0;
+        let chain_y_l1 = current_chain_y;
         let chain_y_l2 = chain_y_l1 + 65.0;
         let chain_y_l3 = chain_y_l2 + 65.0;
 
         let mut override_w_sum = 0.0;
         let mut override_nodes_info = Vec::new();
-        let mut curr_ov_x = current_chain_x;
+        let mut curr_ov_x = chain_x;
 
         for ov in &override_targets {
             let w = (ov.len() as f64 * 8.5 + 28.0).max(130.0);
@@ -1405,7 +1397,7 @@ fn compute_initial_graph_layout(
         }
 
         let chain_max_width = handler_w.max(dispatch_w).max(override_w_sum).max(160.0);
-        let center_x = current_chain_x + (chain_max_width / 2.0);
+        let center_x = chain_x + (chain_max_width / 2.0);
 
         map.insert(handler_id, (center_x - (handler_w / 2.0), chain_y_l1));
         map.insert(dispatch_id, (center_x - (dispatch_w / 2.0), chain_y_l2));
@@ -1414,7 +1406,13 @@ fn compute_initial_graph_layout(
             map.insert(ov_id, (ov_x, chain_y_l3));
         }
 
-        current_chain_x += chain_max_width + 40.0;
+        let chain_height = if override_targets.is_empty() {
+            130.0
+        } else {
+            195.0
+        };
+
+        current_chain_y += chain_height + 45.0;
     }
 
     map
