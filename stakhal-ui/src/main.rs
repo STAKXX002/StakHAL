@@ -1068,6 +1068,90 @@ button.flat:not(.titlebutton):active {
     });
     widgets.source_view.add_controller(gesture);
 
+    // Custom Right-Click Context Menu for PV Source Panel
+    let right_click_gesture = gtk4::GestureClick::new();
+    right_click_gesture.set_button(3);
+    let state_right_click = Rc::clone(&state);
+    let widgets_right_click = Rc::clone(&widgets);
+
+    right_click_gesture.connect_pressed(move |g, _n_press, x, y| {
+        g.set_state(gtk4::EventSequenceState::Claimed);
+        let widgets = &widgets_right_click;
+        let st = state_right_click.borrow();
+
+        let (buffer_x, buffer_y) = widgets.source_view.window_to_buffer_coords(
+            gtk4::TextWindowType::Text,
+            x as i32,
+            y as i32,
+        );
+
+        let is_decl_line = if let Some(iter) = widgets.source_view.iter_at_location(buffer_x, buffer_y) {
+            let clicked_line_1based = (iter.line() + 1) as usize;
+            if let Some(ref decl) = st.active_decl {
+                clicked_line_1based == decl.line
+            } else {
+                false
+            }
+        } else {
+            false
+        };
+        drop(st);
+
+        let popover = gtk4::Popover::builder()
+            .autohide(true)
+            .build();
+
+        let menu_box = gtk4::Box::builder()
+            .orientation(gtk4::Orientation::Vertical)
+            .spacing(4)
+            .margin_top(4)
+            .margin_bottom(4)
+            .margin_start(4)
+            .margin_end(4)
+            .build();
+
+        let btn_copy = gtk4::Button::builder()
+            .label("Copy")
+            .icon_name("edit-copy-symbolic")
+            .halign(gtk4::Align::Fill)
+            .css_classes(vec!["flat".to_string()])
+            .build();
+
+        let popover_clone = popover.clone();
+        let widgets_copy = Rc::clone(&widgets);
+        btn_copy.connect_clicked(move |_| {
+            let clipboard = widgets_copy.source_view.display().clipboard();
+            widgets_copy.source_buffer.copy_clipboard(&clipboard);
+            popover_clone.popdown();
+        });
+        menu_box.append(&btn_copy);
+
+        if is_decl_line {
+            let btn_edit = gtk4::Button::builder()
+                .label("Edit Declaration")
+                .icon_name("document-edit-symbolic")
+                .halign(gtk4::Align::Fill)
+                .css_classes(vec!["flat".to_string()])
+                .build();
+
+            let popover_edit_clone = popover.clone();
+            let state_edit = Rc::clone(&state_right_click);
+            let widgets_edit = Rc::clone(&widgets);
+            btn_edit.connect_clicked(move |_| {
+                popover_edit_clone.popdown();
+                enter_inline_edit_mode(&state_edit, &widgets_edit);
+            });
+            menu_box.append(&btn_edit);
+        }
+
+        popover.set_child(Some(&menu_box));
+        let rect = gdk::Rectangle::new(x as i32, y as i32, 1, 1);
+        popover.set_parent(&widgets.source_view);
+        popover.set_pointing_to(Some(&rect));
+        popover.popup();
+    });
+    widgets.source_view.add_controller(right_click_gesture);
+
     window.present();
 }
 
