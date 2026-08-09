@@ -47,6 +47,7 @@ struct GraphNodeLayout {
 struct GraphEdgeLayout {
     from_id: String,
     to_id: String,
+    #[allow(dead_code)]
     edge_type: EdgeType,
 }
 
@@ -925,6 +926,46 @@ button.flat:not(.titlebutton):active {
     });
 
     graph_drawing_area.add_controller(gesture_graph_click);
+
+    // Check last_project.json on startup
+    let config = load_app_config();
+    if let Some(dir_str) = config.project_dir {
+        let path = PathBuf::from(dir_str);
+        if path.exists() {
+            try_discover_folder(&path, &state, &widgets);
+        }
+    }
+
+    // Connect Browse Button Callback
+    let state_browse = Rc::clone(&state);
+    let widgets_browse = Rc::clone(&widgets);
+    btn_browse.connect_clicked(move |_| {
+        let dialog = gtk4::FileDialog::builder()
+            .title("Select STM32 Project Directory")
+            .build();
+
+        let state = Rc::clone(&state_browse);
+        let widgets = Rc::clone(&widgets_browse);
+        let parent_win = widgets.window.clone();
+        dialog.select_folder(
+            Some(&parent_win),
+            None::<&gio::Cancellable>,
+            move |result| {
+                if let Ok(file) = result {
+                    if let Some(path) = file.path() {
+                        try_discover_folder(&path, &state, &widgets);
+                    }
+                }
+            },
+        );
+    });
+
+    // Connect Load Project Button Callback
+    let state_load = Rc::clone(&state);
+    let widgets_load = Rc::clone(&widgets);
+    widgets.btn_load.connect_clicked(move |_| {
+        do_load_project(&state_load, &widgets_load);
+    });
 
     // Connect Call Graph navigation buttons
     let widgets_graph_open = Rc::clone(&widgets);
