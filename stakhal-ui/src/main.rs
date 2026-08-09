@@ -33,23 +33,7 @@ struct GeneratedRun {
     is_collapsed: bool,
 }
 
-#[derive(Clone, Debug)]
-struct GraphNodeLayout {
-    id: String,
-    label: String,
-    x: f64,
-    y: f64,
-    w: f64,
-    h: f64,
-}
 
-#[derive(Clone, Debug)]
-struct GraphEdgeLayout {
-    from_id: String,
-    to_id: String,
-    #[allow(dead_code)]
-    edge_type: EdgeType,
-}
 
 #[derive(Default)]
 struct AppState {
@@ -64,6 +48,10 @@ struct AppState {
     generated_runs: Vec<GeneratedRun>,
     is_generated_hidden: bool,
     selected_graph_node: Option<String>,
+    graph_node_positions: std::collections::HashMap<String, (f64, f64)>,
+    dragged_graph_node: Option<String>,
+    drag_start_node_pos: (f64, f64),
+    drag_start_click_pos: (f64, f64),
 }
 
 struct AppWidgets {
@@ -630,7 +618,7 @@ button.flat:not(.titlebutton):active {
         .build();
 
     let lbl_graph_hint = gtk4::Label::builder()
-        .label("Click node to highlight connections")
+        .label("Click node to highlight connections, drag node to move")
         .halign(gtk4::Align::End)
         .css_classes(vec!["dim-label".to_string(), "caption".to_string()])
         .build();
@@ -648,8 +636,8 @@ button.flat:not(.titlebutton):active {
     graph_header_bar.append(&lbl_graph_hint);
 
     let graph_drawing_area = gtk4::DrawingArea::builder()
-        .content_width(1100)
-        .content_height(600)
+        .content_width(2000)
+        .content_height(1500)
         .hexpand(true)
         .vexpand(true)
         .build();
@@ -735,41 +723,41 @@ button.flat:not(.titlebutton):active {
         graph_drawing_area: graph_drawing_area.clone(),
     });
 
-    // Cairo Draw Callback for Call Graph
+    // Cairo Draw Callback for Unified Draggable Call Graph
     let state_draw = Rc::clone(&state);
     graph_drawing_area.set_draw_func(move |_area, cr, width, height| {
-        let (edges, selected_node) = {
-            let st = state_draw.borrow();
-            let edges = match &st.loaded_project {
-                Some(p) => p.call_graph_edges.clone(),
-                None => return,
-            };
-            (edges, st.selected_graph_node.clone())
+        let mut st = state_draw.borrow_mut();
+        let edges = match &st.loaded_project {
+            Some(p) => p.call_graph_edges.clone(),
+            None => return,
         };
 
         if edges.is_empty() {
             return;
         }
 
-        let (nodes, layout_edges, (content_w, content_h), irq_header_y) = compute_graph_layout(&edges);
+        if st.graph_node_positions.is_empty() {
+            st.graph_node_positions = compute_initial_graph_layout(&edges);
+        }
 
-        let canvas_w = (width as f64).max(content_w);
-        let canvas_h = (height as f64).max(content_h);
+        let selected_node = st.selected_graph_node.clone();
+        let positions = st.graph_node_positions.clone();
+        drop(st);
+
+        let canvas_w = width as f64;
+        let canvas_h = height as f64;
 
         // Background (#0a0a0a)
         cr.set_source_rgb(0.04, 0.04, 0.04);
         cr.rectangle(0.0, 0.0, canvas_w, canvas_h);
         let _ = cr.fill();
 
-        // Section Headers
+        // Canvas Header
         cr.select_font_face("monospace", cairo::FontSlant::Normal, cairo::FontWeight::Bold);
         cr.set_font_size(13.0);
         cr.set_source_rgb(0.43, 0.43, 0.43);
         let _ = cr.move_to(20.0, 30.0);
-        let _ = cr.show_text("[ INITIALIZATION GRAPH ]");
-
-        let _ = cr.move_to(20.0, irq_header_y);
-        let _ = cr.show_text("[ INTERRUPT CHAINS ]");
+        let _ = cr.show_text("[ STAKHAL CALL GRAPH CANVAS (DRAGGABLE) ]");
 
         // Highlights computation
         let (highlighted_nodes, highlighted_edges) = if let Some(ref sel) = selected_node {
@@ -777,11 +765,11 @@ button.flat:not(.titlebutton):active {
             let mut connected_e = std::collections::HashSet::new();
             connected_n.insert(sel.clone());
 
-            for (idx, e) in layout_edges.iter().enumerate() {
-                if e.from_id == *sel || e.to_id == *sel {
+            for (idx, e) in edges.iter().enumerate() {
+                if e.from == *sel || e.to == *sel {
                     connected_e.insert(idx);
-                    connected_n.insert(e.from_id.clone());
-                    connected_n.insert(e.to_id.clone());
+                    connected_n.insert(e.from.clone());
+                    connected_n.insert(e.to.clone());
                 }
             }
             (Some(connected_n), Some(connected_e))
@@ -789,12 +777,23 @@ button.flat:not(.titlebutton):active {
             (None, None)
         };
 
-        // Draw Edges
-        for (idx, e) in layout_edges.iter().enumerate() {
-            let from_node = nodes.iter().find(|n| n.id == e.from_id);
-            let to_node = nodes.iter().find(|n| n.id == e.to_id);
+        // Draw Edges with Directional Arrowheads attached to node bounding boxes
+        for (idx, e) in edges.iter().enumerate() {
+            let from_pos = positions.get(&e.from);
+            let to_pos = positions.get(&e.to);
 
-            if let (Some(from), Some(to)) = (from_node, to_node) {
+            if let (Some(&(fx, fy)), Some(&(tx, ty))) = (from_pos, to_pos) {
+                let fw = (e.from.len() as f64 * 8.5 + 28.0).max(110.0);
+                let fh = 34.0;
+                let tw = (e.to.len() as f64 * 8.5 + 28.0).max(110.0);
+                let th = 34.0;
+
+                let fc = (fx + fw / 2.0, fy + fh / 2.0);
+                let tc = (tx + tw / 2.0, ty + th / 2.0);
+
+                let (sx, sy) = get_rect_ray_intersection(fx, fy, fw, fh, tc.0, tc.1);
+                let (ex, ey) = get_rect_ray_intersection(tx, ty, tw, th, fc.0, fc.1);
+
                 let is_hl = match &highlighted_edges {
                     Some(hl_set) => hl_set.contains(&idx),
                     None => false,
@@ -812,39 +811,42 @@ button.flat:not(.titlebutton):active {
                     cr.set_line_width(1.5);
                 }
 
-                let start_x = from.x + (from.w / 2.0);
-                let start_y = from.y + from.h;
-                let end_x = to.x + (to.w / 2.0);
-                let end_y = to.y;
-
-                let bus_y = end_y - (end_y - start_y).min(18.0);
-                let _ = cr.move_to(start_x, start_y);
-                let _ = cr.line_to(start_x, bus_y);
-                let _ = cr.line_to(end_x, bus_y);
-                let _ = cr.line_to(end_x, end_y);
+                let _ = cr.move_to(sx, sy);
+                let _ = cr.line_to(ex, ey);
                 let _ = cr.stroke();
 
-                let arrow_size = if is_hl { 6.0 } else { 5.0 };
-                let _ = cr.move_to(end_x, end_y);
-                let _ = cr.line_to(end_x - arrow_size, end_y - arrow_size * 1.4);
-                let _ = cr.line_to(end_x + arrow_size, end_y - arrow_size * 1.4);
+                let angle = (ey - sy).atan2(ex - sx);
+                let arrow_len = if is_hl { 10.0 } else { 8.0 };
+                let arrow_angle = 0.45;
+
+                let x1 = ex - arrow_len * (angle - arrow_angle).cos();
+                let y1 = ey - arrow_len * (angle - arrow_angle).sin();
+                let x2 = ex - arrow_len * (angle + arrow_angle).cos();
+                let y2 = ey - arrow_len * (angle + arrow_angle).sin();
+
+                let _ = cr.move_to(ex, ey);
+                let _ = cr.line_to(x1, y1);
+                let _ = cr.line_to(x2, y2);
                 let _ = cr.close_path();
                 let _ = cr.fill();
             }
         }
 
         // Draw Nodes
-        for n in &nodes {
-            let is_selected = selected_node.as_deref() == Some(&n.id);
+        for (n_id, &(n_x, n_y)) in &positions {
+            let n_w = (n_id.len() as f64 * 8.5 + 28.0).max(110.0);
+            let n_h = 34.0;
+
+            let is_selected = selected_node.as_deref() == Some(n_id.as_str());
             let is_connected = match &highlighted_nodes {
-                Some(set) => set.contains(&n.id),
+                Some(set) => set.contains(n_id),
                 None => false,
             };
             let is_dimmed = highlighted_nodes.is_some() && !is_connected;
 
             if is_selected {
                 cr.set_source_rgb(0.13, 0.13, 0.13);
-                let _ = cr.rectangle(n.x, n.y, n.w, n.h);
+                let _ = cr.rectangle(n_x, n_y, n_w, n_h);
                 let _ = cr.fill_preserve();
                 cr.set_source_rgb(1.0, 1.0, 1.0);
                 cr.set_line_width(2.0);
@@ -853,7 +855,7 @@ button.flat:not(.titlebutton):active {
                 cr.set_source_rgb(1.0, 1.0, 1.0);
             } else if is_connected {
                 cr.set_source_rgb(0.10, 0.10, 0.10);
-                let _ = cr.rectangle(n.x, n.y, n.w, n.h);
+                let _ = cr.rectangle(n_x, n_y, n_w, n_h);
                 let _ = cr.fill_preserve();
                 cr.set_source_rgb(0.67, 0.67, 0.67);
                 cr.set_line_width(1.5);
@@ -862,7 +864,7 @@ button.flat:not(.titlebutton):active {
                 cr.set_source_rgb(1.0, 1.0, 1.0);
             } else if is_dimmed {
                 cr.set_source_rgb(0.05, 0.05, 0.05);
-                let _ = cr.rectangle(n.x, n.y, n.w, n.h);
+                let _ = cr.rectangle(n_x, n_y, n_w, n_h);
                 let _ = cr.fill_preserve();
                 cr.set_source_rgb(0.12, 0.12, 0.12);
                 cr.set_line_width(1.0);
@@ -871,7 +873,7 @@ button.flat:not(.titlebutton):active {
                 cr.set_source_rgb(0.33, 0.33, 0.33);
             } else {
                 cr.set_source_rgb(0.07, 0.07, 0.07);
-                let _ = cr.rectangle(n.x, n.y, n.w, n.h);
+                let _ = cr.rectangle(n_x, n_y, n_w, n_h);
                 let _ = cr.fill_preserve();
                 cr.set_source_rgb(0.16, 0.16, 0.16);
                 cr.set_line_width(1.0);
@@ -880,52 +882,103 @@ button.flat:not(.titlebutton):active {
                 cr.set_source_rgb(0.88, 0.88, 0.88);
             }
 
-            cr.select_font_face("monospace", cairo::FontSlant::Normal, if is_selected { cairo::FontWeight::Bold } else { cairo::FontWeight::Normal });
+            cr.select_font_face(
+                "monospace",
+                cairo::FontSlant::Normal,
+                if is_selected {
+                    cairo::FontWeight::Bold
+                } else {
+                    cairo::FontWeight::Normal
+                },
+            );
             cr.set_font_size(11.5);
-            if let Ok(extents) = cr.text_extents(&n.label) {
-                let tx = n.x + (n.w - extents.width()) / 2.0;
-                let ty = n.y + (n.h + extents.height()) / 2.0 - 2.0;
+            if let Ok(extents) = cr.text_extents(n_id) {
+                let tx = n_x + (n_w - extents.width()) / 2.0;
+                let ty = n_y + (n_h + extents.height()) / 2.0 - 2.0;
                 let _ = cr.move_to(tx, ty);
-                let _ = cr.show_text(&n.label);
+                let _ = cr.show_text(n_id);
             }
         }
     });
 
-    // Gesture controller for node click selection
-    let gesture_graph_click = gtk4::GestureClick::new();
-    gesture_graph_click.set_button(1);
-    let state_graph_click = Rc::clone(&state);
-    let area_clone = graph_drawing_area.clone();
+    // Gesture controller for node drag & click interaction
+    let gesture_drag = gtk4::GestureDrag::new();
+    gesture_drag.set_button(1);
+    let state_drag_begin = Rc::clone(&state);
 
-    gesture_graph_click.connect_pressed(move |_, _n_press, x, y| {
-        let st = state_graph_click.borrow();
-        let edges = match &st.loaded_project {
-            Some(p) => p.call_graph_edges.clone(),
-            None => return,
-        };
-        drop(st);
+    gesture_drag.connect_drag_begin(move |_, start_x, start_y| {
+        let mut st = state_drag_begin.borrow_mut();
+        st.drag_start_click_pos = (start_x, start_y);
+        st.dragged_graph_node = None;
 
-        let (nodes, _, _, _) = compute_graph_layout(&edges);
-        let clicked_node = nodes.iter().find(|n| {
-            x >= n.x && x <= (n.x + n.w) && y >= n.y && y <= (n.y + n.h)
-        });
+        let mut clicked_id = None;
+        let mut start_pos = (0.0, 0.0);
 
-        let mut st = state_graph_click.borrow_mut();
-        if let Some(n) = clicked_node {
-            if st.selected_graph_node.as_deref() == Some(&n.id) {
-                st.selected_graph_node = None;
+        for (id, &(nx, ny)) in &st.graph_node_positions {
+            let nw = (id.len() as f64 * 8.5 + 28.0).max(110.0);
+            let nh = 34.0;
+            if start_x >= nx && start_x <= nx + nw && start_y >= ny && start_y <= ny + nh {
+                clicked_id = Some(id.clone());
+                start_pos = (nx, ny);
+                break;
+            }
+        }
+
+        if let Some(id) = clicked_id {
+            st.dragged_graph_node = Some(id);
+            st.drag_start_node_pos = start_pos;
+        }
+    });
+
+    let state_drag_update = Rc::clone(&state);
+    let area_drag_update = graph_drawing_area.clone();
+    gesture_drag.connect_drag_update(move |_, offset_x, offset_y| {
+        let mut st = state_drag_update.borrow_mut();
+        if let Some(ref node_id) = st.dragged_graph_node.clone() {
+            let (snx, sny) = st.drag_start_node_pos;
+            let new_x = (snx + offset_x).max(0.0);
+            let new_y = (sny + offset_y).max(0.0);
+            st.graph_node_positions.insert(node_id.clone(), (new_x, new_y));
+            drop(st);
+            area_drag_update.queue_draw();
+        }
+    });
+
+    let state_drag_end = Rc::clone(&state);
+    let area_drag_end = graph_drawing_area.clone();
+    gesture_drag.connect_drag_end(move |_, offset_x, offset_y| {
+        let dist = offset_x.hypot(offset_y);
+        let mut st = state_drag_end.borrow_mut();
+
+        if dist < 5.0 {
+            let (cx, cy) = st.drag_start_click_pos;
+            let mut clicked_id = None;
+            for (id, &(nx, ny)) in &st.graph_node_positions {
+                let nw = (id.len() as f64 * 8.5 + 28.0).max(110.0);
+                let nh = 34.0;
+                if cx >= nx && cx <= nx + nw && cy >= ny && cy <= ny + nh {
+                    clicked_id = Some(id.clone());
+                    break;
+                }
+            }
+
+            if let Some(id) = clicked_id {
+                if st.selected_graph_node.as_deref() == Some(&id) {
+                    st.selected_graph_node = None;
+                } else {
+                    st.selected_graph_node = Some(id);
+                }
             } else {
-                st.selected_graph_node = Some(n.id.clone());
+                st.selected_graph_node = None;
             }
-        } else {
-            st.selected_graph_node = None;
         }
-        drop(st);
 
-        area_clone.queue_draw();
+        st.dragged_graph_node = None;
+        drop(st);
+        area_drag_end.queue_draw();
     });
 
-    graph_drawing_area.add_controller(gesture_graph_click);
+    graph_drawing_area.add_controller(gesture_drag);
 
     // Check last_project.json on startup
     let config = load_app_config();
@@ -1204,15 +1257,44 @@ fn try_discover_folder(dir: &Path, state: &Rc<RefCell<AppState>>, widgets: &Rc<A
     }
 }
 
-fn compute_graph_layout(
-    edges: &[GraphEdge],
-) -> (Vec<GraphNodeLayout>, Vec<GraphEdgeLayout>, (f64, f64), f64) {
-    let mut nodes = Vec::new();
-    let mut layout_edges = Vec::new();
+fn get_rect_ray_intersection(
+    rect_x: f64,
+    rect_y: f64,
+    rect_w: f64,
+    rect_h: f64,
+    target_x: f64,
+    target_y: f64,
+) -> (f64, f64) {
+    let cx = rect_x + rect_w / 2.0;
+    let cy = rect_y + rect_h / 2.0;
+    let dx = target_x - cx;
+    let dy = target_y - cy;
 
-    let node_h = 34.0;
+    if dx == 0.0 && dy == 0.0 {
+        return (cx, cy);
+    }
+
+    let scale_x = if dx != 0.0 {
+        (rect_w / 2.0) / dx.abs()
+    } else {
+        f64::INFINITY
+    };
+    let scale_y = if dy != 0.0 {
+        (rect_h / 2.0) / dy.abs()
+    } else {
+        f64::INFINITY
+    };
+    let scale = scale_x.min(scale_y);
+
+    (cx + dx * scale, cy + dy * scale)
+}
+
+fn compute_initial_graph_layout(
+    edges: &[GraphEdge],
+) -> std::collections::HashMap<String, (f64, f64)> {
+    let mut map = std::collections::HashMap::new();
+
     let max_row_w = 720.0;
-    let mut max_x: f64 = 800.0;
 
     // 1. INITIALIZATION SECTION
     let init_edges: Vec<&GraphEdge> = edges
@@ -1227,17 +1309,15 @@ fn compute_graph_layout(
         target_nodes.sort();
         target_nodes.dedup();
 
-        // Wrap target nodes into rows (max 5 per row or max width 720px)
         let spacing_x = 20.0;
         let row_height = 55.0;
-        let mut rows: Vec<Vec<(String, String, f64)>> = Vec::new();
+        let mut rows: Vec<Vec<(String, f64)>> = Vec::new();
 
-        let mut current_row: Vec<(String, String, f64)> = Vec::new();
+        let mut current_row: Vec<(String, f64)> = Vec::new();
         let mut current_row_w = 0.0;
 
         for target in &target_nodes {
-            let label = target.clone();
-            let w = (label.len() as f64 * 8.5 + 28.0).max(110.0);
+            let w = (target.len() as f64 * 8.5 + 28.0).max(110.0);
             if !current_row.is_empty()
                 && (current_row_w + spacing_x + w > max_row_w || current_row.len() >= 5)
             {
@@ -1250,15 +1330,14 @@ fn compute_graph_layout(
             } else {
                 spacing_x + w
             };
-            current_row.push((target.clone(), label, w));
+            current_row.push((target.clone(), w));
         }
         if !current_row.is_empty() {
             rows.push(current_row);
         }
 
-        // Center main node relative to first row
         let first_row_w = if let Some(r0) = rows.first() {
-            r0.iter().map(|(_, _, w)| w).sum::<f64>()
+            r0.iter().map(|(_, w)| w).sum::<f64>()
                 + (r0.len().saturating_sub(1) as f64 * spacing_x)
         } else {
             110.0
@@ -1266,45 +1345,21 @@ fn compute_graph_layout(
 
         let main_w = 110.0;
         let main_x = (40.0 + (first_row_w / 2.0) - (main_w / 2.0)).max(40.0);
-        nodes.push(GraphNodeLayout {
-            id: "main".to_string(),
-            label: "main".to_string(),
-            x: main_x,
-            y: 50.0,
-            w: main_w,
-            h: node_h,
-        });
+        map.insert("main".to_string(), (main_x, 50.0));
 
-        // Place target nodes for each row
         let mut row_start_y = 130.0;
         for row in rows {
             let mut curr_x = 40.0;
-            for (id, label, w) in row {
-                nodes.push(GraphNodeLayout {
-                    id: id.clone(),
-                    label,
-                    x: curr_x,
-                    y: row_start_y,
-                    w,
-                    h: node_h,
-                });
-                layout_edges.push(GraphEdgeLayout {
-                    from_id: "main".to_string(),
-                    to_id: id,
-                    edge_type: EdgeType::Init,
-                });
+            for (id, w) in row {
+                map.insert(id, (curr_x, row_start_y));
                 curr_x += w + spacing_x;
-            }
-            if curr_x > max_x {
-                max_x = curr_x;
             }
             row_start_y += row_height;
         }
         init_bottom_y = row_start_y;
     }
 
-    let irq_header_y = init_bottom_y + 20.0;
-    let irq_start_y = irq_header_y + 35.0;
+    let irq_start_y = init_bottom_y + 50.0;
 
     // 2. INTERRUPT CHAINS SECTION
     let irq_entry_edges: Vec<&GraphEdge> = edges
@@ -1315,7 +1370,6 @@ fn compute_graph_layout(
     let max_chains_per_row = 3;
     let mut current_chain_x = 40.0;
     let mut current_chain_row = 0;
-    let mut max_chain_y = irq_start_y;
 
     for (i, irq_edge) in irq_entry_edges.iter().enumerate() {
         let handler_id = irq_edge.from.clone();
@@ -1353,63 +1407,17 @@ fn compute_graph_layout(
         let chain_max_width = handler_w.max(dispatch_w).max(override_w_sum).max(160.0);
         let center_x = current_chain_x + (chain_max_width / 2.0);
 
-        nodes.push(GraphNodeLayout {
-            id: handler_id.clone(),
-            label: handler_id.clone(),
-            x: center_x - (handler_w / 2.0),
-            y: chain_y_l1,
-            w: handler_w,
-            h: node_h,
-        });
+        map.insert(handler_id, (center_x - (handler_w / 2.0), chain_y_l1));
+        map.insert(dispatch_id, (center_x - (dispatch_w / 2.0), chain_y_l2));
 
-        nodes.push(GraphNodeLayout {
-            id: dispatch_id.clone(),
-            label: dispatch_id.clone(),
-            x: center_x - (dispatch_w / 2.0),
-            y: chain_y_l2,
-            w: dispatch_w,
-            h: node_h,
-        });
-
-        layout_edges.push(GraphEdgeLayout {
-            from_id: handler_id.clone(),
-            to_id: dispatch_id.clone(),
-            edge_type: EdgeType::IrqEntry,
-        });
-
-        for (ov_id, ov_x, ov_w) in override_nodes_info {
-            nodes.push(GraphNodeLayout {
-                id: ov_id.clone(),
-                label: ov_id.clone(),
-                x: ov_x,
-                y: chain_y_l3,
-                w: ov_w,
-                h: node_h,
-            });
-            layout_edges.push(GraphEdgeLayout {
-                from_id: dispatch_id.clone(),
-                to_id: ov_id,
-                edge_type: EdgeType::WeakOverride,
-            });
+        for (ov_id, ov_x, _) in override_nodes_info {
+            map.insert(ov_id, (ov_x, chain_y_l3));
         }
 
         current_chain_x += chain_max_width + 40.0;
-        if current_chain_x > max_x {
-            max_x = current_chain_x;
-        }
-
-        let chain_bottom = if override_targets.is_empty() {
-            chain_y_l2 + node_h + 40.0
-        } else {
-            chain_y_l3 + node_h + 40.0
-        };
-        if chain_bottom > max_chain_y {
-            max_chain_y = chain_bottom;
-        }
     }
 
-    let max_y = max_chain_y.max(init_bottom_y + 100.0);
-    (nodes, layout_edges, (max_x + 40.0, max_y), irq_header_y)
+    map
 }
 
 fn do_load_project(state: &Rc<RefCell<AppState>>, widgets: &Rc<AppWidgets>) {
@@ -1482,9 +1490,10 @@ fn do_load_project(state: &Rc<RefCell<AppState>>, widgets: &Rc<AppWidgets>) {
                 widgets.list_pv_variables.append(&row);
             }
 
-            let (_, _, (cw, ch), _) = compute_graph_layout(&project.call_graph_edges);
-            widgets.graph_drawing_area.set_content_width(cw as i32);
-            widgets.graph_drawing_area.set_content_height(ch as i32);
+            let init_positions = compute_initial_graph_layout(&project.call_graph_edges);
+            state.borrow_mut().graph_node_positions = init_positions;
+            widgets.graph_drawing_area.set_content_width(2000);
+            widgets.graph_drawing_area.set_content_height(1500);
             widgets.btn_call_graph.set_sensitive(true);
             widgets.graph_drawing_area.queue_draw();
 
