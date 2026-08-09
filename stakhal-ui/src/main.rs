@@ -751,7 +751,7 @@ button.flat:not(.titlebutton):active {
             return;
         }
 
-        let (nodes, layout_edges, (content_w, content_h)) = compute_graph_layout(&edges);
+        let (nodes, layout_edges, (content_w, content_h), irq_header_y) = compute_graph_layout(&edges);
 
         let canvas_w = (width as f64).max(content_w);
         let canvas_h = (height as f64).max(content_h);
@@ -768,7 +768,7 @@ button.flat:not(.titlebutton):active {
         let _ = cr.move_to(20.0, 30.0);
         let _ = cr.show_text("[ INITIALIZATION GRAPH ]");
 
-        let _ = cr.move_to(20.0, 220.0);
+        let _ = cr.move_to(20.0, irq_header_y);
         let _ = cr.show_text("[ INTERRUPT CHAINS ]");
 
         // Highlights computation
@@ -817,10 +817,10 @@ button.flat:not(.titlebutton):active {
                 let end_x = to.x + (to.w / 2.0);
                 let end_y = to.y;
 
-                let mid_y = start_y + (end_y - start_y) / 2.0;
+                let bus_y = end_y - (end_y - start_y).min(18.0);
                 let _ = cr.move_to(start_x, start_y);
-                let _ = cr.line_to(start_x, mid_y);
-                let _ = cr.line_to(end_x, mid_y);
+                let _ = cr.line_to(start_x, bus_y);
+                let _ = cr.line_to(end_x, bus_y);
                 let _ = cr.line_to(end_x, end_y);
                 let _ = cr.stroke();
 
@@ -905,7 +905,7 @@ button.flat:not(.titlebutton):active {
         };
         drop(st);
 
-        let (nodes, _, _) = compute_graph_layout(&edges);
+        let (nodes, _, _, _) = compute_graph_layout(&edges);
         let clicked_node = nodes.iter().find(|n| {
             x >= n.x && x <= (n.x + n.w) && y >= n.y && y <= (n.y + n.h)
         });
@@ -1204,41 +1204,68 @@ fn try_discover_folder(dir: &Path, state: &Rc<RefCell<AppState>>, widgets: &Rc<A
     }
 }
 
-fn compute_graph_layout(edges: &[GraphEdge]) -> (Vec<GraphNodeLayout>, Vec<GraphEdgeLayout>, (f64, f64)) {
+fn compute_graph_layout(
+    edges: &[GraphEdge],
+) -> (Vec<GraphNodeLayout>, Vec<GraphEdgeLayout>, (f64, f64), f64) {
     let mut nodes = Vec::new();
     let mut layout_edges = Vec::new();
 
     let node_h = 34.0;
+    let max_row_w = 720.0;
     let mut max_x: f64 = 800.0;
-    let mut max_y: f64 = 520.0;
 
     // 1. INITIALIZATION SECTION
-    let init_edges: Vec<&GraphEdge> = edges.iter().filter(|e| e.edge_type == EdgeType::Init).collect();
+    let init_edges: Vec<&GraphEdge> = edges
+        .iter()
+        .filter(|e| e.edge_type == EdgeType::Init)
+        .collect();
+
+    let mut init_bottom_y = 160.0;
 
     if !init_edges.is_empty() {
         let mut target_nodes: Vec<String> = init_edges.iter().map(|e| e.to.clone()).collect();
         target_nodes.sort();
         target_nodes.dedup();
 
-        let spacing_x = 24.0;
-        let mut curr_x = 40.0;
-        let child_y = 120.0;
-        let mut child_positions = Vec::new();
+        // Wrap target nodes into rows (max 5 per row or max width 720px)
+        let spacing_x = 20.0;
+        let row_height = 55.0;
+        let mut rows: Vec<Vec<(String, String, f64)>> = Vec::new();
+
+        let mut current_row: Vec<(String, String, f64)> = Vec::new();
+        let mut current_row_w = 0.0;
 
         for target in &target_nodes {
             let label = target.clone();
             let w = (label.len() as f64 * 8.5 + 28.0).max(110.0);
-            child_positions.push((target.clone(), label, curr_x, child_y, w));
-            curr_x += w + spacing_x;
+            if !current_row.is_empty()
+                && (current_row_w + spacing_x + w > max_row_w || current_row.len() >= 5)
+            {
+                rows.push(current_row);
+                current_row = Vec::new();
+                current_row_w = 0.0;
+            }
+            current_row_w += if current_row.is_empty() {
+                w
+            } else {
+                spacing_x + w
+            };
+            current_row.push((target.clone(), label, w));
+        }
+        if !current_row.is_empty() {
+            rows.push(current_row);
         }
 
-        let init_total_width = curr_x;
-        if init_total_width > max_x {
-            max_x = init_total_width;
-        }
+        // Center main node relative to first row
+        let first_row_w = if let Some(r0) = rows.first() {
+            r0.iter().map(|(_, _, w)| w).sum::<f64>()
+                + (r0.len().saturating_sub(1) as f64 * spacing_x)
+        } else {
+            110.0
+        };
 
         let main_w = 110.0;
-        let main_x = ((init_total_width / 2.0) - (main_w / 2.0)).max(40.0);
+        let main_x = (40.0 + (first_row_w / 2.0) - (main_w / 2.0)).max(40.0);
         nodes.push(GraphNodeLayout {
             id: "main".to_string(),
             label: "main".to_string(),
@@ -1248,32 +1275,49 @@ fn compute_graph_layout(edges: &[GraphEdge]) -> (Vec<GraphNodeLayout>, Vec<Graph
             h: node_h,
         });
 
-        for (id, label, x, y, w) in child_positions {
-            nodes.push(GraphNodeLayout {
-                id: id.clone(),
-                label,
-                x,
-                y,
-                w,
-                h: node_h,
-            });
-            layout_edges.push(GraphEdgeLayout {
-                from_id: "main".to_string(),
-                to_id: id,
-                edge_type: EdgeType::Init,
-            });
+        // Place target nodes for each row
+        let mut row_start_y = 130.0;
+        for row in rows {
+            let mut curr_x = 40.0;
+            for (id, label, w) in row {
+                nodes.push(GraphNodeLayout {
+                    id: id.clone(),
+                    label,
+                    x: curr_x,
+                    y: row_start_y,
+                    w,
+                    h: node_h,
+                });
+                layout_edges.push(GraphEdgeLayout {
+                    from_id: "main".to_string(),
+                    to_id: id,
+                    edge_type: EdgeType::Init,
+                });
+                curr_x += w + spacing_x;
+            }
+            if curr_x > max_x {
+                max_x = curr_x;
+            }
+            row_start_y += row_height;
         }
+        init_bottom_y = row_start_y;
     }
 
+    let irq_header_y = init_bottom_y + 20.0;
+    let irq_start_y = irq_header_y + 35.0;
+
     // 2. INTERRUPT CHAINS SECTION
-    let irq_entry_edges: Vec<&GraphEdge> = edges.iter().filter(|e| e.edge_type == EdgeType::IrqEntry).collect();
+    let irq_entry_edges: Vec<&GraphEdge> = edges
+        .iter()
+        .filter(|e| e.edge_type == EdgeType::IrqEntry)
+        .collect();
 
-    let mut curr_chain_x = 40.0;
-    let chain_y_l1 = 260.0;
-    let chain_y_l2 = 340.0;
-    let chain_y_l3 = 420.0;
+    let max_chains_per_row = 3;
+    let mut current_chain_x = 40.0;
+    let mut current_chain_row = 0;
+    let mut max_chain_y = irq_start_y;
 
-    for irq_edge in &irq_entry_edges {
+    for (i, irq_edge) in irq_entry_edges.iter().enumerate() {
         let handler_id = irq_edge.from.clone();
         let dispatch_id = irq_edge.to.clone();
 
@@ -1286,9 +1330,18 @@ fn compute_graph_layout(edges: &[GraphEdge]) -> (Vec<GraphNodeLayout>, Vec<Graph
         let handler_w = (handler_id.len() as f64 * 8.5 + 28.0).max(130.0);
         let dispatch_w = (dispatch_id.len() as f64 * 8.5 + 28.0).max(130.0);
 
+        if i > 0 && i % max_chains_per_row == 0 {
+            current_chain_row += 1;
+            current_chain_x = 40.0;
+        }
+
+        let chain_y_l1 = irq_start_y + (current_chain_row as f64 * 230.0);
+        let chain_y_l2 = chain_y_l1 + 65.0;
+        let chain_y_l3 = chain_y_l2 + 65.0;
+
         let mut override_w_sum = 0.0;
         let mut override_nodes_info = Vec::new();
-        let mut curr_ov_x = curr_chain_x;
+        let mut curr_ov_x = current_chain_x;
 
         for ov in &override_targets {
             let w = (ov.len() as f64 * 8.5 + 28.0).max(130.0);
@@ -1298,7 +1351,7 @@ fn compute_graph_layout(edges: &[GraphEdge]) -> (Vec<GraphNodeLayout>, Vec<Graph
         }
 
         let chain_max_width = handler_w.max(dispatch_w).max(override_w_sum).max(160.0);
-        let center_x = curr_chain_x + (chain_max_width / 2.0);
+        let center_x = current_chain_x + (chain_max_width / 2.0);
 
         nodes.push(GraphNodeLayout {
             id: handler_id.clone(),
@@ -1340,17 +1393,23 @@ fn compute_graph_layout(edges: &[GraphEdge]) -> (Vec<GraphNodeLayout>, Vec<Graph
             });
         }
 
-        curr_chain_x += chain_max_width + 60.0;
+        current_chain_x += chain_max_width + 40.0;
+        if current_chain_x > max_x {
+            max_x = current_chain_x;
+        }
+
+        let chain_bottom = if override_targets.is_empty() {
+            chain_y_l2 + node_h + 40.0
+        } else {
+            chain_y_l3 + node_h + 40.0
+        };
+        if chain_bottom > max_chain_y {
+            max_chain_y = chain_bottom;
+        }
     }
 
-    if curr_chain_x > max_x {
-        max_x = curr_chain_x;
-    }
-    if chain_y_l3 + node_h + 60.0 > max_y {
-        max_y = chain_y_l3 + node_h + 60.0;
-    }
-
-    (nodes, layout_edges, (max_x + 60.0, max_y))
+    let max_y = max_chain_y.max(init_bottom_y + 100.0);
+    (nodes, layout_edges, (max_x + 40.0, max_y), irq_header_y)
 }
 
 fn do_load_project(state: &Rc<RefCell<AppState>>, widgets: &Rc<AppWidgets>) {
@@ -1423,7 +1482,7 @@ fn do_load_project(state: &Rc<RefCell<AppState>>, widgets: &Rc<AppWidgets>) {
                 widgets.list_pv_variables.append(&row);
             }
 
-            let (_, _, (cw, ch)) = compute_graph_layout(&project.call_graph_edges);
+            let (_, _, (cw, ch), _) = compute_graph_layout(&project.call_graph_edges);
             widgets.graph_drawing_area.set_content_width(cw as i32);
             widgets.graph_drawing_area.set_content_height(ch as i32);
             widgets.btn_call_graph.set_sensitive(true);
