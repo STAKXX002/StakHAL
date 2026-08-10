@@ -33,7 +33,16 @@ struct GeneratedRun {
     is_collapsed: bool,
 }
 
-
+#[derive(Clone, Debug)]
+struct ChainHeaderLayout {
+    handler_id: String,
+    label: String,
+    x: f64,
+    y: f64,
+    w: f64,
+    h: f64,
+    is_collapsed: bool,
+}
 
 #[derive(Default)]
 struct AppState {
@@ -49,6 +58,8 @@ struct AppState {
     is_generated_hidden: bool,
     selected_graph_node: Option<String>,
     graph_node_positions: std::collections::HashMap<String, (f64, f64)>,
+    collapsed_chains: std::collections::HashSet<String>,
+    chain_headers: Vec<ChainHeaderLayout>,
     dragged_graph_node: Option<String>,
     drag_start_node_pos: (f64, f64),
     drag_start_click_pos: (f64, f64),
@@ -130,11 +141,11 @@ fn create_icon_button(label_text: &str, icon_name: &str, is_suggested: bool) -> 
     btn
 }
 
+
+
 fn build_ui(app: &adw::Application) {
-    // Force dark mode consistently across all Libadwaita / GTK4 widgets and dialogs
     adw::StyleManager::default().set_color_scheme(adw::ColorScheme::ForceDark);
 
-    // btop-inspired Terminal/TUI Design System CSS Provider
     let css_provider = gtk4::CssProvider::new();
     css_provider.load_from_string(r#"
 * {
@@ -293,7 +304,6 @@ button.flat:not(.titlebutton):active {
         );
     }
 
-    // PAGE 1: Overview Page
     let btn_browse = gtk4::Button::builder()
         .icon_name("folder-open-symbolic")
         .tooltip_text("Browse Project Folder")
@@ -354,7 +364,6 @@ button.flat:not(.titlebutton):active {
     toolbar_box.append(&btn_load);
     toolbar_box.append(&btn_call_graph);
 
-    // Compact Status Bar Row (btop info bar pattern)
     let lbl_project_name = gtk4::Label::builder()
         .label("NAME: —")
         .halign(gtk4::Align::Start)
@@ -388,7 +397,6 @@ button.flat:not(.titlebutton):active {
     status_bar_box.append(&div_2);
     status_bar_box.append(&lbl_mcu_name);
 
-    // Three Column Setup: Peripherals, User Regions, PV Variables (Balanced weights)
     let lbl_periph_header = gtk4::Label::builder()
         .label("[ ▸ PERIPHERALS ]")
         .halign(gtk4::Align::Start)
@@ -449,7 +457,6 @@ button.flat:not(.titlebutton):active {
     overview_box.append(&status_bar_box);
     overview_box.append(&columns_box);
 
-    // PAGE 2: PV Source Panel
     let btn_back = create_icon_button("Back to Overview", "go-previous-symbolic", false);
 
     let lbl_active_pv = gtk4::Label::builder()
@@ -548,7 +555,6 @@ button.flat:not(.titlebutton):active {
         .child(&source_view)
         .build();
 
-    // Inline edit floating action bar
     let lbl_edit_status = gtk4::Label::builder()
         .label("Editing declaration (Enter to Save, Esc to Cancel)")
         .halign(gtk4::Align::Start)
@@ -607,7 +613,6 @@ button.flat:not(.titlebutton):active {
     source_panel_box.append(&source_header_bar);
     source_panel_box.append(&source_overlay);
 
-    // PAGE 3: Call Graph Panel
     let btn_graph_back = create_icon_button("Back to Overview", "go-previous-symbolic", false);
 
     let lbl_graph_title = gtk4::Label::builder()
@@ -654,7 +659,6 @@ button.flat:not(.titlebutton):active {
     graph_panel_box.append(&graph_header_bar);
     graph_panel_box.append(&graph_scrolled);
 
-    // View Stack with smooth panel-switch transitions (Overview ↔ Source View ↔ Call Graph)
     let stack = gtk4::Stack::builder()
         .transition_type(gtk4::StackTransitionType::SlideLeftRight)
         .transition_duration(220)
@@ -665,13 +669,9 @@ button.flat:not(.titlebutton):active {
     stack.add_named(&graph_panel_box, Some("call_graph"));
     stack.set_visible_child_name("overview");
 
-    // HeaderBar
     let header_bar = adw::HeaderBar::new();
-
-    // ToastOverlay for transient feedback
     let toast_overlay = adw::ToastOverlay::new();
 
-    // Root Content Layout
     let content_box = gtk4::Box::builder()
         .orientation(gtk4::Orientation::Vertical)
         .build();
@@ -723,7 +723,6 @@ button.flat:not(.titlebutton):active {
         graph_drawing_area: graph_drawing_area.clone(),
     });
 
-    // Cairo Draw Callback for Unified Draggable Call Graph
     let state_draw = Rc::clone(&state);
     graph_drawing_area.set_draw_func(move |_area, cr, width, height| {
         let mut st = state_draw.borrow_mut();
@@ -732,32 +731,45 @@ button.flat:not(.titlebutton):active {
             None => return,
         };
 
-        if edges.is_empty() {
-            return;
-        }
+        if edges.is_empty() { return; }
 
         if st.graph_node_positions.is_empty() {
-            st.graph_node_positions = compute_initial_graph_layout(&edges);
+            let (pos, headers) = compute_graph_layout(&edges, &st.collapsed_chains);
+            st.graph_node_positions = pos;
+            st.chain_headers = headers;
         }
 
         let selected_node = st.selected_graph_node.clone();
         let positions = st.graph_node_positions.clone();
+        let headers = st.chain_headers.clone();
         drop(st);
 
         let canvas_w = width as f64;
         let canvas_h = height as f64;
 
-        // Background (#0a0a0a)
         cr.set_source_rgb(0.04, 0.04, 0.04);
         cr.rectangle(0.0, 0.0, canvas_w, canvas_h);
         let _ = cr.fill();
 
-        // Canvas Header
-        cr.select_font_face("monospace", cairo::FontSlant::Normal, cairo::FontWeight::Bold);
-        cr.set_font_size(13.0);
-        cr.set_source_rgb(0.43, 0.43, 0.43);
-        let _ = cr.move_to(20.0, 30.0);
-        let _ = cr.show_text("[ STAKHAL CALL GRAPH CANVAS (DRAGGABLE) ]");
+        for h in &headers {
+            cr.set_source_rgb(0.08, 0.08, 0.08);
+            draw_rounded_rectangle(cr, h.x, h.y, h.w, h.h, 5.0);
+            let _ = cr.fill_preserve();
+            cr.set_source_rgb(0.20, 0.20, 0.20);
+            cr.set_line_width(1.0);
+            let _ = cr.stroke();
+
+            cr.select_font_face("monospace", cairo::FontSlant::Normal, cairo::FontWeight::Bold);
+            cr.set_font_size(11.5);
+            cr.set_source_rgb(0.81, 0.57, 0.47);
+            let _ = cr.move_to(h.x + 10.0, h.y + 18.0);
+            let icon = if h.is_collapsed { "▸" } else { "▾" };
+            let _ = cr.show_text(icon);
+
+            cr.set_source_rgb(0.85, 0.85, 0.85);
+            let _ = cr.move_to(h.x + 24.0, h.y + 18.0);
+            let _ = cr.show_text(&h.label);
+        }
 
         // Highlights computation
         let (highlighted_nodes, highlighted_edges) = if let Some(ref sel) = selected_node {
@@ -777,7 +789,7 @@ button.flat:not(.titlebutton):active {
             (None, None)
         };
 
-        // Draw Edges with Directional Arrowheads attached to node bounding boxes
+        // Draw Edges
         for (idx, e) in edges.iter().enumerate() {
             let from_pos = positions.get(&e.from);
             let to_pos = positions.get(&e.to);
@@ -794,10 +806,7 @@ button.flat:not(.titlebutton):active {
                 let (sx, sy) = get_rect_ray_intersection(fx, fy, fw, fh, tc.0, tc.1);
                 let (ex, ey) = get_rect_ray_intersection(tx, ty, tw, th, fc.0, fc.1);
 
-                let is_hl = match &highlighted_edges {
-                    Some(hl_set) => hl_set.contains(&idx),
-                    None => false,
-                };
+                let is_hl = highlighted_edges.as_ref().map_or(false, |hl| hl.contains(&idx));
                 let is_dimmed = highlighted_edges.is_some() && !is_hl;
 
                 if is_hl {
@@ -824,30 +833,11 @@ button.flat:not(.titlebutton):active {
                     (sx + offset_x * sign_x, sy, ex - offset_x * sign_x, ey)
                 };
 
-                let is_hl = match &highlighted_edges {
-                    Some(hl_set) => hl_set.contains(&idx),
-                    None => false,
-                };
-                let is_dimmed = highlighted_edges.is_some() && !is_hl;
-
-                if is_hl {
-                    cr.set_source_rgb(1.0, 1.0, 1.0);
-                    cr.set_line_width(2.0);
-                } else if is_dimmed {
-                    cr.set_source_rgb(0.16, 0.16, 0.16);
-                    cr.set_line_width(1.0);
-                } else {
-                    cr.set_source_rgb(0.43, 0.43, 0.43);
-                    cr.set_line_width(1.5);
-                }
-
                 let _ = cr.move_to(sx, sy);
                 let _ = cr.curve_to(cp1_x, cp1_y, cp2_x, cp2_y, ex, ey);
                 let _ = cr.stroke();
 
-                let tangent_dx = ex - cp2_x;
-                let tangent_dy = ey - cp2_y;
-                let angle = tangent_dy.atan2(tangent_dx);
+                let angle = (ey - cp2_y).atan2(ex - cp2_x);
                 let arrow_len = if is_hl { 10.0 } else { 8.0 };
                 let arrow_angle = 0.45;
 
@@ -871,10 +861,7 @@ button.flat:not(.titlebutton):active {
             let radius = 7.0;
 
             let is_selected = selected_node.as_deref() == Some(n_id.as_str());
-            let is_connected = match &highlighted_nodes {
-                Some(set) => set.contains(n_id),
-                None => false,
-            };
+            let is_connected = highlighted_nodes.as_ref().map_or(false, |set| set.contains(n_id));
             let is_dimmed = highlighted_nodes.is_some() && !is_connected;
 
             if is_selected {
@@ -907,7 +894,6 @@ button.flat:not(.titlebutton):active {
                 let _ = cr.stroke();
             }
 
-            // Top Category Accent Strip (3px header bar)
             let (cat_r, cat_g, cat_b) = get_node_category_color(n_id);
             let _ = cr.save();
             draw_rounded_rectangle(cr, n_x, n_y, n_w, n_h, radius);
@@ -929,15 +915,7 @@ button.flat:not(.titlebutton):active {
                 cr.set_source_rgb(0.88, 0.88, 0.88);
             }
 
-            cr.select_font_face(
-                "monospace",
-                cairo::FontSlant::Normal,
-                if is_selected {
-                    cairo::FontWeight::Bold
-                } else {
-                    cairo::FontWeight::Normal
-                },
-            );
+            cr.select_font_face("monospace", cairo::FontSlant::Normal, if is_selected { cairo::FontWeight::Bold } else { cairo::FontWeight::Normal });
             cr.set_font_size(11.5);
             if let Ok(extents) = cr.text_extents(n_id) {
                 let tx = n_x + (n_w - extents.width()) / 2.0;
@@ -948,7 +926,6 @@ button.flat:not(.titlebutton):active {
         }
     });
 
-    // Gesture controller for node drag & click interaction
     let gesture_drag = gtk4::GestureDrag::new();
     gesture_drag.set_button(1);
     let state_drag_begin = Rc::clone(&state);
@@ -999,6 +976,35 @@ button.flat:not(.titlebutton):active {
 
         if dist < 5.0 {
             let (cx, cy) = st.drag_start_click_pos;
+
+            // Check if clicked inside a chain header bar
+            let mut clicked_header_id = None;
+            for h in &st.chain_headers {
+                if cx >= h.x && cx <= h.x + h.w && cy >= h.y && cy <= h.y + h.h {
+                    clicked_header_id = Some(h.handler_id.clone());
+                    break;
+                }
+            }
+
+            if let Some(handler_id) = clicked_header_id {
+                if st.collapsed_chains.contains(&handler_id) {
+                    st.collapsed_chains.remove(&handler_id);
+                } else {
+                    st.collapsed_chains.insert(handler_id);
+                }
+
+                if let Some(ref proj) = st.loaded_project {
+                    let (pos, headers) = compute_graph_layout(&proj.call_graph_edges, &st.collapsed_chains);
+                    st.graph_node_positions = pos;
+                    st.chain_headers = headers;
+                }
+                st.dragged_graph_node = None;
+                drop(st);
+                area_drag_end.queue_draw();
+                return;
+            }
+
+            // Otherwise, check node click selection
             let mut clicked_id = None;
             for (id, &(nx, ny)) in &st.graph_node_positions {
                 let nw = (id.len() as f64 * 8.5 + 28.0).max(110.0);
@@ -1362,10 +1368,15 @@ fn get_rect_ray_intersection(
     (cx + dx * scale, cy + dy * scale)
 }
 
-fn compute_initial_graph_layout(
+fn compute_graph_layout(
     edges: &[GraphEdge],
-) -> std::collections::HashMap<String, (f64, f64)> {
+    collapsed_chains: &std::collections::HashSet<String>,
+) -> (
+    std::collections::HashMap<String, (f64, f64)>,
+    Vec<ChainHeaderLayout>,
+) {
     let mut map = std::collections::HashMap::new();
+    let mut headers = Vec::new();
 
     let max_row_w = 720.0;
 
@@ -1432,13 +1443,13 @@ fn compute_initial_graph_layout(
         init_bottom_y = row_start_y;
     }
 
-    // 2. INTERRUPT CHAINS SECTION (Stacked vertically, left-aligned)
+    // 2. INTERRUPT CHAINS SECTION (Stacked vertically, left-aligned with collapsible header bars)
     let irq_entry_edges: Vec<&GraphEdge> = edges
         .iter()
         .filter(|e| e.edge_type == EdgeType::IrqEntry)
         .collect();
 
-    let mut current_chain_y = init_bottom_y + 45.0;
+    let mut current_chain_y = init_bottom_y + 35.0;
 
     for irq_edge in &irq_entry_edges {
         let handler_id = irq_edge.from.clone();
@@ -1450,45 +1461,66 @@ fn compute_initial_graph_layout(
             .map(|e| e.to.clone())
             .collect();
 
-        let handler_w = (handler_id.len() as f64 * 8.5 + 28.0).max(130.0);
-        let dispatch_w = (dispatch_id.len() as f64 * 8.5 + 28.0).max(130.0);
+        let total_nodes = 1 + 1 + override_targets.len();
+        let is_collapsed = collapsed_chains.contains(&handler_id);
 
+        let header_label = format!("{} chain ({} nodes)", handler_id, total_nodes);
+        let header_w = (header_label.len() as f64 * 8.0 + 36.0).max(220.0);
+        let header_h = 28.0;
         let chain_x = 40.0;
-        let chain_y_l1 = current_chain_y;
-        let chain_y_l2 = chain_y_l1 + 65.0;
-        let chain_y_l3 = chain_y_l2 + 65.0;
 
-        let mut override_w_sum = 0.0;
-        let mut override_nodes_info = Vec::new();
-        let mut curr_ov_x = chain_x;
+        headers.push(ChainHeaderLayout {
+            handler_id: handler_id.clone(),
+            label: header_label,
+            x: chain_x,
+            y: current_chain_y,
+            w: header_w,
+            h: header_h,
+            is_collapsed,
+        });
 
-        for ov in &override_targets {
-            let w = (ov.len() as f64 * 8.5 + 28.0).max(130.0);
-            override_nodes_info.push((ov.clone(), curr_ov_x, w));
-            curr_ov_x += w + 20.0;
-            override_w_sum += w + 20.0;
-        }
-
-        let chain_max_width = handler_w.max(dispatch_w).max(override_w_sum).max(160.0);
-        let center_x = chain_x + (chain_max_width / 2.0);
-
-        map.insert(handler_id, (center_x - (handler_w / 2.0), chain_y_l1));
-        map.insert(dispatch_id, (center_x - (dispatch_w / 2.0), chain_y_l2));
-
-        for (ov_id, ov_x, _) in override_nodes_info {
-            map.insert(ov_id, (ov_x, chain_y_l3));
-        }
-
-        let chain_height = if override_targets.is_empty() {
-            130.0
+        if is_collapsed {
+            current_chain_y += header_h + 16.0;
         } else {
-            195.0
-        };
+            let handler_w = (handler_id.len() as f64 * 8.5 + 28.0).max(130.0);
+            let dispatch_w = (dispatch_id.len() as f64 * 8.5 + 28.0).max(130.0);
 
-        current_chain_y += chain_height + 45.0;
+            let chain_y_l1 = current_chain_y + 38.0;
+            let chain_y_l2 = chain_y_l1 + 65.0;
+            let chain_y_l3 = chain_y_l2 + 65.0;
+
+            let mut override_w_sum = 0.0;
+            let mut override_nodes_info = Vec::new();
+            let mut curr_ov_x = chain_x;
+
+            for ov in &override_targets {
+                let w = (ov.len() as f64 * 8.5 + 28.0).max(130.0);
+                override_nodes_info.push((ov.clone(), curr_ov_x, w));
+                curr_ov_x += w + 20.0;
+                override_w_sum += w + 20.0;
+            }
+
+            let chain_max_width = handler_w.max(dispatch_w).max(override_w_sum).max(160.0);
+            let center_x = chain_x + (chain_max_width / 2.0);
+
+            map.insert(handler_id, (center_x - (handler_w / 2.0), chain_y_l1));
+            map.insert(dispatch_id, (center_x - (dispatch_w / 2.0), chain_y_l2));
+
+            for (ov_id, ov_x, _) in override_nodes_info {
+                map.insert(ov_id, (ov_x, chain_y_l3));
+            }
+
+            let chain_height = if override_targets.is_empty() {
+                130.0
+            } else {
+                195.0
+            };
+
+            current_chain_y += 38.0 + chain_height + 25.0;
+        }
     }
 
-    map
+    (map, headers)
 }
 
 fn do_load_project(state: &Rc<RefCell<AppState>>, widgets: &Rc<AppWidgets>) {
@@ -1561,14 +1593,25 @@ fn do_load_project(state: &Rc<RefCell<AppState>>, widgets: &Rc<AppWidgets>) {
                 widgets.list_pv_variables.append(&row);
             }
 
-            let init_positions = compute_initial_graph_layout(&project.call_graph_edges);
-            state.borrow_mut().graph_node_positions = init_positions;
+            // Initialize collapsed_chains with all interrupt chain handlers (default collapsed)
+            let mut collapsed = std::collections::HashSet::new();
+            for e in project.call_graph_edges.iter().filter(|e| e.edge_type == EdgeType::IrqEntry) {
+                collapsed.insert(e.from.clone());
+            }
+
+            let (init_positions, headers) = compute_graph_layout(&project.call_graph_edges, &collapsed);
+            {
+                let mut st = state.borrow_mut();
+                st.collapsed_chains = collapsed;
+                st.graph_node_positions = init_positions;
+                st.chain_headers = headers;
+                st.loaded_project = Some(project);
+            }
+
             widgets.graph_drawing_area.set_content_width(2000);
             widgets.graph_drawing_area.set_content_height(1500);
             widgets.btn_call_graph.set_sensitive(true);
             widgets.graph_drawing_area.queue_draw();
-
-            state.borrow_mut().loaded_project = Some(project);
             widgets.toast_overlay.add_toast(adw::Toast::new("✓ Project loaded successfully"));
         }
         Err(err) => {
