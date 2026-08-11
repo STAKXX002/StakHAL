@@ -24,8 +24,9 @@ pub fn build_main_panel() -> (
     let btn_browse = gtk4::Button::builder()
         .icon_name("folder-open-symbolic")
         .tooltip_text("Browse Project Folder")
-        .css_classes(vec!["flat".to_string()])
+        .css_classes(vec!["stakhal-btn".to_string(), "flat".to_string()])
         .build();
+    btn_browse.set_cursor_from_name(Some("pointer"));
 
     let lbl_discovered_dir = gtk4::Label::builder()
         .label("No folder selected")
@@ -52,9 +53,10 @@ pub fn build_main_panel() -> (
 
     let btn_call_graph = gtk4::Button::builder()
         .label("[ Call Graph ]")
-        .css_classes(vec!["flat".to_string()])
+        .css_classes(vec!["stakhal-btn".to_string(), "flat".to_string()])
         .sensitive(false)
         .build();
+    btn_call_graph.set_cursor_from_name(Some("pointer"));
 
     let toolbar_box = gtk4::Box::builder()
         .orientation(gtk4::Orientation::Horizontal)
@@ -280,6 +282,8 @@ pub fn create_pv_row(
         .activatable(true)
         .css_classes(vec!["clickable-row".to_string()])
         .build();
+
+    row.set_cursor_from_name(Some("pointer"));
 
     let lbl_line = gtk4::Label::builder()
         .label(&format!("Line {}", line))

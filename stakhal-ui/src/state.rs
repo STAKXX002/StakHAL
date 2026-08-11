@@ -28,7 +28,6 @@ pub struct AppState {
     pub discovered_ioc: Option<PathBuf>,
     pub discovered_main_c: Option<PathBuf>,
     pub loaded_project: Option<Project>,
-    pub active_pv: Option<String>,
     pub active_pv_index: Option<usize>,
     pub active_decl: Option<PvDeclaration>,
     pub active_usage_lines: Vec<usize>,
@@ -77,8 +76,6 @@ pub struct AppWidgets {
     // Inline edit bar widgets
     pub inline_edit_bar: gtk4::Box,
     pub lbl_inline_error: gtk4::Label,
-    pub btn_inline_save: gtk4::Button,
-    pub btn_inline_cancel: gtk4::Button,
 
     // Call graph widgets
     pub graph_drawing_area: gtk4::DrawingArea,
@@ -98,7 +95,10 @@ pub fn create_icon_button(label_text: &str, icon_name: &str, is_suggested: bool)
     let btn = gtk4::Button::builder()
         .child(&bx)
         .tooltip_text(label_text)
+        .css_classes(vec!["stakhal-btn".to_string()])
         .build();
+
+    btn.set_cursor_from_name(Some("pointer"));
 
     if is_suggested {
         btn.add_css_class("suggested-action");

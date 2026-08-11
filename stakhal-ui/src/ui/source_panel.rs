@@ -40,8 +40,9 @@ pub fn build_source_panel() -> (
 
     let btn_toggle_generated = gtk4::Button::builder()
         .label("[ Show Generated ]")
-        .css_classes(vec!["flat".to_string()])
+        .css_classes(vec!["stakhal-btn".to_string(), "flat".to_string()])
         .build();
+    btn_toggle_generated.set_cursor_from_name(Some("pointer"));
 
     let source_header_bar = gtk4::Box::builder()
         .orientation(gtk4::Orientation::Horizontal)
@@ -139,12 +140,15 @@ pub fn build_source_panel() -> (
 
     let btn_inline_save = gtk4::Button::builder()
         .label("Save")
-        .css_classes(vec!["suggested-action".to_string()])
+        .css_classes(vec!["stakhal-btn".to_string(), "suggested-action".to_string()])
         .build();
+    btn_inline_save.set_cursor_from_name(Some("pointer"));
 
     let btn_inline_cancel = gtk4::Button::builder()
         .label("Cancel")
+        .css_classes(vec!["stakhal-btn".to_string()])
         .build();
+    btn_inline_cancel.set_cursor_from_name(Some("pointer"));
 
     let bar_inner = gtk4::Box::builder()
         .orientation(gtk4::Orientation::Horizontal)

@@ -52,36 +52,36 @@ windowcontrols button:hover {
     border: none;
     background: transparent;
 }
-button:not(windowcontrols button) {
+button.stakhal-btn {
     border: 1px solid #2a2a2a;
     background-color: #121212;
     color: #e0e0e0;
     transition: all 120ms ease;
     border-radius: 0px;
 }
-button:not(windowcontrols button):hover {
+button.stakhal-btn:hover {
     border-color: #404040;
     background-color: #1a1a1a;
     color: #ffffff;
 }
-button:not(windowcontrols button):active {
+button.stakhal-btn:active {
     background-color: #242424;
 }
-button.suggested-action {
+button.stakhal-btn.suggested-action {
     border-color: #ffffff;
     background-color: #ffffff;
     color: #000000;
 }
-button.suggested-action:hover {
+button.stakhal-btn.suggested-action:hover {
     border-color: #e0e0e0;
     background-color: #e0e0e0;
     color: #000000;
 }
-button.flat {
+button.stakhal-btn.flat {
     border-color: transparent;
     background-color: transparent;
 }
-button.flat:hover {
+button.stakhal-btn.flat:hover {
     border-color: #2a2a2a;
     background-color: #1a1a1a;
 }
@@ -91,16 +91,12 @@ row, listboxrow, actionrow {
 }
 .clickable-row {
     transition: all 120ms ease;
-    cursor: pointer;
 }
 .clickable-row:hover {
     background-color: #1a1a1a;
 }
 .clickable-row:active {
     background-color: #242424;
-}
-button, .clickable-row {
-    cursor: pointer;
 }
 "#);
 
@@ -208,8 +204,6 @@ button, .clickable-row {
         tag_invisible,
         inline_edit_bar,
         lbl_inline_error,
-        btn_inline_save: btn_inline_save.clone(),
-        btn_inline_cancel: btn_inline_cancel.clone(),
         graph_drawing_area,
     });
 
@@ -347,8 +341,9 @@ button, .clickable-row {
             .label("Copy")
             .icon_name("edit-copy-symbolic")
             .halign(gtk4::Align::Fill)
-            .css_classes(vec!["flat".to_string()])
+            .css_classes(vec!["stakhal-btn".to_string(), "flat".to_string()])
             .build();
+        btn_copy.set_cursor_from_name(Some("pointer"));
 
         let popover_clone = popover.clone();
         let widgets_copy = Rc::clone(&widgets);
@@ -364,8 +359,9 @@ button, .clickable-row {
                 .label("Edit Declaration")
                 .icon_name("document-edit-symbolic")
                 .halign(gtk4::Align::Fill)
-                .css_classes(vec!["flat".to_string()])
+                .css_classes(vec!["stakhal-btn".to_string(), "flat".to_string()])
                 .build();
+            btn_edit.set_cursor_from_name(Some("pointer"));
 
             let popover_edit_clone = popover.clone();
             let state_edit = Rc::clone(&state_right_click);
