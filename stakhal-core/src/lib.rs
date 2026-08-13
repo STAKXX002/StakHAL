@@ -6,4 +6,3 @@ pub mod ir;
 #[cfg(feature = "probe")]
 pub mod probe;
 
-pub mod watch;
