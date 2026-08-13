@@ -551,3 +551,39 @@ fn do_load_project(state: &Rc<RefCell<AppState>>, widgets: &Rc<AppWidgets>) {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_ui_build_smoke() {
+        if let Err(err) = gtk4::init() {
+            eprintln!("GTK display not available, skipping UI smoke test: {}", err);
+            return;
+        }
+        let _ = adw::init();
+
+        let app = adw::Application::builder()
+            .application_id("com.stakhal.ui.smoke_test")
+            .flags(gio::ApplicationFlags::NON_UNIQUE)
+            .build();
+
+        if let Err(err) = app.register(gio::Cancellable::NONE) {
+            eprintln!("Failed to register GTK application in test: {}", err);
+            return;
+        }
+
+        app.connect_activate(build_ui);
+        app.activate();
+
+        let windows = app.windows();
+        assert!(
+            !windows.is_empty(),
+            "Expected ApplicationWindow to be constructed during build_ui"
+        );
+    }
+}
+
+
+
