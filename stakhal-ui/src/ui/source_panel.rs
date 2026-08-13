@@ -12,24 +12,26 @@ use stakhal_core::source::usage_finder::find_variable_usages;
 use stakhal_core::source::writeback::write_region;
 use crate::state::{create_icon_button, AppState, AppWidgets, GeneratedRun};
 
-pub fn build_source_panel() -> (
-    gtk4::Box,
-    gtk4::Button,
-    gtk4::Label,
-    gtk4::Button,
-    sourceview5::View,
-    sourceview5::Buffer,
-    gtk4::TextTag,
-    gtk4::TextTag,
-    gtk4::TextTag,
-    gtk4::TextTag,
-    gtk4::TextTag,
-    gtk4::Box,
-    gtk4::Label,
-    gtk4::Button,
-    gtk4::Button,
-) {
-    let btn_back = create_icon_button("Back to Overview", "go-previous-symbolic", false);
+pub struct SourcePanelWidgets {
+    pub source_panel_box: gtk4::Box,
+    pub btn_source_back: gtk4::Button,
+    pub lbl_active_pv: gtk4::Label,
+    pub btn_toggle_generated: gtk4::Button,
+    pub source_view: sourceview5::View,
+    pub source_buffer: sourceview5::Buffer,
+    pub tag_declaration: gtk4::TextTag,
+    pub tag_usage: gtk4::TextTag,
+    pub tag_generated: gtk4::TextTag,
+    pub tag_readonly: gtk4::TextTag,
+    pub tag_invisible: gtk4::TextTag,
+    pub inline_edit_bar: gtk4::Box,
+    pub lbl_inline_error: gtk4::Label,
+    pub btn_inline_save: gtk4::Button,
+    pub btn_inline_cancel: gtk4::Button,
+}
+
+pub fn build_source_panel() -> SourcePanelWidgets {
+    let btn_source_back = create_icon_button("Back to Overview", "go-previous-symbolic", false);
 
     let lbl_active_pv = gtk4::Label::builder()
         .label("PV Variable Source View")
@@ -52,7 +54,7 @@ pub fn build_source_panel() -> (
         .margin_start(18)
         .margin_end(18)
         .build();
-    source_header_bar.append(&btn_back);
+    source_header_bar.append(&btn_source_back);
     source_header_bar.append(&lbl_active_pv);
     source_header_bar.append(&btn_toggle_generated);
 
@@ -186,9 +188,9 @@ pub fn build_source_panel() -> (
     source_panel_box.append(&source_header_bar);
     source_panel_box.append(&source_overlay);
 
-    (
+    SourcePanelWidgets {
         source_panel_box,
-        btn_back,
+        btn_source_back,
         lbl_active_pv,
         btn_toggle_generated,
         source_view,
@@ -202,7 +204,7 @@ pub fn build_source_panel() -> (
         lbl_inline_error,
         btn_inline_save,
         btn_inline_cancel,
-    )
+    }
 }
 
 pub fn open_pv_source_view(pv_idx: usize, state: &Rc<RefCell<AppState>>, widgets: &Rc<AppWidgets>) {

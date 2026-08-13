@@ -14,12 +14,17 @@ mod ui;
 
 use config::{load_app_config, save_app_config};
 use state::{AppState, AppWidgets};
-use ui::call_graph::{build_call_graph_panel, compute_graph_layout, setup_call_graph_drawing_and_gestures};
-use ui::main_panel::{build_main_panel, clear_list_box, create_peripheral_row, create_pv_row, create_region_row};
+use ui::call_graph::{
+    build_call_graph_panel, compute_graph_layout, setup_call_graph_drawing_and_gestures, CallGraphPanelWidgets,
+};
+use ui::main_panel::{
+    build_main_panel, clear_list_box, create_peripheral_row, create_pv_row, create_region_row, MainPanelWidgets,
+};
 use ui::source_panel::{
     build_source_panel, cancel_inline_declaration_edit, enter_inline_edit_mode, open_pv_source_view,
-    save_inline_declaration_edit, toggle_all_generated_runs,
+    save_inline_declaration_edit, toggle_all_generated_runs, SourcePanelWidgets,
 };
+
 
 const APP_ID: &str = "com.stakhal.ui";
 
@@ -106,7 +111,7 @@ row, listboxrow, actionrow {
         gtk4::STYLE_PROVIDER_PRIORITY_APPLICATION,
     );
 
-    let (
+    let MainPanelWidgets {
         overview_box,
         btn_browse,
         btn_load,
@@ -123,9 +128,9 @@ row, listboxrow, actionrow {
         list_peripherals,
         list_user_regions,
         list_pv_variables,
-    ) = build_main_panel();
+    } = build_main_panel();
 
-    let (
+    let SourcePanelWidgets {
         source_panel_box,
         btn_source_back,
         lbl_active_pv,
@@ -141,9 +146,14 @@ row, listboxrow, actionrow {
         lbl_inline_error,
         btn_inline_save,
         btn_inline_cancel,
-    ) = build_source_panel();
+    } = build_source_panel();
 
-    let (graph_panel_box, btn_graph_back, graph_drawing_area) = build_call_graph_panel();
+    let CallGraphPanelWidgets {
+        graph_panel_box,
+        btn_graph_back,
+        graph_drawing_area,
+    } = build_call_graph_panel();
+
 
     let stack = gtk4::Stack::builder()
         .transition_type(gtk4::StackTransitionType::SlideLeftRight)

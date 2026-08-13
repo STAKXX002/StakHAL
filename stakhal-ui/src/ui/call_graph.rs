@@ -5,7 +5,13 @@ use gtk4::prelude::*;
 use stakhal_core::graph::builder::{EdgeType, GraphEdge};
 use crate::state::{create_icon_button, AppState, AppWidgets, ChainHeaderLayout};
 
-pub fn build_call_graph_panel() -> (gtk4::Box, gtk4::Button, gtk4::DrawingArea) {
+pub struct CallGraphPanelWidgets {
+    pub graph_panel_box: gtk4::Box,
+    pub btn_graph_back: gtk4::Button,
+    pub graph_drawing_area: gtk4::DrawingArea,
+}
+
+pub fn build_call_graph_panel() -> CallGraphPanelWidgets {
     let btn_graph_back = create_icon_button("Back to Overview", "go-previous-symbolic", false);
 
     let lbl_graph_title = gtk4::Label::builder()
@@ -52,8 +58,13 @@ pub fn build_call_graph_panel() -> (gtk4::Box, gtk4::Button, gtk4::DrawingArea) 
     graph_panel_box.append(&graph_header_bar);
     graph_panel_box.append(&graph_scrolled);
 
-    (graph_panel_box, btn_graph_back, graph_drawing_area)
+    CallGraphPanelWidgets {
+        graph_panel_box,
+        btn_graph_back,
+        graph_drawing_area,
+    }
 }
+
 
 pub fn setup_call_graph_drawing_and_gestures(
     state: &Rc<RefCell<AppState>>,

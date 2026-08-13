@@ -3,24 +3,26 @@ use libadwaita as adw;
 use libadwaita::prelude::*;
 use crate::state::create_icon_button;
 
-pub fn build_main_panel() -> (
-    gtk4::Box,
-    gtk4::Button,
-    gtk4::Button,
-    gtk4::Button,
-    gtk4::Label,
-    gtk4::Label,
-    gtk4::Label,
-    gtk4::Label,
-    gtk4::Label,
-    gtk4::Label,
-    gtk4::Label,
-    gtk4::Label,
-    gtk4::Label,
-    gtk4::ListBox,
-    gtk4::ListBox,
-    gtk4::ListBox,
-) {
+pub struct MainPanelWidgets {
+    pub overview_box: gtk4::Box,
+    pub btn_browse: gtk4::Button,
+    pub btn_load: gtk4::Button,
+    pub btn_call_graph: gtk4::Button,
+    pub lbl_discovered_dir: gtk4::Label,
+    pub lbl_ioc_path: gtk4::Label,
+    pub lbl_main_c_path: gtk4::Label,
+    pub lbl_project_name: gtk4::Label,
+    pub lbl_mcu_family: gtk4::Label,
+    pub lbl_mcu_name: gtk4::Label,
+    pub lbl_periph_header: gtk4::Label,
+    pub lbl_region_header: gtk4::Label,
+    pub lbl_pv_header: gtk4::Label,
+    pub list_peripherals: gtk4::ListBox,
+    pub list_user_regions: gtk4::ListBox,
+    pub list_pv_variables: gtk4::ListBox,
+}
+
+pub fn build_main_panel() -> MainPanelWidgets {
     let btn_browse = gtk4::Button::builder()
         .icon_name("folder-open-symbolic")
         .tooltip_text("Browse Project Folder")
@@ -177,7 +179,7 @@ pub fn build_main_panel() -> (
     overview_box.append(&status_bar_box);
     overview_box.append(&columns_box);
 
-    (
+    MainPanelWidgets {
         overview_box,
         btn_browse,
         btn_load,
@@ -194,7 +196,7 @@ pub fn build_main_panel() -> (
         list_peripherals,
         list_user_regions,
         list_pv_variables,
-    )
+    }
 }
 
 pub fn create_column_box(header_label: &gtk4::Label, list_box: &gtk4::ListBox) -> gtk4::Box {
