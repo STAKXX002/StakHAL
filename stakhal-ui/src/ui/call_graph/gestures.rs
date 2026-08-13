@@ -10,8 +10,8 @@ pub fn setup_call_graph_drawing_and_gestures(
     widgets: &Rc<AppWidgets>,
 ) {
     let state_draw = Rc::clone(state);
-    widgets.graph_drawing_area.set_draw_func(move |_area, cr, width, height| {
-        draw_call_graph_canvas(cr, width as f64, height as f64, &state_draw);
+    widgets.graph_drawing_area.set_draw_func(move |area, cr, width, height| {
+        draw_call_graph_canvas(area, cr, width as f64, height as f64, &state_draw);
     });
 
     let gesture_drag = gtk4::GestureDrag::new();
@@ -23,13 +23,17 @@ pub fn setup_call_graph_drawing_and_gestures(
         st.drag_start_click_pos = (start_x, start_y);
         st.dragged_graph_node = None;
 
+        let zoom = st.graph_zoom;
+        let unscaled_x = start_x / zoom;
+        let unscaled_y = start_y / zoom;
+
         let mut clicked_id = None;
         let mut start_pos = (0.0, 0.0);
 
         for (id, &(nx, ny)) in &st.graph_node_positions {
             let nw = (id.len() as f64 * 8.5 + 28.0).max(110.0);
             let nh = 34.0;
-            if start_x >= nx && start_x <= nx + nw && start_y >= ny && start_y <= ny + nh {
+            if unscaled_x >= nx && unscaled_x <= nx + nw && unscaled_y >= ny && unscaled_y <= ny + nh {
                 clicked_id = Some(id.clone());
                 start_pos = (nx, ny);
                 break;
@@ -48,8 +52,9 @@ pub fn setup_call_graph_drawing_and_gestures(
         let mut st = state_drag_update.borrow_mut();
         if let Some(ref node_id) = st.dragged_graph_node.clone() {
             let (snx, sny) = st.drag_start_node_pos;
-            let new_x = (snx + offset_x).max(0.0);
-            let new_y = (sny + offset_y).max(0.0);
+            let zoom = st.graph_zoom;
+            let new_x = (snx + offset_x / zoom).max(0.0);
+            let new_y = (sny + offset_y / zoom).max(0.0);
             st.graph_node_positions.insert(node_id.clone(), (new_x, new_y));
             drop(st);
             area_drag_update.queue_draw();
@@ -63,7 +68,9 @@ pub fn setup_call_graph_drawing_and_gestures(
         let mut st = state_drag_end.borrow_mut();
 
         if dist < 5.0 {
-            let (cx, cy) = st.drag_start_click_pos;
+            let zoom = st.graph_zoom;
+            let cx = st.drag_start_click_pos.0 / zoom;
+            let cy = st.drag_start_click_pos.1 / zoom;
 
             // Check if clicked inside a chain header bar
             let mut clicked_header_id = None;
@@ -87,8 +94,10 @@ pub fn setup_call_graph_drawing_and_gestures(
                     st.graph_node_positions = pos;
                     st.chain_headers = headers;
                     st.graph_bounds = (w, h);
-                    area_drag_end.set_content_width(w);
-                    area_drag_end.set_content_height(h);
+                    let zoomed_w = (w as f64 * zoom).ceil() as i32;
+                    let zoomed_h = (h as f64 * zoom).ceil() as i32;
+                    area_drag_end.set_content_width(zoomed_w);
+                    area_drag_end.set_content_height(zoomed_h);
                 }
                 st.dragged_graph_node = None;
                 drop(st);
@@ -118,10 +127,13 @@ pub fn setup_call_graph_drawing_and_gestures(
             }
         }
 
+        let zoom = st.graph_zoom;
         let (w, h) = compute_graph_bounds(&st.graph_node_positions, &st.chain_headers);
         st.graph_bounds = (w, h);
-        area_drag_end.set_content_width(w);
-        area_drag_end.set_content_height(h);
+        let zoomed_w = (w as f64 * zoom).ceil() as i32;
+        let zoomed_h = (h as f64 * zoom).ceil() as i32;
+        area_drag_end.set_content_width(zoomed_w);
+        area_drag_end.set_content_height(zoomed_h);
 
         st.dragged_graph_node = None;
         drop(st);
@@ -129,5 +141,37 @@ pub fn setup_call_graph_drawing_and_gestures(
     });
 
     widgets.graph_drawing_area.add_controller(gesture_drag);
+
+    // Zoom controller (Ctrl + Scroll)
+    let scroll_controller = gtk4::EventControllerScroll::new(
+        gtk4::EventControllerScrollFlags::VERTICAL | gtk4::EventControllerScrollFlags::HORIZONTAL,
+    );
+    let state_scroll = Rc::clone(state);
+    let area_scroll = widgets.graph_drawing_area.clone();
+
+    scroll_controller.connect_scroll(move |controller, _dx, dy| {
+        let modifiers = controller.current_event_state();
+        if modifiers.contains(gtk4::gdk::ModifierType::CONTROL_MASK) {
+            let zoom_delta = if dy < 0.0 { 0.1 } else if dy > 0.0 { -0.1 } else { 0.0 };
+            if zoom_delta != 0.0 {
+                let mut st = state_scroll.borrow_mut();
+                let new_zoom = (st.graph_zoom + zoom_delta).clamp(0.25, 2.5);
+                st.graph_zoom = new_zoom;
+                let (w, h) = st.graph_bounds;
+                let zoomed_w = (w as f64 * new_zoom).ceil() as i32;
+                let zoomed_h = (h as f64 * new_zoom).ceil() as i32;
+                drop(st);
+                area_scroll.set_content_width(zoomed_w);
+                area_scroll.set_content_height(zoomed_h);
+                area_scroll.queue_draw();
+            }
+            gtk4::glib::Propagation::Stop
+        } else {
+            gtk4::glib::Propagation::Proceed
+        }
+    });
+
+    widgets.graph_drawing_area.add_controller(scroll_controller);
 }
+
 

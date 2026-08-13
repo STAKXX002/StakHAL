@@ -13,7 +13,6 @@ pub struct GeneratedRun {
 }
 
 
-#[derive(Default)]
 pub struct AppState {
     pub project_dir: Option<PathBuf>,
     pub discovered_ioc: Option<PathBuf>,
@@ -30,10 +29,37 @@ pub struct AppState {
     pub collapsed_chains: std::collections::HashSet<String>,
     pub chain_headers: Vec<ChainHeaderLayout>,
     pub graph_bounds: (i32, i32),
+    pub graph_zoom: f64,
     pub dragged_graph_node: Option<String>,
 
     pub drag_start_node_pos: (f64, f64),
     pub drag_start_click_pos: (f64, f64),
+}
+
+impl Default for AppState {
+    fn default() -> Self {
+        Self {
+            project_dir: None,
+            discovered_ioc: None,
+            discovered_main_c: None,
+            loaded_project: None,
+            active_pv_index: None,
+            active_decl: None,
+            active_usage_lines: Vec::new(),
+            is_inline_editing: false,
+            generated_runs: Vec::new(),
+            is_generated_hidden: false,
+            selected_graph_node: None,
+            graph_node_positions: std::collections::HashMap::new(),
+            collapsed_chains: std::collections::HashSet::new(),
+            chain_headers: Vec::new(),
+            graph_bounds: (800, 600),
+            graph_zoom: 1.0,
+            dragged_graph_node: None,
+            drag_start_node_pos: (0.0, 0.0),
+            drag_start_click_pos: (0.0, 0.0),
+        }
+    }
 }
 
 pub struct AppWidgets {
@@ -72,7 +98,10 @@ pub struct AppWidgets {
 
     // Call graph widgets
     pub graph_drawing_area: gtk4::DrawingArea,
+    pub btn_fit_to_view: gtk4::Button,
+    pub graph_scrolled: gtk4::ScrolledWindow,
 }
+
 
 pub fn create_icon_button(label_text: &str, icon_name: &str, is_suggested: bool) -> gtk4::Button {
     let bx = gtk4::Box::builder()

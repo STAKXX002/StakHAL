@@ -5,11 +5,14 @@ use crate::state::create_icon_button;
 pub struct CallGraphPanelWidgets {
     pub graph_panel_box: gtk4::Box,
     pub btn_graph_back: gtk4::Button,
+    pub btn_fit_to_view: gtk4::Button,
     pub graph_drawing_area: gtk4::DrawingArea,
+    pub graph_scrolled: gtk4::ScrolledWindow,
 }
 
 pub fn build_call_graph_panel() -> CallGraphPanelWidgets {
     let btn_graph_back = create_icon_button("Back to Overview", "go-previous-symbolic", false);
+    let btn_fit_to_view = create_icon_button("Fit to View", "zoom-fit-best-symbolic", false);
 
     let lbl_graph_title = gtk4::Label::builder()
         .label("[ CALL GRAPH DIAGRAM ]")
@@ -26,13 +29,14 @@ pub fn build_call_graph_panel() -> CallGraphPanelWidgets {
 
     let graph_header_bar = gtk4::Box::builder()
         .orientation(gtk4::Orientation::Horizontal)
-        .spacing(18)
+        .spacing(12)
         .margin_top(12)
         .margin_bottom(12)
         .margin_start(18)
         .margin_end(18)
         .build();
     graph_header_bar.append(&btn_graph_back);
+    graph_header_bar.append(&btn_fit_to_view);
     graph_header_bar.append(&lbl_graph_title);
     graph_header_bar.append(&lbl_graph_hint);
 
@@ -42,7 +46,6 @@ pub fn build_call_graph_panel() -> CallGraphPanelWidgets {
         .hexpand(true)
         .vexpand(true)
         .build();
-
 
     let graph_scrolled = gtk4::ScrolledWindow::builder()
         .child(&graph_drawing_area)
@@ -59,6 +62,9 @@ pub fn build_call_graph_panel() -> CallGraphPanelWidgets {
     CallGraphPanelWidgets {
         graph_panel_box,
         btn_graph_back,
+        btn_fit_to_view,
         graph_drawing_area,
+        graph_scrolled,
     }
 }
+

@@ -153,9 +153,10 @@ row, listboxrow, actionrow {
     let CallGraphPanelWidgets {
         graph_panel_box,
         btn_graph_back,
+        btn_fit_to_view,
         graph_drawing_area,
+        graph_scrolled,
     } = build_call_graph_panel();
-
 
     let stack = gtk4::Stack::builder()
         .transition_type(gtk4::StackTransitionType::SlideLeftRight)
@@ -217,6 +218,8 @@ row, listboxrow, actionrow {
         inline_edit_bar,
         lbl_inline_error,
         graph_drawing_area,
+        btn_fit_to_view: btn_fit_to_view.clone(),
+        graph_scrolled: graph_scrolled.clone(),
     });
 
     setup_call_graph_drawing_and_gestures(&state, &widgets);
@@ -232,10 +235,46 @@ row, listboxrow, actionrow {
         stack_back2.set_visible_child_full("overview", gtk4::StackTransitionType::SlideRight);
     });
 
+    let state_fit = Rc::clone(&state);
+    let widgets_fit = Rc::clone(&widgets);
+    widgets.btn_fit_to_view.connect_clicked(move |_| {
+        let mut st = state_fit.borrow_mut();
+        let (bw, bh) = st.graph_bounds;
+        let vw = widgets_fit
+            .graph_scrolled
+            .hadjustment()
+            .page_size()
+            .max(widgets_fit.graph_scrolled.width() as f64);
+        let vh = widgets_fit
+            .graph_scrolled
+            .vadjustment()
+            .page_size()
+            .max(widgets_fit.graph_scrolled.height() as f64);
+
+        if bw > 0 && bh > 0 && vw > 0.0 && vh > 0.0 {
+            let fit_zoom = (vw / bw as f64).min(vh / bh as f64).clamp(0.25, 2.5);
+            st.graph_zoom = fit_zoom;
+
+            let zoomed_w = (bw as f64 * fit_zoom).ceil() as i32;
+            let zoomed_h = (bh as f64 * fit_zoom).ceil() as i32;
+            drop(st);
+
+            widgets_fit.graph_drawing_area.set_content_width(zoomed_w);
+            widgets_fit.graph_drawing_area.set_content_height(zoomed_h);
+
+            widgets_fit.graph_scrolled.hadjustment().set_value(0.0);
+            widgets_fit.graph_scrolled.vadjustment().set_value(0.0);
+
+            widgets_fit.graph_drawing_area.queue_draw();
+        }
+    });
+
+
     let stack_graph = stack.clone();
     btn_call_graph.connect_clicked(move |_| {
         stack_graph.set_visible_child_full("call_graph", gtk4::StackTransitionType::SlideLeft);
     });
+
 
     // Toggle generated code callback
     let state_toggle = Rc::clone(&state);
