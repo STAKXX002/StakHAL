@@ -3,11 +3,8 @@ name = "stakhal-core"
 version = "0.1.0"
 edition = "2021"
 
-[features]
-default = []
-probe = []
-
 [dependencies]
+
 tree-sitter = "0.22"
 tree-sitter-c = "0.21"
 serde = { version = "1.0", features = ["derive"] }
