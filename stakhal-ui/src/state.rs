@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 use gtk4::prelude::*;
 use libadwaita as adw;
+use stakhal_core::graph::ChainHeaderLayout;
 use stakhal_core::ir::schema::Project;
 use stakhal_core::source::pv_extract::PvDeclaration;
 
@@ -11,16 +12,6 @@ pub struct GeneratedRun {
     pub is_collapsed: bool,
 }
 
-#[derive(Clone, Debug)]
-pub struct ChainHeaderLayout {
-    pub handler_id: String,
-    pub label: String,
-    pub x: f64,
-    pub y: f64,
-    pub w: f64,
-    pub h: f64,
-    pub is_collapsed: bool,
-}
 
 #[derive(Default)]
 pub struct AppState {
