@@ -1,4 +1,5 @@
 use gtk4::prelude::*;
+
 use crate::state::create_icon_button;
 
 pub struct CallGraphPanelWidgets {
@@ -36,11 +37,12 @@ pub fn build_call_graph_panel() -> CallGraphPanelWidgets {
     graph_header_bar.append(&lbl_graph_hint);
 
     let graph_drawing_area = gtk4::DrawingArea::builder()
-        .content_width(2000)
-        .content_height(1500)
+        .content_width(800)
+        .content_height(600)
         .hexpand(true)
         .vexpand(true)
         .build();
+
 
     let graph_scrolled = gtk4::ScrolledWindow::builder()
         .child(&graph_drawing_area)

@@ -29,7 +29,9 @@ pub struct AppState {
     pub graph_node_positions: std::collections::HashMap<String, (f64, f64)>,
     pub collapsed_chains: std::collections::HashSet<String>,
     pub chain_headers: Vec<ChainHeaderLayout>,
+    pub graph_bounds: (i32, i32),
     pub dragged_graph_node: Option<String>,
+
     pub drag_start_node_pos: (f64, f64),
     pub drag_start_click_pos: (f64, f64),
 }

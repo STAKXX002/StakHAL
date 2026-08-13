@@ -1,7 +1,7 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 use gtk4::cairo;
-use stakhal_core::graph::compute_graph_layout;
+use stakhal_core::graph::{compute_graph_bounds, compute_graph_layout};
 use crate::state::AppState;
 
 pub fn draw_call_graph_canvas(
@@ -22,9 +22,12 @@ pub fn draw_call_graph_canvas(
 
     if st.graph_node_positions.is_empty() {
         let (pos, headers) = compute_graph_layout(&edges, &st.collapsed_chains);
+        let bounds = compute_graph_bounds(&pos, &headers);
         st.graph_node_positions = pos;
         st.chain_headers = headers;
+        st.graph_bounds = bounds;
     }
+
 
     let selected_node = st.selected_graph_node.clone();
     let positions = st.graph_node_positions.clone();

@@ -165,6 +165,42 @@ pub fn compute_graph_layout(
     (map, headers)
 }
 
+pub fn compute_graph_bounds(
+    positions: &HashMap<String, (f64, f64)>,
+    headers: &[ChainHeaderLayout],
+) -> (i32, i32) {
+    let mut max_x = 0.0f64;
+    let mut max_y = 0.0f64;
+
+    for (id, &(x, y)) in positions {
+        let w = (id.len() as f64 * 8.5 + 28.0).max(110.0);
+        let h = 34.0;
+        if x + w > max_x {
+            max_x = x + w;
+        }
+        if y + h > max_y {
+            max_y = y + h;
+        }
+    }
+
+    for h in headers {
+        if h.x + h.w > max_x {
+            max_x = h.x + h.w;
+        }
+        if h.y + h.h > max_y {
+            max_y = h.y + h.h;
+        }
+    }
+
+    if max_x == 0.0 && max_y == 0.0 {
+        (800, 600)
+    } else {
+        let w = (max_x + 60.0).ceil() as i32;
+        let h = (max_y + 60.0).ceil() as i32;
+        (w.max(800), h.max(600))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -189,11 +225,30 @@ mod tests {
         let collapsed = HashSet::new();
         let (pos, _headers) = compute_graph_layout(&edges, &collapsed);
 
-
         assert!(pos.contains_key("main"), "Layout must position 'main' node");
         assert!(pos.contains_key("MX_GPIO_Init"), "Layout must position target init node");
 
         let main_pos = pos.get("main").unwrap();
         assert_eq!(main_pos.1, 50.0, "Main node should be placed at y=50.0");
     }
+
+    #[test]
+    fn test_compute_graph_bounds_adds_padding() {
+        let mut positions = HashMap::new();
+        positions.insert("main".to_string(), (100.0, 100.0));
+        let headers = vec![ChainHeaderLayout {
+            handler_id: "TIM1".to_string(),
+            label: "TIM1".to_string(),
+            x: 40.0,
+            y: 300.0,
+            w: 200.0,
+            h: 30.0,
+            is_collapsed: false,
+        }];
+
+        let (w, h) = compute_graph_bounds(&positions, &headers);
+        assert!(w >= 800, "Width should be at least minimum 800");
+        assert!(h >= 390, "Height should include max_y + padding");
+    }
 }
+

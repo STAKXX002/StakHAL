@@ -1,7 +1,7 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 use gtk4::prelude::*;
-use stakhal_core::graph::compute_graph_layout;
+use stakhal_core::graph::{compute_graph_bounds, compute_graph_layout};
 use crate::state::{AppState, AppWidgets};
 use super::draw::draw_call_graph_canvas;
 
@@ -83,8 +83,12 @@ pub fn setup_call_graph_drawing_and_gestures(
 
                 if let Some(ref proj) = st.loaded_project {
                     let (pos, headers) = compute_graph_layout(&proj.call_graph_edges, &st.collapsed_chains);
+                    let (w, h) = compute_graph_bounds(&pos, &headers);
                     st.graph_node_positions = pos;
                     st.chain_headers = headers;
+                    st.graph_bounds = (w, h);
+                    area_drag_end.set_content_width(w);
+                    area_drag_end.set_content_height(h);
                 }
                 st.dragged_graph_node = None;
                 drop(st);
@@ -114,6 +118,11 @@ pub fn setup_call_graph_drawing_and_gestures(
             }
         }
 
+        let (w, h) = compute_graph_bounds(&st.graph_node_positions, &st.chain_headers);
+        st.graph_bounds = (w, h);
+        area_drag_end.set_content_width(w);
+        area_drag_end.set_content_height(h);
+
         st.dragged_graph_node = None;
         drop(st);
         area_drag_end.queue_draw();
@@ -121,3 +130,4 @@ pub fn setup_call_graph_drawing_and_gestures(
 
     widgets.graph_drawing_area.add_controller(gesture_drag);
 }
+

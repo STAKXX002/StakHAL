@@ -15,8 +15,10 @@ mod ui;
 use config::{load_app_config, save_app_config};
 use state::{AppState, AppWidgets};
 use ui::call_graph::{
-    build_call_graph_panel, compute_graph_layout, setup_call_graph_drawing_and_gestures, CallGraphPanelWidgets,
+    build_call_graph_panel, compute_graph_bounds, compute_graph_layout, setup_call_graph_drawing_and_gestures,
+    CallGraphPanelWidgets,
 };
+
 use ui::main_panel::{
     build_main_panel, clear_list_box, create_peripheral_row, create_pv_row, create_region_row, MainPanelWidgets,
 };
@@ -542,19 +544,22 @@ fn do_load_project(state: &Rc<RefCell<AppState>>, widgets: &Rc<AppWidgets>) {
             }
 
             let (init_positions, headers) = compute_graph_layout(&project.call_graph_edges, &collapsed);
+            let (w, h) = compute_graph_bounds(&init_positions, &headers);
             {
                 let mut st = state.borrow_mut();
                 st.collapsed_chains = collapsed;
                 st.graph_node_positions = init_positions;
                 st.chain_headers = headers;
+                st.graph_bounds = (w, h);
                 st.loaded_project = Some(project);
             }
 
-            widgets.graph_drawing_area.set_content_width(2000);
-            widgets.graph_drawing_area.set_content_height(1500);
+            widgets.graph_drawing_area.set_content_width(w);
+            widgets.graph_drawing_area.set_content_height(h);
             widgets.btn_call_graph.set_sensitive(true);
             widgets.graph_drawing_area.queue_draw();
             widgets.toast_overlay.add_toast(adw::Toast::new("✓ Project loaded successfully"));
+
         }
         Err(err) => {
             widgets.toast_overlay.add_toast(adw::Toast::new(&format!("✗ Load Error: {}", err)));
