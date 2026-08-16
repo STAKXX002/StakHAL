@@ -496,6 +496,40 @@ pub fn cancel_inline_declaration_edit(state: &Rc<RefCell<AppState>>, widgets: &R
     }
 }
 
+fn find_line_byte_range(content: &str, line_1based: usize) -> Option<(usize, usize)> {
+    if line_1based == 0 {
+        return None;
+    }
+    let mut current_line = 1;
+    let mut line_start = 0;
+
+    for (idx, ch) in content.char_indices() {
+        if current_line == line_1based {
+            let mut line_end = idx;
+            for (end_idx, end_ch) in content[idx..].char_indices() {
+                let absolute_idx = idx + end_idx;
+                if end_ch == '\n' || end_ch == '\r' {
+                    line_end = absolute_idx;
+                    break;
+                }
+                line_end = absolute_idx + end_ch.len_utf8();
+            }
+            return Some((line_start, line_end));
+        }
+
+        if ch == '\n' {
+            current_line += 1;
+            line_start = idx + 1;
+        }
+    }
+
+    if current_line == line_1based {
+        return Some((line_start, content.len()));
+    }
+
+    None
+}
+
 fn save_pv_declaration_edit(
     main_c_path: &Path,
     decl: &PvDeclaration,
@@ -509,12 +543,15 @@ fn save_pv_declaration_edit(
 
     let full_content = std::fs::read_to_string(main_c_path).map_err(|e| e.to_string())?;
 
-    if decl.byte_range.0 < pv_region.byte_range.0 || decl.byte_range.1 > pv_region.byte_range.1 {
-        return Err("Declaration byte range is outside current PV region".to_string());
+    let (line_start, line_end) = find_line_byte_range(&full_content, decl.line)
+        .ok_or_else(|| format!("Line {} not found in file", decl.line))?;
+
+    if line_start < pv_region.byte_range.0 || line_end > pv_region.byte_range.1 {
+        return Err("Line byte range is outside current PV region".to_string());
     }
 
-    let offset_start = decl.byte_range.0 - pv_region.byte_range.0;
-    let offset_end = decl.byte_range.1 - pv_region.byte_range.0;
+    let offset_start = line_start - pv_region.byte_range.0;
+    let offset_end = line_end - pv_region.byte_range.0;
 
     let mut pv_content = full_content[pv_region.byte_range.0..pv_region.byte_range.1].to_string();
     if offset_start > pv_content.len() || offset_end > pv_content.len() {
@@ -525,3 +562,26 @@ fn save_pv_declaration_edit(
 
     write_region(main_c_path, pv_region, &pv_content).map_err(|e| e.to_string())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_find_line_byte_range_simple() {
+        let content = "line1\nline2\nline3";
+        assert_eq!(find_line_byte_range(content, 1), Some((0, 5)));
+        assert_eq!(find_line_byte_range(content, 2), Some((6, 11)));
+        assert_eq!(find_line_byte_range(content, 3), Some((12, 17)));
+        assert_eq!(find_line_byte_range(content, 4), None);
+    }
+
+    #[test]
+    fn test_find_line_byte_range_crlf() {
+        let content = "line1\r\nline2\r\nline3";
+        assert_eq!(find_line_byte_range(content, 1), Some((0, 5)));
+        assert_eq!(find_line_byte_range(content, 2), Some((7, 12)));
+    }
+}
+
+
