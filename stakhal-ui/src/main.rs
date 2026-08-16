@@ -418,6 +418,9 @@ row, listboxrow, actionrow {
         drop(st);
 
         let popover = gtk4::Popover::builder().autohide(true).build();
+        popover.connect_closed(|p| {
+            p.unparent();
+        });
         let menu_box = gtk4::Box::builder()
             .orientation(gtk4::Orientation::Vertical)
             .spacing(4)
@@ -502,6 +505,8 @@ row, listboxrow, actionrow {
         do_load_project(&state_load, &widgets_load);
     });
 
+    window.present();
+
     // Check last_project.json on startup
     let config = load_app_config();
     if let Some(dir_str) = config.project_dir {
@@ -510,9 +515,9 @@ row, listboxrow, actionrow {
             try_discover_folder(&path, &state, &widgets);
         }
     }
-
-    window.present();
 }
+
+
 
 fn try_discover_folder(dir: &Path, state: &Rc<RefCell<AppState>>, widgets: &Rc<AppWidgets>) {
     let mut st = state.borrow_mut();
