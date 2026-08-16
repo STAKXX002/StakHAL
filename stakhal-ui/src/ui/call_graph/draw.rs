@@ -167,7 +167,7 @@ pub fn draw_call_graph_canvas(
                 if is_hl {
                     cr.set_source_rgb(1.0, 1.0, 1.0);
                 } else {
-                    cr.set_source_rgb(0.70, 0.70, 0.75);
+                    cr.set_source_rgb(0.52, 0.52, 0.52);
                 }
                 // Source Socket
                 cr.arc(sx, sy, socket_r, 0.0, 2.0 * std::f64::consts::PI);
@@ -179,7 +179,7 @@ pub fn draw_call_graph_canvas(
         }
     }
 
-    // Draw Nodes (Blender Geometry Nodes Style with 7px header strip)
+    // Draw Nodes (Terminal/Monochrome Style with status-only colored header strip)
     for (n_id, &(n_x, n_y)) in &positions {
         let n_w = (n_id.len() as f64 * 8.5 + 28.0).max(110.0);
         let n_h = 34.0;
@@ -201,7 +201,7 @@ pub fn draw_call_graph_canvas(
             cr.set_source_rgb(0.15, 0.15, 0.18);
             draw_rounded_rectangle(cr, n_x, n_y, n_w, n_h, radius);
             let _ = cr.fill_preserve();
-            cr.set_source_rgb(0.45, 0.60, 0.80);
+            cr.set_source_rgb(0.90, 0.90, 0.90);
             cr.set_line_width(1.5);
             let _ = cr.stroke();
         } else if is_connected {
@@ -227,8 +227,8 @@ pub fn draw_call_graph_canvas(
             let _ = cr.stroke();
         }
 
-        // Header Strip (top ~7px of node box filled with category color)
-        let (cat_r, cat_g, cat_b) = get_node_category_color(n_id);
+        // Header Strip (top ~7px of node box filled with status color or neutral monochrome)
+        let (cat_r, cat_g, cat_b) = get_node_status_color(n_id, &edges);
         let _ = cr.save();
         draw_rounded_rectangle(cr, n_x, n_y, n_w, n_h, radius);
         let _ = cr.clip();
@@ -279,21 +279,42 @@ pub fn draw_rounded_rectangle(cr: &cairo::Context, x: f64, y: f64, w: f64, h: f6
     cr.close_path();
 }
 
-pub fn get_node_category_color(node_id: &str) -> (f64, f64, f64) {
-    if node_id == "main" {
-        (0.50, 0.50, 0.50)
-    } else if node_id.starts_with("MX_") || node_id.ends_with("_Init") {
-        (0.31, 0.79, 0.69)
-    } else if node_id.starts_with("HAL_") && node_id.ends_with("_IRQHandler") {
-        (0.77, 0.53, 0.75)
-    } else if node_id.ends_with("_IRQHandler") {
-        (0.81, 0.57, 0.47)
-    } else if node_id.contains("Callback") || node_id.starts_with("HAL_") {
-        (0.34, 0.61, 0.84)
-    } else {
-        (0.50, 0.50, 0.50)
+pub fn get_node_status_color(
+
+    node_id: &str,
+    edges: &[stakhal_core::graph::builder::GraphEdge],
+) -> (f64, f64, f64) {
+    let outgoing_count = edges.iter().filter(|e| e.from == node_id).count();
+    let incoming_count = edges.iter().filter(|e| e.to == node_id).count();
+
+    if node_id.ends_with("_IRQHandler") && !node_id.starts_with("HAL_") {
+        if outgoing_count == 0 {
+            // Error (Red): Unlinked IRQ handler
+            return (0.94, 0.27, 0.27);
+        } else if outgoing_count > 2 {
+            // Warning (Yellow): Shared vector IRQ handler chain
+            return (0.96, 0.62, 0.04);
+        }
     }
+
+    if node_id.contains("Callback") || node_id.starts_with("HAL_") {
+        let has_user_override = edges.iter().any(|e| {
+            e.from == node_id && !e.to.starts_with("HAL_") && !e.to.ends_with("_IRQHandler")
+        });
+
+        if has_user_override {
+            // Ok (Green): User-implemented callback override
+            return (0.13, 0.77, 0.37);
+        } else if outgoing_count == 0 && incoming_count > 0 {
+            // Warning (Yellow): Unhandled weak callback
+            return (0.96, 0.62, 0.04);
+        }
+    }
+
+    // Default neutral monochrome for normal nodes (main, Init, HAL dispatchers)
+    (0.75, 0.75, 0.75)
 }
+
 
 pub fn get_rect_ray_intersection(
     rect_x: f64,
