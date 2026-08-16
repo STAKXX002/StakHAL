@@ -50,12 +50,13 @@ pub fn draw_call_graph_canvas(
 
     let _ = cr.scale(zoom, zoom);
 
-    let canvas_w = bw as f64 + 60.0;
-    let canvas_h = bh as f64 + 60.0;
+    let fill_w = (_width / zoom).max(bw as f64 + 60.0);
+    let fill_h = (_height / zoom).max(bh as f64 + 60.0);
 
     cr.set_source_rgb(0.04, 0.04, 0.04);
-    cr.rectangle(0.0, 0.0, canvas_w, canvas_h);
+    cr.rectangle(0.0, 0.0, fill_w, fill_h);
     let _ = cr.fill();
+
 
 
     // Canvas Title Header

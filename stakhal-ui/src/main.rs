@@ -4,6 +4,8 @@ use std::rc::Rc;
 use gtk4::{gdk, gio, glib};
 use gtk4::prelude::*;
 use libadwaita as adw;
+use libadwaita::prelude::*;
+
 use stakhal_core::graph::builder::EdgeType;
 use stakhal_core::ioc::discovery::discover_project_files;
 use stakhal_core::ir::schema::load_project;
@@ -239,6 +241,9 @@ row, listboxrow, actionrow {
     let widgets_fit = Rc::clone(&widgets);
     widgets.btn_fit_to_view.connect_clicked(move |_| {
         let mut st = state_fit.borrow_mut();
+        if st.loaded_project.is_none() || st.graph_node_positions.is_empty() {
+            return;
+        }
         let (bw, bh) = st.graph_bounds;
         let vw = widgets_fit
             .graph_scrolled
@@ -253,21 +258,24 @@ row, listboxrow, actionrow {
 
         if bw > 0 && bh > 0 && vw > 0.0 && vh > 0.0 {
             let fit_zoom = (vw / bw as f64).min(vh / bh as f64).clamp(0.25, 2.5);
-            st.graph_zoom = fit_zoom;
+            if !fit_zoom.is_nan() && !fit_zoom.is_infinite() {
+                st.graph_zoom = fit_zoom;
 
-            let zoomed_w = (bw as f64 * fit_zoom).ceil() as i32;
-            let zoomed_h = (bh as f64 * fit_zoom).ceil() as i32;
-            drop(st);
+                let zoomed_w = (bw as f64 * fit_zoom).ceil() as i32;
+                let zoomed_h = (bh as f64 * fit_zoom).ceil() as i32;
+                drop(st);
 
-            widgets_fit.graph_drawing_area.set_content_width(zoomed_w);
-            widgets_fit.graph_drawing_area.set_content_height(zoomed_h);
+                widgets_fit.graph_drawing_area.set_content_width(zoomed_w);
+                widgets_fit.graph_drawing_area.set_content_height(zoomed_h);
 
-            widgets_fit.graph_scrolled.hadjustment().set_value(0.0);
-            widgets_fit.graph_scrolled.vadjustment().set_value(0.0);
+                widgets_fit.graph_scrolled.hadjustment().set_value(0.0);
+                widgets_fit.graph_scrolled.vadjustment().set_value(0.0);
 
-            widgets_fit.graph_drawing_area.queue_draw();
+                widgets_fit.graph_drawing_area.queue_draw();
+            }
         }
     });
+
 
 
     let stack_graph = stack.clone();
@@ -571,11 +579,13 @@ fn do_load_project(state: &Rc<RefCell<AppState>>, widgets: &Rc<AppWidgets>) {
                 let row = create_pv_row(&pv.name, &pv.type_str, pv.initial_value.as_deref(), pv.line);
                 let state_clone = Rc::clone(state);
                 let widgets_clone = Rc::clone(widgets);
-                row.connect_activate(move |_| {
+                row.connect_activated(move |_| {
                     open_pv_source_view(idx, &state_clone, &widgets_clone);
                 });
                 widgets.list_pv_variables.append(&row);
             }
+
+
 
             let mut collapsed = std::collections::HashSet::new();
             for e in project.call_graph_edges.iter().filter(|e| e.edge_type == EdgeType::IrqEntry) {

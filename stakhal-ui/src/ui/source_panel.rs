@@ -216,6 +216,8 @@ pub fn open_pv_source_view(pv_idx: usize, state: &Rc<RefCell<AppState>>, widgets
         }
     };
 
+
+
     if pv_idx >= project.pv_declarations.len() {
         return;
     }
