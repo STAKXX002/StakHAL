@@ -307,13 +307,15 @@ row, listboxrow, actionrow {
     let key_controller = gtk4::EventControllerKey::new();
     let state_key = Rc::clone(&state);
     let widgets_key = Rc::clone(&widgets);
-    key_controller.connect_key_pressed(move |_, key, _code, _state| {
+    key_controller.connect_key_pressed(move |_, key, _code, modifier| {
         let is_editing = state_key.borrow().is_inline_editing;
         if !is_editing {
             return glib::Propagation::Proceed;
         }
 
-        if key == gdk::Key::Return || key == gdk::Key::KP_Enter {
+        let is_ctrl = modifier.contains(gdk::ModifierType::CONTROL_MASK);
+
+        if key == gdk::Key::Return || key == gdk::Key::KP_Enter || (is_ctrl && (key == gdk::Key::s || key == gdk::Key::S)) {
             save_inline_declaration_edit(&state_key, &widgets_key, do_load_project);
             glib::Propagation::Stop
         } else if key == gdk::Key::Escape {
@@ -323,6 +325,7 @@ row, listboxrow, actionrow {
             glib::Propagation::Proceed
         }
     });
+
     widgets.source_view.add_controller(key_controller);
 
     let gesture = gtk4::GestureClick::new();
