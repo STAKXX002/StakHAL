@@ -35,13 +35,12 @@ pub fn draw_call_graph_canvas(
     let (bw, bh) = st.graph_bounds;
 
     let selected_node = st.selected_graph_node.clone();
+    let hovered_node = st.hovered_graph_node.clone();
     let positions = st.graph_node_positions.clone();
     let headers = st.chain_headers.clone();
     drop(st);
 
-
     let _ = cr.scale(zoom, zoom);
-
 
     let fill_w = (_width / zoom).max(bw as f64 + 60.0);
     let fill_h = (_height / zoom).max(bh as f64 + 60.0);
@@ -49,8 +48,6 @@ pub fn draw_call_graph_canvas(
     cr.set_source_rgb(0.04, 0.04, 0.04);
     cr.rectangle(0.0, 0.0, fill_w, fill_h);
     let _ = cr.fill();
-
-
 
     // Canvas Title Header
     cr.select_font_face("monospace", cairo::FontSlant::Normal, cairo::FontWeight::Bold);
@@ -98,7 +95,7 @@ pub fn draw_call_graph_canvas(
         (None, None)
     };
 
-    // Draw Edges
+    // Draw Edges & Socket Dots
     for (idx, e) in edges.iter().enumerate() {
         let from_pos = positions.get(&e.from);
         let to_pos = positions.get(&e.to);
@@ -133,11 +130,11 @@ pub fn draw_call_graph_canvas(
             let dy = ey - sy;
 
             let (cp1_x, cp1_y, cp2_x, cp2_y) = if dy.abs() >= dx.abs() {
-                let offset_y = (dy.abs() * 0.5).max(35.0);
+                let offset_y = (dy.abs() * 0.55).max(40.0);
                 let sign_y = if dy >= 0.0 { 1.0 } else { -1.0 };
                 (sx, sy + offset_y * sign_y, ex, ey - offset_y * sign_y)
             } else {
-                let offset_x = (dx.abs() * 0.5).max(35.0);
+                let offset_x = (dx.abs() * 0.55).max(40.0);
                 let sign_x = if dx >= 0.0 { 1.0 } else { -1.0 };
                 (sx + offset_x * sign_x, sy, ex - offset_x * sign_x, ey)
             };
@@ -146,6 +143,7 @@ pub fn draw_call_graph_canvas(
             let _ = cr.curve_to(cp1_x, cp1_y, cp2_x, cp2_y, ex, ey);
             let _ = cr.stroke();
 
+            // Arrow Tip
             let angle = (ey - cp2_y).atan2(ex - cp2_x);
             let arrow_len = if is_hl { 10.0 } else { 8.0 };
             let arrow_angle = 0.45;
@@ -160,49 +158,74 @@ pub fn draw_call_graph_canvas(
             let _ = cr.line_to(x2, y2);
             let _ = cr.close_path();
             let _ = cr.fill();
+
+            // Socket Dots (Source & Target connection circles)
+            if !is_dimmed {
+                let socket_r = 3.5;
+                if is_hl {
+                    cr.set_source_rgb(1.0, 1.0, 1.0);
+                } else {
+                    cr.set_source_rgb(0.70, 0.70, 0.75);
+                }
+                // Source Socket
+                cr.arc(sx, sy, socket_r, 0.0, 2.0 * std::f64::consts::PI);
+                let _ = cr.fill();
+                // Target Socket
+                cr.arc(ex, ey, socket_r, 0.0, 2.0 * std::f64::consts::PI);
+                let _ = cr.fill();
+            }
         }
     }
 
-    // Draw Nodes
+    // Draw Nodes (Blender Geometry Nodes Style with 7px header strip)
     for (n_id, &(n_x, n_y)) in &positions {
         let n_w = (n_id.len() as f64 * 8.5 + 28.0).max(110.0);
         let n_h = 34.0;
         let radius = 7.0;
 
         let is_selected = selected_node.as_deref() == Some(n_id.as_str());
+        let is_hovered = hovered_node.as_deref() == Some(n_id.as_str());
         let is_connected = highlighted_nodes.as_ref().map_or(false, |set| set.contains(n_id));
         let is_dimmed = highlighted_nodes.is_some() && !is_connected;
 
         if is_selected {
-            cr.set_source_rgb(0.13, 0.13, 0.13);
+            cr.set_source_rgb(0.14, 0.14, 0.16);
             draw_rounded_rectangle(cr, n_x, n_y, n_w, n_h, radius);
             let _ = cr.fill_preserve();
             cr.set_source_rgb(1.0, 1.0, 1.0);
             cr.set_line_width(2.0);
             let _ = cr.stroke();
+        } else if is_hovered {
+            cr.set_source_rgb(0.15, 0.15, 0.18);
+            draw_rounded_rectangle(cr, n_x, n_y, n_w, n_h, radius);
+            let _ = cr.fill_preserve();
+            cr.set_source_rgb(0.45, 0.60, 0.80);
+            cr.set_line_width(1.5);
+            let _ = cr.stroke();
         } else if is_connected {
-            cr.set_source_rgb(0.10, 0.10, 0.10);
+            cr.set_source_rgb(0.11, 0.11, 0.13);
             draw_rounded_rectangle(cr, n_x, n_y, n_w, n_h, radius);
             let _ = cr.fill_preserve();
             cr.set_source_rgb(0.67, 0.67, 0.67);
             cr.set_line_width(1.5);
             let _ = cr.stroke();
         } else if is_dimmed {
-            cr.set_source_rgb(0.05, 0.05, 0.05);
+            cr.set_source_rgb(0.05, 0.05, 0.06);
             draw_rounded_rectangle(cr, n_x, n_y, n_w, n_h, radius);
             let _ = cr.fill_preserve();
-            cr.set_source_rgb(0.12, 0.12, 0.12);
+            cr.set_source_rgb(0.14, 0.14, 0.14);
             cr.set_line_width(1.0);
             let _ = cr.stroke();
         } else {
-            cr.set_source_rgb(0.07, 0.07, 0.07);
+            cr.set_source_rgb(0.09, 0.09, 0.11);
             draw_rounded_rectangle(cr, n_x, n_y, n_w, n_h, radius);
             let _ = cr.fill_preserve();
-            cr.set_source_rgb(0.16, 0.16, 0.16);
+            cr.set_source_rgb(0.20, 0.20, 0.24);
             cr.set_line_width(1.0);
             let _ = cr.stroke();
         }
 
+        // Header Strip (top ~7px of node box filled with category color)
         let (cat_r, cat_g, cat_b) = get_node_category_color(n_id);
         let _ = cr.save();
         draw_rounded_rectangle(cr, n_x, n_y, n_w, n_h, radius);
@@ -212,11 +235,11 @@ pub fn draw_call_graph_canvas(
         } else {
             cr.set_source_rgb(cat_r, cat_g, cat_b);
         }
-        cr.rectangle(n_x, n_y, n_w, 3.0);
+        cr.rectangle(n_x, n_y, n_w, 7.0);
         let _ = cr.fill();
         let _ = cr.restore();
 
-        if is_selected || is_connected {
+        if is_selected || is_hovered || is_connected {
             cr.set_source_rgb(1.0, 1.0, 1.0);
         } else if is_dimmed {
             cr.set_source_rgb(0.33, 0.33, 0.33);
@@ -227,7 +250,7 @@ pub fn draw_call_graph_canvas(
         cr.select_font_face(
             "monospace",
             cairo::FontSlant::Normal,
-            if is_selected {
+            if is_selected || is_hovered {
                 cairo::FontWeight::Bold
             } else {
                 cairo::FontWeight::Normal
@@ -236,7 +259,7 @@ pub fn draw_call_graph_canvas(
         cr.set_font_size(11.5);
         if let Ok(extents) = cr.text_extents(n_id) {
             let tx = n_x + (n_w - extents.width()) / 2.0;
-            let ty = n_y + (n_h + extents.height()) / 2.0 + 1.0;
+            let ty = n_y + (n_h + extents.height()) / 2.0 + 2.0;
             let _ = cr.move_to(tx, ty);
             let _ = cr.show_text(n_id);
         }
@@ -244,6 +267,7 @@ pub fn draw_call_graph_canvas(
 }
 
 pub fn draw_rounded_rectangle(cr: &cairo::Context, x: f64, y: f64, w: f64, h: f64, r: f64) {
+
     let pi = std::f64::consts::PI;
     cr.new_sub_path();
     cr.arc(x + w - r, y + r, r, -pi / 2.0, 0.0);
