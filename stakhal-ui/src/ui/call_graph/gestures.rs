@@ -142,9 +142,11 @@ pub fn setup_call_graph_drawing_and_gestures(
 
     widgets.graph_drawing_area.add_controller(gesture_drag);
 
-    // Zoom controller (Ctrl + Scroll)
+    // Zoom controller (Ctrl + Scroll / Trackpad)
     let scroll_controller = gtk4::EventControllerScroll::new(
-        gtk4::EventControllerScrollFlags::VERTICAL | gtk4::EventControllerScrollFlags::HORIZONTAL,
+        gtk4::EventControllerScrollFlags::VERTICAL
+            | gtk4::EventControllerScrollFlags::HORIZONTAL
+            | gtk4::EventControllerScrollFlags::KINETIC,
     );
     let state_scroll = Rc::clone(state);
     let area_scroll = widgets.graph_drawing_area.clone();
@@ -152,29 +154,55 @@ pub fn setup_call_graph_drawing_and_gestures(
     scroll_controller.set_propagation_phase(gtk4::PropagationPhase::Capture);
     scroll_controller.connect_scroll(move |controller, _dx, dy| {
         let modifiers = controller.current_event_state();
-        if modifiers.contains(gtk4::gdk::ModifierType::CONTROL_MASK) {
-            let zoom_delta = if dy < 0.0 { 0.1 } else if dy > 0.0 { -0.1 } else { 0.0 };
-            if zoom_delta != 0.0 {
-                let mut st = state_scroll.borrow_mut();
-                let new_zoom = (st.graph_zoom + zoom_delta).clamp(0.25, 2.5);
-                st.graph_zoom = new_zoom;
-                let (w, h) = st.graph_bounds;
-                let zoomed_w = (w as f64 * new_zoom).ceil() as i32;
-                let zoomed_h = (h as f64 * new_zoom).ceil() as i32;
-                drop(st);
-                area_scroll.set_content_width(zoomed_w);
-                area_scroll.set_content_height(zoomed_h);
-                area_scroll.queue_draw();
-            }
+        let is_ctrl = modifiers.contains(gtk4::gdk::ModifierType::CONTROL_MASK);
+
+        if is_ctrl && dy != 0.0 {
+            let zoom_delta = if dy < 0.0 { 0.08 } else { -0.08 };
+            let mut st = state_scroll.borrow_mut();
+            let new_zoom = (st.graph_zoom + zoom_delta).clamp(0.25, 2.5);
+            st.graph_zoom = new_zoom;
+            let (w, h) = st.graph_bounds;
+            let zoomed_w = (w as f64 * new_zoom).ceil() as i32;
+            let zoomed_h = (h as f64 * new_zoom).ceil() as i32;
+            drop(st);
+            area_scroll.set_content_width(zoomed_w);
+            area_scroll.set_content_height(zoomed_h);
+            area_scroll.queue_draw();
             gtk4::glib::Propagation::Stop
         } else {
             gtk4::glib::Propagation::Proceed
         }
     });
 
-
-
     widgets.graph_drawing_area.add_controller(scroll_controller);
+
+    // Touchpad Pinch-to-Zoom Controller
+    let gesture_zoom = gtk4::GestureZoom::new();
+    let state_zoom = Rc::clone(state);
+    let area_zoom = widgets.graph_drawing_area.clone();
+    let initial_zoom = Rc::new(std::cell::Cell::new(1.0f64));
+
+    let initial_zoom_begin = Rc::clone(&initial_zoom);
+    let state_zoom_begin = Rc::clone(state);
+    gesture_zoom.connect_begin(move |_, _| {
+        initial_zoom_begin.set(state_zoom_begin.borrow().graph_zoom);
+    });
+
+    gesture_zoom.connect_scale_changed(move |_, scale| {
+        let mut st = state_zoom.borrow_mut();
+        let new_zoom = (initial_zoom.get() * scale).clamp(0.25, 2.5);
+        st.graph_zoom = new_zoom;
+        let (w, h) = st.graph_bounds;
+        let zoomed_w = (w as f64 * new_zoom).ceil() as i32;
+        let zoomed_h = (h as f64 * new_zoom).ceil() as i32;
+        drop(st);
+        area_zoom.set_content_width(zoomed_w);
+        area_zoom.set_content_height(zoomed_h);
+        area_zoom.queue_draw();
+    });
+
+    widgets.graph_drawing_area.add_controller(gesture_zoom);
 }
+
 
 
