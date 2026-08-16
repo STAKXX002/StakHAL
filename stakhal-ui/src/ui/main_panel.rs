@@ -272,6 +272,7 @@ pub fn create_pv_row(
     type_str: &str,
     initial_value: Option<&str>,
     line: usize,
+    is_unreferenced: bool,
 ) -> adw::ActionRow {
     let subtitle = match initial_value {
         Some(val) => format!("{} = {}", type_str, val),
@@ -287,6 +288,15 @@ pub fn create_pv_row(
 
     row.set_cursor_from_name(Some("pointer"));
 
+    if is_unreferenced {
+        let badge = gtk4::Label::builder()
+            .label("[unreferenced]")
+            .valign(gtk4::Align::Center)
+            .css_classes(vec!["warning".to_string(), "caption".to_string()])
+            .build();
+        row.add_suffix(&badge);
+    }
+
     let lbl_line = gtk4::Label::builder()
         .label(&format!("Line {}", line))
         .valign(gtk4::Align::Center)
@@ -296,3 +306,4 @@ pub fn create_pv_row(
     row.add_suffix(&lbl_line);
     row
 }
+

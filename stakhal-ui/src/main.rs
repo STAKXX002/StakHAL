@@ -607,7 +607,10 @@ fn do_load_project(state: &Rc<RefCell<AppState>>, widgets: &Rc<AppWidgets>) {
             }
 
             for (idx, pv) in project.pv_declarations.iter().enumerate() {
-                let row = create_pv_row(&pv.name, &pv.type_str, pv.initial_value.as_deref(), pv.line);
+                let usages = stakhal_core::source::usage_finder::find_variable_usages(&main_c_path, &pv.name, (0, 0)).unwrap_or_default();
+                let is_unreferenced = usages.is_empty();
+                let row = create_pv_row(&pv.name, &pv.type_str, pv.initial_value.as_deref(), pv.line, is_unreferenced);
+
                 let state_clone = Rc::clone(state);
                 let widgets_clone = Rc::clone(widgets);
                 row.connect_activated(move |_| {
@@ -615,6 +618,7 @@ fn do_load_project(state: &Rc<RefCell<AppState>>, widgets: &Rc<AppWidgets>) {
                 });
                 widgets.list_pv_variables.append(&row);
             }
+
 
 
 
