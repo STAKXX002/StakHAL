@@ -4,15 +4,15 @@ use gtk4::cairo;
 use stakhal_core::graph::{compute_graph_bounds, compute_graph_layout};
 use crate::state::AppState;
 
-use gtk4::prelude::*;
 
 pub fn draw_call_graph_canvas(
-    area: &gtk4::DrawingArea,
+    _area: &gtk4::DrawingArea,
     cr: &cairo::Context,
     _width: f64,
     _height: f64,
     state: &Rc<RefCell<AppState>>,
 ) {
+
     let mut st = state.borrow_mut();
     let edges = match &st.loaded_project {
         Some(p) => p.call_graph_edges.clone(),
@@ -33,22 +33,15 @@ pub fn draw_call_graph_canvas(
 
     let zoom = st.graph_zoom;
     let (bw, bh) = st.graph_bounds;
-    let target_w = (bw as f64 * zoom).ceil() as i32;
-    let target_h = (bh as f64 * zoom).ceil() as i32;
-
-    if area.content_width() != target_w {
-        area.set_content_width(target_w);
-    }
-    if area.content_height() != target_h {
-        area.set_content_height(target_h);
-    }
 
     let selected_node = st.selected_graph_node.clone();
     let positions = st.graph_node_positions.clone();
     let headers = st.chain_headers.clone();
     drop(st);
 
+
     let _ = cr.scale(zoom, zoom);
+
 
     let fill_w = (_width / zoom).max(bw as f64 + 60.0);
     let fill_h = (_height / zoom).max(bh as f64 + 60.0);
