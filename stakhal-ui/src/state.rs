@@ -30,11 +30,15 @@ pub struct AppState {
     pub chain_headers: Vec<ChainHeaderLayout>,
     pub graph_bounds: (i32, i32),
     pub graph_zoom: f64,
+    pub graph_pan_x: f64,
+    pub graph_pan_y: f64,
+    pub last_mouse_pos: (f64, f64),
     pub dragged_graph_node: Option<String>,
     pub hovered_graph_node: Option<String>,
 
     pub drag_start_node_pos: (f64, f64),
     pub drag_start_click_pos: (f64, f64),
+    pub drag_start_pan_pos: (f64, f64),
 }
 
 impl Default for AppState {
@@ -56,13 +60,18 @@ impl Default for AppState {
             chain_headers: Vec::new(),
             graph_bounds: (800, 600),
             graph_zoom: 1.0,
+            graph_pan_x: 0.0,
+            graph_pan_y: 0.0,
+            last_mouse_pos: (400.0, 300.0),
             dragged_graph_node: None,
             hovered_graph_node: None,
             drag_start_node_pos: (0.0, 0.0),
             drag_start_click_pos: (0.0, 0.0),
+            drag_start_pan_pos: (0.0, 0.0),
         }
     }
 }
+
 
 
 pub struct AppWidgets {

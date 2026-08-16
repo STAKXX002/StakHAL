@@ -32,7 +32,8 @@ pub fn draw_call_graph_canvas(
     }
 
     let zoom = st.graph_zoom;
-    let (bw, bh) = st.graph_bounds;
+    let pan_x = st.graph_pan_x;
+    let pan_y = st.graph_pan_y;
 
     let selected_node = st.selected_graph_node.clone();
     let hovered_node = st.hovered_graph_node.clone();
@@ -40,14 +41,15 @@ pub fn draw_call_graph_canvas(
     let headers = st.chain_headers.clone();
     drop(st);
 
+    // Fill viewport background
+    cr.set_source_rgb(0.04, 0.04, 0.04);
+    cr.rectangle(0.0, 0.0, _width.max(3000.0), _height.max(3000.0));
+    let _ = cr.fill();
+
+    // Apply translation and zoom transforms
+    let _ = cr.translate(pan_x, pan_y);
     let _ = cr.scale(zoom, zoom);
 
-    let fill_w = (_width / zoom).max(bw as f64 + 60.0);
-    let fill_h = (_height / zoom).max(bh as f64 + 60.0);
-
-    cr.set_source_rgb(0.04, 0.04, 0.04);
-    cr.rectangle(0.0, 0.0, fill_w, fill_h);
-    let _ = cr.fill();
 
     // Canvas Title Header
     cr.select_font_face("monospace", cairo::FontSlant::Normal, cairo::FontWeight::Bold);

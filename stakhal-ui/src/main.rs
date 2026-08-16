@@ -260,10 +260,13 @@ row, listboxrow, actionrow {
             let fit_zoom = (vw / bw as f64).min(vh / bh as f64).clamp(0.25, 2.5);
             if !fit_zoom.is_nan() && !fit_zoom.is_infinite() {
                 st.graph_zoom = fit_zoom;
+                st.graph_pan_x = 0.0;
+                st.graph_pan_y = 0.0;
 
                 let zoomed_w = (bw as f64 * fit_zoom).ceil() as i32;
                 let zoomed_h = (bh as f64 * fit_zoom).ceil() as i32;
                 drop(st);
+
 
                 widgets_fit.graph_drawing_area.set_content_width(zoomed_w);
                 widgets_fit.graph_drawing_area.set_content_height(zoomed_h);
