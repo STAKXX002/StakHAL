@@ -457,10 +457,11 @@ pub fn save_inline_declaration_edit<F>(
         None => return,
     };
 
-    let trimmed_text = new_text.trim_end_matches(['\r', '\n']);
+    let trimmed_text = new_text.trim();
 
     match save_pv_declaration_edit(&main_c_path, &decl, trimmed_text) {
         Ok(_) => {
+            widgets.source_buffer.set_modified(false);
             widgets.inline_edit_bar.set_visible(false);
             widgets.source_view.set_editable(false);
             widgets.source_view.set_cursor_visible(false);
@@ -479,6 +480,8 @@ pub fn save_inline_declaration_edit<F>(
             widgets.toast_overlay.add_toast(adw::Toast::new(&format!("Save Error: {}", err_msg)));
         }
     }
+
+
 }
 
 pub fn cancel_inline_declaration_edit(state: &Rc<RefCell<AppState>>, widgets: &Rc<AppWidgets>) {
