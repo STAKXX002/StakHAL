@@ -52,6 +52,10 @@ fn build_ui(app: &adw::Application) {
     border-radius: 0px;
     box-shadow: none;
 }
+window, dialog {
+    background-color: #0a0a0a;
+    color: #e5e5e5;
+}
 windowcontrols button {
     border: none;
     background: transparent;
@@ -62,37 +66,39 @@ windowcontrols button:hover {
     background: transparent;
 }
 button.stakhal-btn {
-    border: 1px solid #2a2a2a;
+    border: 1px solid #262626;
     background-color: #121212;
-    color: #e0e0e0;
+    color: #e5e5e5;
     transition: all 120ms ease;
     border-radius: 0px;
 }
 button.stakhal-btn:hover {
-    border-color: #404040;
+    border-color: #525252;
     background-color: #1a1a1a;
     color: #ffffff;
 }
 button.stakhal-btn:active {
-    background-color: #242424;
+    background-color: #262626;
 }
 button.stakhal-btn.suggested-action {
-    border-color: #ffffff;
-    background-color: #ffffff;
-    color: #000000;
+    border-color: #e5e5e5;
+    background-color: #e5e5e5;
+    color: #0a0a0a;
 }
 button.stakhal-btn.suggested-action:hover {
-    border-color: #e0e0e0;
-    background-color: #e0e0e0;
+    border-color: #ffffff;
+    background-color: #ffffff;
     color: #000000;
 }
 button.stakhal-btn.flat {
     border-color: transparent;
     background-color: transparent;
+    color: #a3a3a3;
 }
 button.stakhal-btn.flat:hover {
-    border-color: #2a2a2a;
-    background-color: #1a1a1a;
+    border-color: #262626;
+    background-color: #171717;
+    color: #ffffff;
 }
 row, listboxrow, actionrow {
     border-radius: 0px;
@@ -102,12 +108,31 @@ row, listboxrow, actionrow {
     transition: all 120ms ease;
 }
 .clickable-row:hover {
-    background-color: #1a1a1a;
+    background-color: #171717;
 }
 .clickable-row:active {
-    background-color: #242424;
+    background-color: #262626;
+}
+.dim-label {
+    color: #737373;
+}
+.title-1, .title-2, .title-3, .heading {
+    color: #f5f5f5;
+    font-weight: bold;
+}
+
+/* Reserved Status Classes */
+.status-error, .error {
+    color: #ef4444;
+}
+.status-warning, .warning {
+    color: #f59e0b;
+}
+.status-ok, .ok {
+    color: #22c55e;
 }
 "#);
+
 
     gtk4::style_context_add_provider_for_display(
         &gdk::Display::default().expect("Could not connect to a display."),
