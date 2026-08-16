@@ -1,6 +1,7 @@
 use std::collections::{HashMap, HashSet};
 use serde::{Deserialize, Serialize};
 use super::builder::{EdgeType, GraphEdge};
+use super::hal_rules::mapping_for_irq_handler;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct ChainHeaderLayout {
@@ -13,6 +14,51 @@ pub struct ChainHeaderLayout {
     pub is_collapsed: bool,
 }
 
+#[derive(Debug)]
+struct IrqChainInfo {
+    handler_id: String,
+    dispatch_id: String,
+    override_targets: Vec<String>,
+}
+
+#[derive(Debug)]
+#[allow(dead_code)]
+struct PeripheralLane {
+    name: String,
+    init_node: Option<String>,
+    irq_chains: Vec<IrqChainInfo>,
+}
+
+
+fn infer_peripheral_name(handler_id: &str, known_init_periphs: &[String]) -> String {
+    for p in known_init_periphs {
+        if let Some(rest) = handler_id.strip_prefix(p) {
+            if rest.is_empty() || rest.starts_with('_') || !rest.chars().next().unwrap().is_ascii_digit() {
+                return p.clone();
+            }
+        }
+    }
+
+    if handler_id.starts_with("EXTI") {
+        return "GPIO".to_string();
+    }
+
+    if let Some(mapping) = mapping_for_irq_handler(handler_id) {
+        if mapping.peripheral_prefix == "GPIO" {
+            return "GPIO".to_string();
+        }
+    }
+
+    if let Some(stem) = handler_id.strip_suffix("_IRQHandler") {
+        if let Some(first_part) = stem.split('_').next() {
+            return first_part.to_string();
+        }
+        return stem.to_string();
+    }
+
+    "PERIPHERAL".to_string()
+}
+
 pub fn compute_graph_layout(
     edges: &[GraphEdge],
     collapsed_chains: &HashSet<String>,
@@ -20,78 +66,40 @@ pub fn compute_graph_layout(
     let mut map = HashMap::new();
     let mut headers = Vec::new();
 
-    let max_row_w = 720.0;
+    if edges.is_empty() {
+        return (map, headers);
+    }
 
-    // 1. INITIALIZATION SECTION
+    // 1. Collect Init edges: main -> MX_<PERIPH>_Init
     let init_edges: Vec<&GraphEdge> = edges
         .iter()
         .filter(|e| e.edge_type == EdgeType::Init)
         .collect();
 
-    let mut init_bottom_y = 160.0;
+    let mut init_periph_names = Vec::new();
+    let mut periph_init_map: HashMap<String, String> = HashMap::new();
 
-    if !init_edges.is_empty() {
-        let mut target_nodes: Vec<String> = init_edges.iter().map(|e| e.to.clone()).collect();
-        target_nodes.sort();
-        target_nodes.dedup();
+    for e in &init_edges {
+        let node_name = &e.to;
+        let periph_name = node_name
+            .strip_prefix("MX_")
+            .and_then(|s| s.strip_suffix("_Init"))
+            .unwrap_or(node_name)
+            .to_string();
 
-        let spacing_x = 20.0;
-        let row_height = 55.0;
-        let mut rows: Vec<Vec<(String, f64)>> = Vec::new();
-
-        let mut current_row: Vec<(String, f64)> = Vec::new();
-        let mut current_row_w = 0.0;
-
-        for target in &target_nodes {
-            let w = (target.len() as f64 * 8.5 + 28.0).max(110.0);
-            if !current_row.is_empty()
-                && (current_row_w + spacing_x + w > max_row_w || current_row.len() >= 5)
-            {
-                rows.push(current_row);
-                current_row = Vec::new();
-                current_row_w = 0.0;
-            }
-            current_row_w += if current_row.is_empty() {
-                w
-            } else {
-                spacing_x + w
-            };
-            current_row.push((target.clone(), w));
+        if !init_periph_names.contains(&periph_name) {
+            init_periph_names.push(periph_name.clone());
         }
-        if !current_row.is_empty() {
-            rows.push(current_row);
-        }
-
-        let first_row_w = if let Some(r0) = rows.first() {
-            r0.iter().map(|(_, w)| w).sum::<f64>()
-                + (r0.len().saturating_sub(1) as f64 * spacing_x)
-        } else {
-            110.0
-        };
-
-        let main_w = 110.0;
-        let main_x = (40.0 + (first_row_w / 2.0) - (main_w / 2.0)).max(40.0);
-        map.insert("main".to_string(), (main_x, 50.0));
-
-        let mut row_start_y = 130.0;
-        for row in rows {
-            let mut curr_x = 40.0;
-            for (id, w) in row {
-                map.insert(id, (curr_x, row_start_y));
-                curr_x += w + spacing_x;
-            }
-            row_start_y += row_height;
-        }
-        init_bottom_y = row_start_y;
+        periph_init_map.insert(periph_name, node_name.clone());
     }
 
-    // 2. INTERRUPT CHAINS SECTION (Stacked vertically, left-aligned with collapsible header bars)
+    // 2. Collect IRQ entry chains: handler_id -> dispatch_id -> override_targets
     let irq_entry_edges: Vec<&GraphEdge> = edges
         .iter()
         .filter(|e| e.edge_type == EdgeType::IrqEntry)
         .collect();
 
-    let mut current_chain_y = init_bottom_y + 35.0;
+    let mut irq_chains_by_periph: HashMap<String, Vec<IrqChainInfo>> = HashMap::new();
 
     for irq_edge in &irq_entry_edges {
         let handler_id = irq_edge.from.clone();
@@ -103,64 +111,146 @@ pub fn compute_graph_layout(
             .map(|e| e.to.clone())
             .collect();
 
-        let total_nodes = 1 + 1 + override_targets.len();
-        let is_collapsed = collapsed_chains.contains(&handler_id);
+        let periph_name = infer_peripheral_name(&handler_id, &init_periph_names);
 
-        let header_label = format!("{} chain ({} nodes)", handler_id, total_nodes);
-        let header_w = (header_label.len() as f64 * 8.0 + 36.0).max(220.0);
-        let header_h = 28.0;
-        let chain_x = 40.0;
+        irq_chains_by_periph
+            .entry(periph_name)
+            .or_default()
+            .push(IrqChainInfo {
+                handler_id,
+                dispatch_id,
+                override_targets,
+            });
+    }
 
-        headers.push(ChainHeaderLayout {
-            handler_id: handler_id.clone(),
-            label: header_label,
-            x: chain_x,
-            y: current_chain_y,
-            w: header_w,
-            h: header_h,
-            is_collapsed,
-        });
-
-        if is_collapsed {
-            current_chain_y += header_h + 16.0;
-        } else {
-            let handler_w = (handler_id.len() as f64 * 8.5 + 28.0).max(130.0);
-            let dispatch_w = (dispatch_id.len() as f64 * 8.5 + 28.0).max(130.0);
-
-            let chain_y_l1 = current_chain_y + 38.0;
-            let chain_y_l2 = chain_y_l1 + 65.0;
-            let chain_y_l3 = chain_y_l2 + 65.0;
-
-            let mut override_w_sum = 0.0;
-            let mut override_nodes_info = Vec::new();
-            let mut curr_ov_x = chain_x;
-
-            for ov in &override_targets {
-                let w = (ov.len() as f64 * 8.5 + 28.0).max(130.0);
-                override_nodes_info.push((ov.clone(), curr_ov_x, w));
-                curr_ov_x += w + 20.0;
-                override_w_sum += w + 20.0;
-            }
-
-            let chain_max_width = handler_w.max(dispatch_w).max(override_w_sum).max(160.0);
-            let center_x = chain_x + (chain_max_width / 2.0);
-
-            map.insert(handler_id, (center_x - (handler_w / 2.0), chain_y_l1));
-            map.insert(dispatch_id, (center_x - (dispatch_w / 2.0), chain_y_l2));
-
-            for (ov_id, ov_x, _) in override_nodes_info {
-                map.insert(ov_id, (ov_x, chain_y_l3));
-            }
-
-            let chain_height = if override_targets.is_empty() {
-                130.0
-            } else {
-                195.0
-            };
-
-            current_chain_y += 38.0 + chain_height + 25.0;
+    // 3. Assemble ordered peripheral lanes
+    let mut lane_names: Vec<String> = init_periph_names.clone();
+    for p in irq_chains_by_periph.keys() {
+        if !lane_names.contains(p) {
+            lane_names.push(p.clone());
         }
     }
+    // Sort lanes: GPIO first, then alphabetically
+    lane_names.sort_by(|a, b| {
+        if a == "GPIO" {
+            std::cmp::Ordering::Less
+        } else if b == "GPIO" {
+            std::cmp::Ordering::Greater
+        } else {
+            a.cmp(b)
+        }
+    });
+
+    let mut lanes: Vec<PeripheralLane> = Vec::new();
+    for name in lane_names {
+        let init_node = periph_init_map.get(&name).cloned();
+        let irq_chains = irq_chains_by_periph.remove(&name).unwrap_or_default();
+        lanes.push(PeripheralLane {
+            name,
+            init_node,
+            irq_chains,
+        });
+    }
+
+    // 4. Lay out swimlanes left-to-right and top-to-bottom
+    let lane_spacing_x = 40.0;
+    let mut current_lane_x = 40.0;
+    let mut lane_x_bounds: Vec<(f64, f64)> = Vec::new();
+
+    for lane in &lanes {
+        let mut lane_nodes_w: Vec<f64> = Vec::new();
+        if let Some(ref init_id) = lane.init_node {
+            lane_nodes_w.push((init_id.len() as f64 * 8.5 + 28.0).max(110.0));
+        }
+
+        for chain in &lane.irq_chains {
+            let total_nodes = 1 + 1 + chain.override_targets.len();
+            let header_label = format!("{} chain ({} nodes)", chain.handler_id, total_nodes);
+            lane_nodes_w.push((header_label.len() as f64 * 8.0 + 36.0).max(180.0));
+            lane_nodes_w.push((chain.handler_id.len() as f64 * 8.5 + 28.0).max(120.0));
+            lane_nodes_w.push((chain.dispatch_id.len() as f64 * 8.5 + 28.0).max(120.0));
+            for ov in &chain.override_targets {
+                lane_nodes_w.push((ov.len() as f64 * 8.5 + 28.0).max(120.0));
+            }
+        }
+
+        let max_node_w = lane_nodes_w
+            .into_iter()
+            .fold(160.0f64, |acc, x| acc.max(x));
+
+        let lane_w = max_node_w;
+        let lane_start_x = current_lane_x;
+        let lane_center_x = lane_start_x + lane_w / 2.0;
+
+        let mut current_y = 140.0;
+
+        // Depth 0: Init node
+        if let Some(ref init_id) = lane.init_node {
+            let node_w = (init_id.len() as f64 * 8.5 + 28.0).max(110.0);
+            map.insert(init_id.clone(), (lane_center_x - node_w / 2.0, current_y));
+            current_y += 34.0 + 35.0;
+        }
+
+        // Depths 1, 2, 3+: IRQ chains
+        for chain in &lane.irq_chains {
+            let is_collapsed = collapsed_chains.contains(&chain.handler_id);
+            let total_nodes = 1 + 1 + chain.override_targets.len();
+            let header_label = format!("{} chain ({} nodes)", chain.handler_id, total_nodes);
+            let header_w = (header_label.len() as f64 * 8.0 + 36.0).max(180.0);
+            let header_h = 28.0;
+
+            headers.push(ChainHeaderLayout {
+                handler_id: chain.handler_id.clone(),
+                label: header_label,
+                x: lane_center_x - header_w / 2.0,
+                y: current_y,
+                w: header_w,
+                h: header_h,
+                is_collapsed,
+            });
+
+            current_y += header_h + 16.0;
+
+            if !is_collapsed {
+                let handler_w = (chain.handler_id.len() as f64 * 8.5 + 28.0).max(120.0);
+                map.insert(
+                    chain.handler_id.clone(),
+                    (lane_center_x - handler_w / 2.0, current_y),
+                );
+                current_y += 34.0 + 25.0;
+
+                let dispatch_w = (chain.dispatch_id.len() as f64 * 8.5 + 28.0).max(120.0);
+                map.insert(
+                    chain.dispatch_id.clone(),
+                    (lane_center_x - dispatch_w / 2.0, current_y),
+                );
+                current_y += 34.0 + 25.0;
+
+                for ov in &chain.override_targets {
+                    let ov_w = (ov.len() as f64 * 8.5 + 28.0).max(120.0);
+                    map.insert(ov.clone(), (lane_center_x - ov_w / 2.0, current_y));
+                    current_y += 34.0 + 15.0;
+                }
+
+                current_y += 15.0;
+            }
+        }
+
+        lane_x_bounds.push((lane_start_x, lane_start_x + lane_w));
+        current_lane_x += lane_w + lane_spacing_x;
+    }
+
+    // 5. Position main centered above all lanes
+    let (first_x, last_x) = if let (Some(f), Some(l)) = (lane_x_bounds.first(), lane_x_bounds.last()) {
+        (f.0, l.1)
+    } else {
+        (40.0, 200.0)
+    };
+
+    let main_w = 110.0;
+    let main_center_x = (first_x + last_x) / 2.0;
+    let main_x = (main_center_x - main_w / 2.0).max(40.0);
+    map.insert("main".to_string(), (main_x, 50.0));
 
     (map, headers)
 }
@@ -230,6 +320,62 @@ mod tests {
 
         let main_pos = pos.get("main").unwrap();
         assert_eq!(main_pos.1, 50.0, "Main node should be placed at y=50.0");
+
+        let init_pos = pos.get("MX_GPIO_Init").unwrap();
+        assert!(init_pos.1 > main_pos.1, "Init node must be positioned below main node (depth 0)");
+    }
+
+    #[test]
+    fn test_swimlane_grouping_and_relative_depth_ordering() {
+        let edges = vec![
+            GraphEdge {
+                from: "main".to_string(),
+                to: "MX_USART2_Init".to_string(),
+                edge_type: EdgeType::Init,
+                generated: true,
+            },
+            GraphEdge {
+                from: "USART2_IRQHandler".to_string(),
+                to: "HAL_UART_IRQHandler".to_string(),
+                edge_type: EdgeType::IrqEntry,
+                generated: true,
+            },
+            GraphEdge {
+                from: "HAL_UART_IRQHandler".to_string(),
+                to: "HAL_UART_RxCpltCallback".to_string(),
+                edge_type: EdgeType::WeakOverride,
+                generated: true,
+            },
+        ];
+
+        let collapsed = HashSet::new();
+        let (pos, headers) = compute_graph_layout(&edges, &collapsed);
+
+        assert_eq!(headers.len(), 1, "Should generate 1 chain header");
+        assert_eq!(headers[0].handler_id, "USART2_IRQHandler");
+
+        let main_y = pos.get("main").unwrap().1;
+        let init_y = pos.get("MX_USART2_Init").unwrap().1;
+        let irq_y = pos.get("USART2_IRQHandler").unwrap().1;
+        let dispatch_y = pos.get("HAL_UART_IRQHandler").unwrap().1;
+        let callback_y = pos.get("HAL_UART_RxCpltCallback").unwrap().1;
+
+        assert!(main_y < init_y, "main (y={main_y}) must be above Init (y={init_y})");
+        assert!(init_y < irq_y, "Init (y={init_y}) must be above IRQ Handler (y={irq_y})");
+        assert!(irq_y < dispatch_y, "IRQ Handler (y={irq_y}) must be above HAL Dispatch (y={dispatch_y})");
+        assert!(dispatch_y < callback_y, "HAL Dispatch (y={dispatch_y}) must be above Callback (y={callback_y})");
+
+        // Assert all nodes in USART2 lane share the same center X alignment
+        let init_x = pos.get("MX_USART2_Init").unwrap().0;
+        let irq_x = pos.get("USART2_IRQHandler").unwrap().0;
+        let dispatch_x = pos.get("HAL_UART_IRQHandler").unwrap().0;
+
+        let init_center = init_x + ("MX_USART2_Init".len() as f64 * 8.5 + 28.0).max(110.0) / 2.0;
+        let irq_center = irq_x + ("USART2_IRQHandler".len() as f64 * 8.5 + 28.0).max(120.0) / 2.0;
+        let dispatch_center = dispatch_x + ("HAL_UART_IRQHandler".len() as f64 * 8.5 + 28.0).max(120.0) / 2.0;
+
+        assert!((init_center - irq_center).abs() < 1.0, "Init and IRQ handler should be centered in the same lane");
+        assert!((irq_center - dispatch_center).abs() < 1.0, "IRQ handler and HAL dispatch should be centered in the same lane");
     }
 
     #[test]
@@ -251,4 +397,5 @@ mod tests {
         assert!(h >= 390, "Height should include max_y + padding");
     }
 }
+
 
