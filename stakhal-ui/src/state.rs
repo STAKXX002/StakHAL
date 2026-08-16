@@ -31,6 +31,7 @@ pub struct AppState {
     pub graph_bounds: (i32, i32),
     pub graph_zoom: f64,
     pub dragged_graph_node: Option<String>,
+    pub hovered_graph_node: Option<String>,
 
     pub drag_start_node_pos: (f64, f64),
     pub drag_start_click_pos: (f64, f64),
@@ -56,11 +57,13 @@ impl Default for AppState {
             graph_bounds: (800, 600),
             graph_zoom: 1.0,
             dragged_graph_node: None,
+            hovered_graph_node: None,
             drag_start_node_pos: (0.0, 0.0),
             drag_start_click_pos: (0.0, 0.0),
         }
     }
 }
+
 
 pub struct AppWidgets {
     pub window: adw::ApplicationWindow,

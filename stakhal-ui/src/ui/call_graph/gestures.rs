@@ -202,7 +202,49 @@ pub fn setup_call_graph_drawing_and_gestures(
     });
 
     widgets.graph_drawing_area.add_controller(gesture_zoom);
+
+    // Motion Controller (Hover tracking)
+    let motion_controller = gtk4::EventControllerMotion::new();
+    let state_motion = Rc::clone(state);
+    let area_motion = widgets.graph_drawing_area.clone();
+
+    motion_controller.connect_motion(move |_, x, y| {
+        let mut st = state_motion.borrow_mut();
+        let zoom = st.graph_zoom;
+        let unscaled_x = x / zoom;
+        let unscaled_y = y / zoom;
+
+        let mut newly_hovered = None;
+        for (id, &(nx, ny)) in &st.graph_node_positions {
+            let nw = (id.len() as f64 * 8.5 + 28.0).max(110.0);
+            let nh = 34.0;
+            if unscaled_x >= nx && unscaled_x <= nx + nw && unscaled_y >= ny && unscaled_y <= ny + nh {
+                newly_hovered = Some(id.clone());
+                break;
+            }
+        }
+
+        if st.hovered_graph_node != newly_hovered {
+            st.hovered_graph_node = newly_hovered;
+            drop(st);
+            area_motion.queue_draw();
+        }
+    });
+
+    let state_leave = Rc::clone(state);
+    let area_leave = widgets.graph_drawing_area.clone();
+    motion_controller.connect_leave(move |_| {
+        let mut st = state_leave.borrow_mut();
+        if st.hovered_graph_node.is_some() {
+            st.hovered_graph_node = None;
+            drop(st);
+            area_leave.queue_draw();
+        }
+    });
+
+    widgets.graph_drawing_area.add_controller(motion_controller);
 }
+
 
 
 
