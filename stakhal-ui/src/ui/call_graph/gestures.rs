@@ -149,6 +149,7 @@ pub fn setup_call_graph_drawing_and_gestures(
     let state_scroll = Rc::clone(state);
     let area_scroll = widgets.graph_drawing_area.clone();
 
+    scroll_controller.set_propagation_phase(gtk4::PropagationPhase::Capture);
     scroll_controller.connect_scroll(move |controller, _dx, dy| {
         let modifiers = controller.current_event_state();
         if modifiers.contains(gtk4::gdk::ModifierType::CONTROL_MASK) {
@@ -170,6 +171,8 @@ pub fn setup_call_graph_drawing_and_gestures(
             gtk4::glib::Propagation::Proceed
         }
     });
+
+
 
     widgets.graph_drawing_area.add_controller(scroll_controller);
 }
