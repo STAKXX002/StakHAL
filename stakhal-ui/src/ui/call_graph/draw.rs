@@ -12,34 +12,44 @@ pub fn draw_call_graph_canvas(
     _height: f64,
     state: &Rc<RefCell<AppState>>,
 ) {
+    {
 
-    let mut st = state.borrow_mut();
-    let edges = match &st.loaded_project {
-        Some(p) => p.call_graph_edges.clone(),
+
+        let mut st = state.borrow_mut();
+        if st.loaded_project.is_none() {
+            return;
+        }
+        if st.graph_node_positions.is_empty() {
+            let p = st.loaded_project.as_ref().unwrap();
+            let (pos, headers) = compute_graph_layout(&p.call_graph_edges, &st.collapsed_chains);
+            let bounds = compute_graph_bounds(&pos, &headers);
+            let colors = compute_all_node_status_colors(&p.call_graph_edges, &pos);
+            st.graph_node_positions = pos;
+            st.node_status_colors = colors;
+            st.chain_headers = headers;
+            st.graph_bounds = bounds;
+        }
+    }
+
+    let st = state.borrow();
+    let project = match &st.loaded_project {
+        Some(p) => p,
         None => return,
     };
 
+    let edges = &project.call_graph_edges;
     if edges.is_empty() {
         return;
-    }
-
-    if st.graph_node_positions.is_empty() {
-        let (pos, headers) = compute_graph_layout(&edges, &st.collapsed_chains);
-        let bounds = compute_graph_bounds(&pos, &headers);
-        st.graph_node_positions = pos;
-        st.chain_headers = headers;
-        st.graph_bounds = bounds;
     }
 
     let zoom = st.graph_zoom;
     let pan_x = st.graph_pan_x;
     let pan_y = st.graph_pan_y;
 
-    let selected_node = st.selected_graph_node.clone();
-    let hovered_node = st.hovered_graph_node.clone();
-    let positions = st.graph_node_positions.clone();
-    let headers = st.chain_headers.clone();
-    drop(st);
+    let selected_node = st.selected_graph_node.as_deref();
+    let hovered_node = st.hovered_graph_node.as_deref();
+    let positions = &st.graph_node_positions;
+    let headers = &st.chain_headers;
 
     // Fill viewport background
     cr.set_source_rgb(0.04, 0.04, 0.04);
@@ -59,7 +69,7 @@ pub fn draw_call_graph_canvas(
     let _ = cr.show_text("[ STAKHAL CALL GRAPH DIAGRAM (DRAGGABLE) ]");
 
     // Draw Chain Headers (Collapsible bars)
-    for h in &headers {
+    for h in headers {
         cr.set_source_rgb(0.08, 0.08, 0.08);
         draw_rounded_rectangle(cr, h.x, h.y, h.w, h.h, 5.0);
         let _ = cr.fill_preserve();
@@ -80,22 +90,23 @@ pub fn draw_call_graph_canvas(
     }
 
     // Highlights computation
-    let (highlighted_nodes, highlighted_edges) = if let Some(ref sel) = selected_node {
+    let (highlighted_nodes, highlighted_edges) = if let Some(sel) = selected_node {
         let mut connected_n = std::collections::HashSet::new();
         let mut connected_e = std::collections::HashSet::new();
-        connected_n.insert(sel.clone());
+        connected_n.insert(sel);
 
         for (idx, e) in edges.iter().enumerate() {
-            if e.from == *sel || e.to == *sel {
+            if e.from == sel || e.to == sel {
                 connected_e.insert(idx);
-                connected_n.insert(e.from.clone());
-                connected_n.insert(e.to.clone());
+                connected_n.insert(e.from.as_str());
+                connected_n.insert(e.to.as_str());
             }
         }
         (Some(connected_n), Some(connected_e))
     } else {
         (None, None)
     };
+
 
     // Draw Edges & Socket Dots
     for (idx, e) in edges.iter().enumerate() {
@@ -180,14 +191,16 @@ pub fn draw_call_graph_canvas(
     }
 
     // Draw Nodes (Terminal/Monochrome Style with status-only colored header strip)
-    for (n_id, &(n_x, n_y)) in &positions {
+    for (n_id, &(n_x, n_y)) in positions {
+
         let n_w = (n_id.len() as f64 * 8.5 + 28.0).max(110.0);
         let n_h = 34.0;
         let radius = 7.0;
 
-        let is_selected = selected_node.as_deref() == Some(n_id.as_str());
-        let is_hovered = hovered_node.as_deref() == Some(n_id.as_str());
-        let is_connected = highlighted_nodes.as_ref().map_or(false, |set| set.contains(n_id));
+        let is_selected = selected_node == Some(n_id.as_str());
+        let is_hovered = hovered_node == Some(n_id.as_str());
+        let is_connected = highlighted_nodes.as_ref().map_or(false, |set| set.contains(n_id.as_str()));
+
         let is_dimmed = highlighted_nodes.is_some() && !is_connected;
 
         if is_selected {
@@ -228,7 +241,7 @@ pub fn draw_call_graph_canvas(
         }
 
         // Header Strip (top ~7px of node box filled with status color or neutral monochrome)
-        let (cat_r, cat_g, cat_b) = get_node_status_color(n_id, &edges);
+        let (cat_r, cat_g, cat_b) = st.node_status_colors.get(n_id).copied().unwrap_or((0.75, 0.75, 0.75));
         let _ = cr.save();
         draw_rounded_rectangle(cr, n_x, n_y, n_w, n_h, radius);
         let _ = cr.clip();
@@ -240,6 +253,7 @@ pub fn draw_call_graph_canvas(
         cr.rectangle(n_x, n_y, n_w, 7.0);
         let _ = cr.fill();
         let _ = cr.restore();
+
 
         if is_selected || is_hovered || is_connected {
             cr.set_source_rgb(1.0, 1.0, 1.0);
@@ -268,6 +282,8 @@ pub fn draw_call_graph_canvas(
     }
 }
 
+
+
 pub fn draw_rounded_rectangle(cr: &cairo::Context, x: f64, y: f64, w: f64, h: f64, r: f64) {
 
     let pi = std::f64::consts::PI;
@@ -279,7 +295,19 @@ pub fn draw_rounded_rectangle(cr: &cairo::Context, x: f64, y: f64, w: f64, h: f6
     cr.close_path();
 }
 
+pub fn compute_all_node_status_colors(
+    edges: &[stakhal_core::graph::builder::GraphEdge],
+    positions: &std::collections::HashMap<String, (f64, f64)>,
+) -> std::collections::HashMap<String, (f64, f64, f64)> {
+    let mut colors = std::collections::HashMap::new();
+    for node_id in positions.keys() {
+        colors.insert(node_id.clone(), get_node_status_color(node_id, edges));
+    }
+    colors
+}
+
 pub fn get_node_status_color(
+
 
     node_id: &str,
     edges: &[stakhal_core::graph::builder::GraphEdge],

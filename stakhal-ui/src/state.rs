@@ -26,6 +26,7 @@ pub struct AppState {
     pub is_generated_hidden: bool,
     pub selected_graph_node: Option<String>,
     pub graph_node_positions: std::collections::HashMap<String, (f64, f64)>,
+    pub node_status_colors: std::collections::HashMap<String, (f64, f64, f64)>,
     pub collapsed_chains: std::collections::HashSet<String>,
     pub chain_headers: Vec<ChainHeaderLayout>,
     pub graph_bounds: (i32, i32),
@@ -56,6 +57,7 @@ impl Default for AppState {
             is_generated_hidden: false,
             selected_graph_node: None,
             graph_node_positions: std::collections::HashMap::new(),
+            node_status_colors: std::collections::HashMap::new(),
             collapsed_chains: std::collections::HashSet::new(),
             chain_headers: Vec::new(),
             graph_bounds: (800, 600),
@@ -71,6 +73,7 @@ impl Default for AppState {
         }
     }
 }
+
 
 
 

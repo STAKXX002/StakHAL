@@ -103,7 +103,9 @@ pub fn setup_call_graph_drawing_and_gestures(
                 if let Some(ref proj) = st.loaded_project {
                     let (pos, headers) = compute_graph_layout(&proj.call_graph_edges, &st.collapsed_chains);
                     let (w, h) = compute_graph_bounds(&pos, &headers);
+                    let colors = crate::ui::call_graph::draw::compute_all_node_status_colors(&proj.call_graph_edges, &pos);
                     st.graph_node_positions = pos;
+                    st.node_status_colors = colors;
                     st.chain_headers = headers;
                     st.graph_bounds = (w, h);
                     let zoomed_w = (w as f64 * zoom).ceil() as i32;
@@ -111,6 +113,7 @@ pub fn setup_call_graph_drawing_and_gestures(
                     area_drag_end.set_content_width(zoomed_w);
                     area_drag_end.set_content_height(zoomed_h);
                 }
+
                 st.dragged_graph_node = None;
                 drop(st);
                 area_drag_end.queue_draw();

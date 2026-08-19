@@ -551,6 +551,7 @@ fn try_discover_folder(dir: &Path, state: &Rc<RefCell<AppState>>, widgets: &Rc<A
 fn do_load_project(state: &Rc<RefCell<AppState>>, widgets: &Rc<AppWidgets>) {
     let (ioc_path, main_c_path, dir_path) = {
         let st = state.borrow();
+
         match (&st.discovered_ioc, &st.discovered_main_c, &st.project_dir) {
             (Some(i), Some(m), Some(d)) => (i.clone(), m.clone(), d.clone()),
             _ => {
@@ -631,10 +632,6 @@ fn do_load_project(state: &Rc<RefCell<AppState>>, widgets: &Rc<AppWidgets>) {
                 widgets.list_pv_variables.append(&row);
             }
 
-
-
-
-
             let mut collapsed = std::collections::HashSet::new();
             for e in project.call_graph_edges.iter().filter(|e| e.edge_type == EdgeType::IrqEntry) {
                 collapsed.insert(e.from.clone());
@@ -642,10 +639,12 @@ fn do_load_project(state: &Rc<RefCell<AppState>>, widgets: &Rc<AppWidgets>) {
 
             let (init_positions, headers) = compute_graph_layout(&project.call_graph_edges, &collapsed);
             let (w, h) = compute_graph_bounds(&init_positions, &headers);
+            let colors = crate::ui::call_graph::draw::compute_all_node_status_colors(&project.call_graph_edges, &init_positions);
             {
                 let mut st = state.borrow_mut();
                 st.collapsed_chains = collapsed;
                 st.graph_node_positions = init_positions;
+                st.node_status_colors = colors;
                 st.chain_headers = headers;
                 st.graph_bounds = (w, h);
                 st.loaded_project = Some(project);
@@ -655,9 +654,11 @@ fn do_load_project(state: &Rc<RefCell<AppState>>, widgets: &Rc<AppWidgets>) {
             widgets.graph_drawing_area.set_content_height(h);
             widgets.btn_call_graph.set_sensitive(true);
             widgets.graph_drawing_area.queue_draw();
-            widgets.toast_overlay.add_toast(adw::Toast::new("✓ Project loaded successfully"));
 
+            widgets.toast_overlay.add_toast(adw::Toast::new("✓ Project loaded successfully"));
         }
+
+
         Err(err) => {
             widgets.toast_overlay.add_toast(adw::Toast::new(&format!("✗ Load Error: {}", err)));
         }
