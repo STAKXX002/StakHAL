@@ -24,10 +24,29 @@ pub fn find_variable_usages(
     variable_name: &str,
     declaration_byte_range: (usize, usize),
 ) -> Result<Vec<UsageSite>, ScanError> {
+    let mut batch_res = find_variable_usages_batch(path, &[(variable_name, declaration_byte_range)])?;
+    Ok(batch_res.pop().unwrap_or_default())
+}
+
+pub fn find_variable_usages_batch(
+    path: &Path,
+    targets: &[(&str, (usize, usize))],
+) -> Result<Vec<Vec<UsageSite>>, ScanError> {
     let source = fs::read_to_string(path).map_err(|e| match e.kind() {
         std::io::ErrorKind::NotFound => ScanError::FileNotFound(path.to_path_buf()),
         _ => ScanError::IoError(e.to_string()),
     })?;
+    find_variable_usages_batch_from_source(&source, targets)
+}
+
+pub fn find_variable_usages_batch_from_source(
+    source: &str,
+    targets: &[(&str, (usize, usize))],
+) -> Result<Vec<Vec<UsageSite>>, ScanError> {
+    if targets.is_empty() {
+        return Ok(Vec::new());
+    }
+
     let source_bytes = source.as_bytes();
 
     let mut parser = tree_sitter::Parser::new();
@@ -36,53 +55,63 @@ pub fn find_variable_usages(
         .map_err(|e| ScanError::ParseError(e.to_string()))?;
 
     let tree = parser
-        .parse(&source, None)
+        .parse(source, None)
         .ok_or_else(|| ScanError::ParseError("tree-sitter parse returned None".to_string()))?;
 
     let lines: Vec<&str> = source.lines().collect();
 
-    let mut usages = Vec::new();
-    walk_and_collect_usages(
+    let mut target_map: std::collections::HashMap<&str, Vec<usize>> = std::collections::HashMap::new();
+    for (idx, (name, _)) in targets.iter().enumerate() {
+        target_map.entry(name.trim()).or_default().push(idx);
+    }
+
+    let mut results = vec![Vec::new(); targets.len()];
+
+    walk_and_collect_usages_batch(
         tree.root_node(),
-        variable_name,
-        declaration_byte_range,
+        targets,
+        &target_map,
         source_bytes,
         &lines,
-        &mut usages,
+        &mut results,
     );
 
-    Ok(usages)
+    Ok(results)
 }
 
-fn walk_and_collect_usages(
+fn walk_and_collect_usages_batch(
     node: tree_sitter::Node,
-    variable_name: &str,
-    decl_range: (usize, usize),
+    targets: &[(&str, (usize, usize))],
+    target_map: &std::collections::HashMap<&str, Vec<usize>>,
     source_bytes: &[u8],
     lines: &[&str],
-    out: &mut Vec<UsageSite>,
+    results: &mut [Vec<UsageSite>],
 ) {
     let node_start = node.start_byte();
     let node_end = node.end_byte();
 
     if node.kind() == "identifier" || node.kind() == "field_identifier" {
-        let overlaps_decl = !(node_end <= decl_range.0 || node_start >= decl_range.1);
-        if !overlaps_decl {
-            if let Ok(text) = node.utf8_text(source_bytes) {
-                if text.trim() == variable_name {
-                    let row = node.start_position().row; // 0-indexed
-                    let line = row + 1; // 1-indexed
-                    let context_snippet = if row < lines.len() {
-                        lines[row].trim().to_string()
-                    } else {
-                        String::new()
-                    };
+        if let Ok(text) = node.utf8_text(source_bytes) {
+            let key = text.trim();
+            if let Some(target_indices) = target_map.get(key) {
+                let row = node.start_position().row; // 0-indexed
+                let line = row + 1; // 1-indexed
+                let context_snippet = if row < lines.len() {
+                    lines[row].trim().to_string()
+                } else {
+                    String::new()
+                };
 
-                    out.push(UsageSite {
-                        line,
-                        byte_range: (node_start, node_end),
-                        context_snippet,
-                    });
+                for &idx in target_indices {
+                    let decl_range = targets[idx].1;
+                    let overlaps_decl = !(node_end <= decl_range.0 || node_start >= decl_range.1);
+                    if !overlaps_decl {
+                        results[idx].push(UsageSite {
+                            line,
+                            byte_range: (node_start, node_end),
+                            context_snippet: context_snippet.clone(),
+                        });
+                    }
                 }
             }
         }
@@ -91,9 +120,10 @@ fn walk_and_collect_usages(
 
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
-        walk_and_collect_usages(child, variable_name, decl_range, source_bytes, lines, out);
+        walk_and_collect_usages_batch(child, targets, target_map, source_bytes, lines, results);
     }
 }
+
 
 #[cfg(test)]
 mod tests {
@@ -172,4 +202,39 @@ void check(void) {
         assert_eq!(usages[0].line, 6);
         assert_eq!(usages[0].context_snippet, "if (flag) {");
     }
+
+    #[test]
+    fn test_batch_find_variable_usages() {
+        let dir = tempdir().unwrap();
+        let file_path = dir.path().join("main.c");
+        let content = r#"int flag = 1;
+int counter = 0;
+int unusedVar = 10;
+
+void check(void) {
+    if (flag) {
+        counter++;
+    }
 }
+"#;
+        fs::write(&file_path, content).unwrap();
+
+        let targets = vec![
+            ("flag", (0, 13)),
+            ("counter", (14, 30)),
+            ("unusedVar", (31, 50)),
+        ];
+
+        let batch_usages = find_variable_usages_batch(&file_path, &targets).unwrap();
+
+        assert_eq!(batch_usages.len(), 3);
+        assert_eq!(batch_usages[0].len(), 1);
+        assert_eq!(batch_usages[0][0].context_snippet, "if (flag) {");
+
+        assert_eq!(batch_usages[1].len(), 1);
+        assert_eq!(batch_usages[1][0].context_snippet, "counter++;");
+
+        assert_eq!(batch_usages[2].len(), 0);
+    }
+}
+

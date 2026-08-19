@@ -611,8 +611,15 @@ fn do_load_project(state: &Rc<RefCell<AppState>>, widgets: &Rc<AppWidgets>) {
                 widgets.list_user_regions.append(&row);
             }
 
-            for (idx, pv) in project.pv_declarations.iter().enumerate() {
-                let usages = stakhal_core::source::usage_finder::find_variable_usages(&main_c_path, &pv.name, (0, 0)).unwrap_or_default();
+            let pv_targets: Vec<(&str, (usize, usize))> = project
+                .pv_declarations
+                .iter()
+                .map(|pv| (pv.name.as_str(), (0, 0)))
+                .collect();
+            let batch_usages = stakhal_core::source::usage_finder::find_variable_usages_batch(&main_c_path, &pv_targets)
+                .unwrap_or_else(|_| vec![Vec::new(); project.pv_declarations.len()]);
+
+            for (idx, (pv, usages)) in project.pv_declarations.iter().zip(batch_usages.into_iter()).enumerate() {
                 let is_unreferenced = usages.is_empty();
                 let row = create_pv_row(&pv.name, &pv.type_str, pv.initial_value.as_deref(), pv.line, is_unreferenced);
 
@@ -623,6 +630,7 @@ fn do_load_project(state: &Rc<RefCell<AppState>>, widgets: &Rc<AppWidgets>) {
                 });
                 widgets.list_pv_variables.append(&row);
             }
+
 
 
 
