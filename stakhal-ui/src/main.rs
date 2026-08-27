@@ -20,6 +20,9 @@ use ui::call_graph::{
     build_call_graph_panel, compute_graph_bounds, compute_graph_layout, setup_call_graph_drawing_and_gestures,
     CallGraphPanelWidgets,
 };
+use ui::nucleo_pinout::{
+    build_nucleo_pinout_panel, setup_nucleo_pinout_drawing_and_gestures, NucleoPinoutPanelWidgets,
+};
 
 use ui::main_panel::{
     build_main_panel, clear_list_box, create_peripheral_row, create_pv_row, create_region_row, MainPanelWidgets,
@@ -145,6 +148,7 @@ row, listboxrow, actionrow {
         btn_browse,
         btn_load,
         btn_call_graph,
+        btn_nucleo_pinout,
         lbl_discovered_dir,
         lbl_ioc_path,
         lbl_main_c_path,
@@ -177,6 +181,11 @@ row, listboxrow, actionrow {
         btn_inline_cancel,
     } = build_source_panel();
 
+    let context_menu_popover = gtk4::Popover::builder()
+        .autohide(true)
+        .build();
+    context_menu_popover.set_parent(&source_view);
+
     let CallGraphPanelWidgets {
         graph_panel_box,
         btn_graph_back,
@@ -184,6 +193,13 @@ row, listboxrow, actionrow {
         graph_drawing_area,
         graph_scrolled,
     } = build_call_graph_panel();
+
+    let NucleoPinoutPanelWidgets {
+        pinout_panel_box,
+        btn_pinout_back,
+        pinout_drawing_area,
+        pinout_scrolled,
+    } = build_nucleo_pinout_panel();
 
     let stack = gtk4::Stack::builder()
         .transition_type(gtk4::StackTransitionType::SlideLeftRight)
@@ -193,6 +209,7 @@ row, listboxrow, actionrow {
     stack.add_named(&overview_box, Some("overview"));
     stack.add_named(&source_panel_box, Some("source_view"));
     stack.add_named(&graph_panel_box, Some("call_graph"));
+    stack.add_named(&pinout_panel_box, Some("nucleo_pinout"));
     stack.set_visible_child_name("overview");
 
     let header_bar = adw::HeaderBar::new();
@@ -224,6 +241,7 @@ row, listboxrow, actionrow {
         lbl_main_c_path,
         btn_load,
         btn_call_graph: btn_call_graph.clone(),
+        btn_nucleo_pinout: btn_nucleo_pinout.clone(),
         lbl_project_name,
         lbl_mcu_family,
         lbl_mcu_name,
@@ -247,9 +265,13 @@ row, listboxrow, actionrow {
         graph_drawing_area,
         btn_fit_to_view: btn_fit_to_view.clone(),
         graph_scrolled: graph_scrolled.clone(),
+        pinout_drawing_area,
+        _pinout_scrolled: pinout_scrolled,
+        context_menu_popover,
     });
 
     setup_call_graph_drawing_and_gestures(&state, &widgets);
+    setup_nucleo_pinout_drawing_and_gestures(&state, &widgets);
 
     // Navigation callbacks
     let stack_back1 = stack.clone();
@@ -260,6 +282,11 @@ row, listboxrow, actionrow {
     let stack_back2 = stack.clone();
     btn_graph_back.connect_clicked(move |_| {
         stack_back2.set_visible_child_full("overview", gtk4::StackTransitionType::SlideRight);
+    });
+
+    let stack_back3 = stack.clone();
+    btn_pinout_back.connect_clicked(move |_| {
+        stack_back3.set_visible_child_full("overview", gtk4::StackTransitionType::SlideRight);
     });
 
     let state_fit = Rc::clone(&state);
@@ -309,6 +336,11 @@ row, listboxrow, actionrow {
     let stack_graph = stack.clone();
     btn_call_graph.connect_clicked(move |_| {
         stack_graph.set_visible_child_full("call_graph", gtk4::StackTransitionType::SlideLeft);
+    });
+
+    let stack_pinout = stack.clone();
+    btn_nucleo_pinout.connect_clicked(move |_| {
+        stack_pinout.set_visible_child_full("nucleo_pinout", gtk4::StackTransitionType::SlideLeft);
     });
 
 
@@ -417,10 +449,8 @@ row, listboxrow, actionrow {
         };
         drop(st);
 
-        let popover = gtk4::Popover::builder().autohide(true).build();
-        popover.connect_closed(|p| {
-            p.unparent();
-        });
+        widgets.context_menu_popover.set_child(None::<&gtk4::Widget>);
+
         let menu_box = gtk4::Box::builder()
             .orientation(gtk4::Orientation::Vertical)
             .spacing(4)
@@ -438,7 +468,7 @@ row, listboxrow, actionrow {
             .build();
         btn_copy.set_cursor_from_name(Some("pointer"));
 
-        let popover_clone = popover.clone();
+        let popover_clone = widgets.context_menu_popover.clone();
         let widgets_copy = Rc::clone(&widgets);
         btn_copy.connect_clicked(move |_| {
             let clipboard = widgets_copy.source_view.display().clipboard();
@@ -456,7 +486,7 @@ row, listboxrow, actionrow {
                 .build();
             btn_edit.set_cursor_from_name(Some("pointer"));
 
-            let popover_edit_clone = popover.clone();
+            let popover_edit_clone = widgets.context_menu_popover.clone();
             let state_edit = Rc::clone(&state_right_click);
             let widgets_edit = Rc::clone(&widgets);
             btn_edit.connect_clicked(move |_| {
@@ -466,11 +496,10 @@ row, listboxrow, actionrow {
             menu_box.append(&btn_edit);
         }
 
-        popover.set_child(Some(&menu_box));
+        widgets.context_menu_popover.set_child(Some(&menu_box));
         let rect = gdk::Rectangle::new(x as i32, y as i32, 1, 1);
-        popover.set_parent(&widgets.source_view);
-        popover.set_pointing_to(Some(&rect));
-        popover.popup();
+        widgets.context_menu_popover.set_pointing_to(Some(&rect));
+        widgets.context_menu_popover.popup();
     });
     widgets.source_view.add_controller(right_click_gesture);
 
@@ -632,6 +661,8 @@ fn do_load_project(state: &Rc<RefCell<AppState>>, widgets: &Rc<AppWidgets>) {
                 widgets.list_pv_variables.append(&row);
             }
 
+            let is_f446 = project.meta.mcu_name.to_uppercase().contains("F446");
+
             let mut collapsed = std::collections::HashSet::new();
             for e in project.call_graph_edges.iter().filter(|e| e.edge_type == EdgeType::IrqEntry) {
                 collapsed.insert(e.from.clone());
@@ -655,11 +686,22 @@ fn do_load_project(state: &Rc<RefCell<AppState>>, widgets: &Rc<AppWidgets>) {
             widgets.btn_call_graph.set_sensitive(true);
             widgets.graph_drawing_area.queue_draw();
 
+            if is_f446 {
+                widgets.btn_nucleo_pinout.set_sensitive(true);
+                widgets.btn_nucleo_pinout.set_tooltip_text(Some("View Nucleo-F446RE Physical Connector Pinout"));
+            } else {
+                widgets.btn_nucleo_pinout.set_sensitive(false);
+                widgets.btn_nucleo_pinout.set_tooltip_text(Some("Nucleo Pinout visualizer is F446RE-only for now"));
+            }
+            widgets.pinout_drawing_area.queue_draw();
+
             widgets.toast_overlay.add_toast(adw::Toast::new("✓ Project loaded successfully"));
         }
 
 
         Err(err) => {
+            widgets.btn_nucleo_pinout.set_sensitive(false);
+            widgets.btn_nucleo_pinout.set_tooltip_text(Some("Nucleo Pinout visualizer is F446RE-only for now"));
             widgets.toast_overlay.add_toast(adw::Toast::new(&format!("✗ Load Error: {}", err)));
         }
     }

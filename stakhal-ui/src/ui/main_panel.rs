@@ -8,6 +8,7 @@ pub struct MainPanelWidgets {
     pub btn_browse: gtk4::Button,
     pub btn_load: gtk4::Button,
     pub btn_call_graph: gtk4::Button,
+    pub btn_nucleo_pinout: gtk4::Button,
     pub lbl_discovered_dir: gtk4::Label,
     pub lbl_ioc_path: gtk4::Label,
     pub lbl_main_c_path: gtk4::Label,
@@ -60,6 +61,14 @@ pub fn build_main_panel() -> MainPanelWidgets {
         .build();
     btn_call_graph.set_cursor_from_name(Some("pointer"));
 
+    let btn_nucleo_pinout = gtk4::Button::builder()
+        .label("[ Nucleo Pinout ]")
+        .css_classes(vec!["stakhal-btn".to_string(), "flat".to_string()])
+        .sensitive(false)
+        .tooltip_text("Nucleo Pinout visualizer (F446RE only)")
+        .build();
+    btn_nucleo_pinout.set_cursor_from_name(Some("pointer"));
+
     let toolbar_box = gtk4::Box::builder()
         .orientation(gtk4::Orientation::Horizontal)
         .spacing(12)
@@ -88,6 +97,7 @@ pub fn build_main_panel() -> MainPanelWidgets {
     toolbar_box.append(&paths_box);
     toolbar_box.append(&btn_load);
     toolbar_box.append(&btn_call_graph);
+    toolbar_box.append(&btn_nucleo_pinout);
 
     let lbl_project_name = gtk4::Label::builder()
         .label("NAME: —")
@@ -184,6 +194,7 @@ pub fn build_main_panel() -> MainPanelWidgets {
         btn_browse,
         btn_load,
         btn_call_graph,
+        btn_nucleo_pinout,
         lbl_discovered_dir,
         lbl_ioc_path,
         lbl_main_c_path,

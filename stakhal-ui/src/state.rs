@@ -40,6 +40,9 @@ pub struct AppState {
     pub drag_start_node_pos: (f64, f64),
     pub drag_start_click_pos: (f64, f64),
     pub drag_start_pan_pos: (f64, f64),
+
+    // Nucleo pinout state
+    pub hovered_pinout_pin: Option<(String, u8)>,
 }
 
 impl Default for AppState {
@@ -70,6 +73,7 @@ impl Default for AppState {
             drag_start_node_pos: (0.0, 0.0),
             drag_start_click_pos: (0.0, 0.0),
             drag_start_pan_pos: (0.0, 0.0),
+            hovered_pinout_pin: None,
         }
     }
 }
@@ -86,6 +90,7 @@ pub struct AppWidgets {
     pub lbl_main_c_path: gtk4::Label,
     pub btn_load: gtk4::Button,
     pub btn_call_graph: gtk4::Button,
+    pub btn_nucleo_pinout: gtk4::Button,
     pub lbl_project_name: gtk4::Label,
     pub lbl_mcu_family: gtk4::Label,
     pub lbl_mcu_name: gtk4::Label,
@@ -115,6 +120,13 @@ pub struct AppWidgets {
     pub graph_drawing_area: gtk4::DrawingArea,
     pub btn_fit_to_view: gtk4::Button,
     pub graph_scrolled: gtk4::ScrolledWindow,
+
+    // Nucleo Pinout widgets
+    pub pinout_drawing_area: gtk4::DrawingArea,
+    pub _pinout_scrolled: gtk4::ScrolledWindow,
+
+    // Popover widget
+    pub context_menu_popover: gtk4::Popover,
 }
 
 
