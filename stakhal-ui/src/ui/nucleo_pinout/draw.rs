@@ -776,9 +776,12 @@ pub fn draw_nucleo_pinout_canvas(
                 cr.select_font_face("sans-serif", cairo::FontSlant::Normal, cairo::FontWeight::Bold);
                 cr.set_font_size(10.0);
                 let w1 = cr.text_extents(&line1).map(|e| e.width()).unwrap_or(120.0);
+
+                cr.select_font_face("monospace", cairo::FontSlant::Normal, cairo::FontWeight::Bold);
+                cr.set_font_size(9.5);
                 let w2 = cr.text_extents(&line2).map(|e| e.width()).unwrap_or(120.0);
 
-                let tt_w = (w1.max(w2) + 24.0).max(150.0);
+                let tt_w = (w1.max(w2) + 24.0).max(160.0);
                 let tt_h = 42.0;
 
                 // Compact Floating Position offset near cursor
