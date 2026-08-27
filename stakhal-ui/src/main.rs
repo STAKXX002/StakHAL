@@ -738,6 +738,23 @@ mod tests {
             "Expected ApplicationWindow to be constructed during build_ui"
         );
     }
+
+    #[test]
+    fn test_f446_project_loading_enables_pinout_btn() {
+        let fixture_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../stakhal-core/tests/fixtures/stakhal_blink_f446re");
+        let ioc_path = fixture_dir.join("stakhal_blink_f446re.ioc");
+        let main_c_path = fixture_dir.join("Core/Src/main.c");
+
+        let project = load_project(&ioc_path, &main_c_path).expect("Failed to load f446 fixture project");
+        assert!(project.meta.mcu_name.to_uppercase().contains("F446"));
+
+        let loc = stakhal_core::nucleo_pinout::lookup_pin("PA5");
+        assert!(loc.is_some());
+        let pin_loc = loc.unwrap();
+        assert_eq!(pin_loc.morpho, Some(("CN10", 11)));
+        assert_eq!(pin_loc.arduino, Some(("CN5", 6, "D13")));
+    }
 }
 
 
