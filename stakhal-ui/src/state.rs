@@ -43,6 +43,7 @@ pub struct AppState {
 
     // Nucleo pinout state
     pub hovered_pinout_pin: Option<(String, u8)>,
+    pub hovered_pinout_mouse: Option<(f64, f64)>,
 }
 
 impl Default for AppState {
@@ -74,6 +75,7 @@ impl Default for AppState {
             drag_start_click_pos: (0.0, 0.0),
             drag_start_pan_pos: (0.0, 0.0),
             hovered_pinout_pin: None,
+            hovered_pinout_mouse: None,
         }
     }
 }
