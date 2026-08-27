@@ -195,6 +195,7 @@ pub const CONNECTORS: &[ConnectorDef] = &[
 
 struct PinHighlightInfo {
     signal: String,
+    label: Option<String>,
 }
 
 fn get_active_pin_highlights(state: &AppState) -> HashMap<(&'static str, u8), PinHighlightInfo> {
@@ -207,6 +208,7 @@ fn get_active_pin_highlights(state: &AppState) -> HashMap<(&'static str, u8), Pi
     for pin_cfg in &project.pins {
         let mcu_pin = &pin_cfg.pin;
         let signal = &pin_cfg.signal;
+        let label = &pin_cfg.label;
 
         if let Some(loc) = stakhal_core::nucleo_pinout::lookup_pin(mcu_pin) {
             if let Some((conn, pin_num)) = loc.morpho {
@@ -215,7 +217,10 @@ fn get_active_pin_highlights(state: &AppState) -> HashMap<(&'static str, u8), Pi
                     "CN10" => "CN10",
                     _ => conn,
                 };
-                map.insert((static_conn, pin_num), PinHighlightInfo { signal: signal.clone() });
+                map.insert((static_conn, pin_num), PinHighlightInfo {
+                    signal: signal.clone(),
+                    label: label.clone(),
+                });
             }
             if let Some((conn, pin_num, _label)) = loc.arduino {
                 let static_conn = match conn {
@@ -225,7 +230,10 @@ fn get_active_pin_highlights(state: &AppState) -> HashMap<(&'static str, u8), Pi
                     "CN9" => "CN9",
                     _ => conn,
                 };
-                map.insert((static_conn, pin_num), PinHighlightInfo { signal: signal.clone() });
+                map.insert((static_conn, pin_num), PinHighlightInfo {
+                    signal: signal.clone(),
+                    label: label.clone(),
+                });
             }
         }
     }
@@ -558,22 +566,27 @@ pub fn draw_nucleo_pinout_canvas(
                     let _ = cr.show_text(&pnum_str);
                 }
 
-                // MCU Pin & Label Text (Starts at cell_x + 42.0 for ample left padding)
+                // MCU Pin Text
                 cr.set_font_size(10.5);
-                let label_part = match p.default_label {
-                    Some(lbl) => format!(" ({}", lbl),
-                    None => "".to_string(),
-                };
-                let left_str = format!("{}{}", p.mcu_pin, label_part);
                 let _ = cr.move_to(cell_x + 42.0, cell_y + 20.0);
-                let _ = cr.show_text(&left_str);
+                let _ = cr.show_text(p.mcu_pin);
 
-                // Signal Name Text (Right Aligned inside Cell)
-                let sig_str = &hl_info.signal;
-                if let Ok(ext) = cr.text_extents(sig_str) {
-                    let sig_x = (cell_x + cell_w - ext.width() - 8.0).max(cell_x + 95.0);
-                    let _ = cr.move_to(sig_x, cell_y + 20.0);
-                    let _ = cr.show_text(sig_str);
+                // Primary Text: #define Label if present, else Signal Name
+                let primary_text = match &hl_info.label {
+                    Some(lbl) => {
+                        if lbl.ends_with("_Pin") {
+                            lbl.clone()
+                        } else {
+                            format!("{}_Pin", lbl)
+                        }
+                    }
+                    None => hl_info.signal.clone(),
+                };
+
+                if let Ok(ext) = cr.text_extents(&primary_text) {
+                    let text_x = (cell_x + cell_w - ext.width() - 8.0).max(cell_x + 95.0);
+                    let _ = cr.move_to(text_x, cell_y + 20.0);
+                    let _ = cr.show_text(&primary_text);
                 }
             } else {
                 // Neutral / Unused Pin
@@ -657,67 +670,73 @@ pub fn draw_nucleo_pinout_canvas(
     let _ = cr.move_to(board_x + 682.0, legend_y + 11.0);
     let _ = cr.show_text("Active Signal in Loaded Project");
 
-    // 8. FINAL PASS: Floating Opaque Tooltip Card (Guarantees zero Z-order bleed onto adjacent rows)
+    // 8. FINAL PASS: Compact Floating Tooltip Card
     if let (Some((conn_name, pin_num)), Some((mx, my))) = (hovered_pin, hovered_mouse) {
         if let Some(conn) = CONNECTORS.iter().find(|c| c.name == conn_name) {
             if let Some(p) = conn.pins.iter().find(|p| p.pin_num == *pin_num) {
-                let label_str = p.default_label.map(|l| format!(" ({})", l)).unwrap_or_default();
-                let line1 = format!("Connector {} Pin {}: {}{}", conn_name, pin_num, p.mcu_pin, label_str);
+                let default_lbl_str = p.default_label.map(|l| format!(" ({})", l)).unwrap_or_default();
+                let line1 = format!("{}-{} : {}{}", conn_name, pin_num, p.mcu_pin, default_lbl_str);
 
                 let is_hl = highlights.get(&(conn_name.as_str(), *pin_num));
                 let line2 = match is_hl {
-                    Some(hl) => format!("Signal: {} [Active]", hl.signal),
-                    None => "Status: Unused in Project".to_string(),
+                    Some(hl) => {
+                        if let Some(lbl) = &hl.label {
+                            format!("Signal: {} | Label: {}", hl.signal, lbl)
+                        } else {
+                            format!("Signal: {} [Active]", hl.signal)
+                        }
+                    }
+                    None => "Unused in Project".to_string(),
                 };
 
                 cr.select_font_face("sans-serif", cairo::FontSlant::Normal, cairo::FontWeight::Bold);
-                cr.set_font_size(11.0);
-                let w1 = cr.text_extents(&line1).map(|e| e.width()).unwrap_or(180.0);
-                let w2 = cr.text_extents(&line2).map(|e| e.width()).unwrap_or(180.0);
+                cr.set_font_size(10.0);
+                let w1 = cr.text_extents(&line1).map(|e| e.width()).unwrap_or(120.0);
+                let w2 = cr.text_extents(&line2).map(|e| e.width()).unwrap_or(120.0);
 
-                let tt_w = (w1.max(w2) + 28.0).max(220.0);
-                let tt_h = 52.0;
+                let tt_w = (w1.max(w2) + 24.0).max(150.0);
+                let tt_h = 42.0;
 
-                // Dynamic Floating Position offset near cursor
-                let mut tt_x = mx + 16.0;
-                let mut tt_y = my - 64.0;
+                // Compact Floating Position offset near cursor
+                let mut tt_x = mx + 12.0;
+                let mut tt_y = my - 48.0;
 
-                if tt_x + tt_w > board_x + board_w - 20.0 {
-                    tt_x = (mx - tt_w - 16.0).max(board_x + 20.0);
+                if tt_x + tt_w > board_x + board_w - 15.0 {
+                    tt_x = (mx - tt_w - 12.0).max(board_x + 15.0);
                 }
-                if tt_y < board_y + 20.0 {
-                    tt_y = my + 24.0;
+                if tt_y < board_y + 15.0 {
+                    tt_y = my + 20.0;
                 }
-                if tt_y + tt_h > board_y + board_h - 20.0 {
-                    tt_y = (my - tt_h - 10.0).max(board_y + 20.0);
+                if tt_y + tt_h > board_y + board_h - 15.0 {
+                    tt_y = (my - tt_h - 8.0).max(board_y + 15.0);
                 }
 
-                // Solid Opaque Dark Slate Fill (#0f172a)
+                // Solid Opaque Dark Slate Fill
                 cr.set_source_rgb(0.06, 0.09, 0.16);
-                draw_rounded_rectangle(cr, tt_x, tt_y, tt_w, tt_h, 6.0);
+                draw_rounded_rectangle(cr, tt_x, tt_y, tt_w, tt_h, 5.0);
                 let _ = cr.fill_preserve();
 
-                // Bright Sky Blue Border (#38bdf8)
+                // Bright Cyan Border
                 cr.set_source_rgb(0.22, 0.74, 0.97);
-                cr.set_line_width(1.5);
+                cr.set_line_width(1.2);
                 let _ = cr.stroke();
 
                 // Line 1: Header Info
                 cr.select_font_face("sans-serif", cairo::FontSlant::Normal, cairo::FontWeight::Bold);
-                cr.set_font_size(11.0);
+                cr.set_font_size(10.0);
                 cr.set_source_rgb(0.95, 0.97, 1.0);
-                let _ = cr.move_to(tt_x + 12.0, tt_y + 20.0);
+                let _ = cr.move_to(tt_x + 10.0, tt_y + 16.0);
                 let _ = cr.show_text(&line1);
 
                 // Line 2: Signal / Status Info
                 cr.select_font_face("monospace", cairo::FontSlant::Normal, cairo::FontWeight::Bold);
-                cr.set_font_size(10.5);
+                cr.set_font_size(9.5);
                 if is_hl.is_some() {
                     cr.set_source_rgb(0.22, 0.74, 0.97); // Active Cyan
                 } else {
                     cr.set_source_rgb(0.58, 0.64, 0.72); // Muted Slate
                 }
-                let _ = cr.move_to(tt_x + 12.0, tt_y + 39.0);
+                let _ = cr.move_to(tt_x + 10.0, tt_y + 32.0);
                 let _ = cr.show_text(&line2);
             }
         }
