@@ -260,11 +260,10 @@ pub fn get_pin_cell_rect(
 
     let pad_x = 24.0;
     let cell_gap = 4.0;
-    let cell_w = ((board_w - 2.0 * pad_x - 48.0) / 7.6).clamp(100.0, 220.0);
+    let cell_w = ((board_w - 2.0 * pad_x - 36.0) / 7.2).clamp(135.0, 240.0);
 
-    let banner_h = (board_h * 0.10).clamp(50.0, 95.0);
-    let row_start_y = board_y + banner_h + 30.0;
-    let avail_h = board_h - banner_h - 70.0;
+    let row_start_y = board_y + 105.0;
+    let avail_h = board_h - 145.0;
     let row_h = (avail_h / 19.0).clamp(22.0, 42.0);
     let cell_h = (row_h - 4.0).clamp(18.0, 36.0);
 
@@ -344,11 +343,10 @@ pub fn draw_nucleo_pinout_canvas(
 
     let pad_x = 24.0;
     let cell_gap = 4.0;
-    let cell_w = ((board_w - 2.0 * pad_x - 48.0) / 7.6).clamp(100.0, 220.0);
+    let cell_w = ((board_w - 2.0 * pad_x - 36.0) / 7.2).clamp(135.0, 240.0);
 
-    let banner_h = (board_h * 0.10).clamp(50.0, 95.0);
-    let row_start_y = board_y + banner_h + 30.0;
-    let avail_h = board_h - banner_h - 70.0;
+    let row_start_y = board_y + 105.0;
+    let avail_h = board_h - 145.0;
     let row_h = (avail_h / 19.0).clamp(22.0, 42.0);
 
     let col_cn7_0 = board_x + pad_x;
@@ -384,39 +382,42 @@ pub fn draw_nucleo_pinout_canvas(
     }
 
     // 2. ST-LINK Debugger Top Section Notch
-    let notch_w = (board_w * 0.26).clamp(240.0, 420.0);
+    let notch_w = (board_w * 0.24).clamp(220.0, 380.0);
     let notch_x = board_x + (board_w - notch_w) / 2.0;
+    let notch_y = board_y + 8.0;
     cr.set_source_rgb(0.11, 0.14, 0.17);
-    draw_rounded_rectangle(cr, notch_x, board_y + 12.0, notch_w, 24.0, 6.0);
+    draw_rounded_rectangle(cr, notch_x, notch_y, notch_w, 20.0, 5.0);
     let _ = cr.fill_preserve();
     cr.set_source_rgb(0.24, 0.30, 0.36);
     cr.set_line_width(1.0);
     let _ = cr.stroke();
 
     cr.select_font_face("monospace", cairo::FontSlant::Normal, cairo::FontWeight::Bold);
-    cr.set_font_size(10.0);
+    cr.set_font_size(9.0);
     cr.set_source_rgb(0.50, 0.60, 0.70);
     if let Ok(ext) = cr.text_extents("ST-LINK V2-1 ON-BOARD DEBUGGER") {
-        let _ = cr.move_to(notch_x + (notch_w - ext.width()) / 2.0, board_y + 28.0);
+        let _ = cr.move_to(notch_x + (notch_w - ext.width()) / 2.0, notch_y + 14.0);
         let _ = cr.show_text("ST-LINK V2-1 ON-BOARD DEBUGGER");
     }
 
     // 3. Board Header Banner Silkscreen
     cr.select_font_face("sans-serif", cairo::FontSlant::Normal, cairo::FontWeight::Bold);
-    cr.set_font_size(18.0);
+    cr.set_font_size(16.0);
     cr.set_source_rgb(0.92, 0.95, 0.98);
     let title_str = "STMicroelectronics NUCLEO-F446RE";
+    let title_y = board_y + 46.0;
     if let Ok(ext) = cr.text_extents(title_str) {
-        let _ = cr.move_to(board_x + (board_w - ext.width()) / 2.0, board_y + banner_h * 0.45);
+        let _ = cr.move_to(board_x + (board_w - ext.width()) / 2.0, title_y);
         let _ = cr.show_text(title_str);
     }
 
     cr.select_font_face("monospace", cairo::FontSlant::Normal, cairo::FontWeight::Normal);
-    cr.set_font_size(11.0);
+    cr.set_font_size(10.5);
     cr.set_source_rgb(0.55, 0.65, 0.75);
     let subtitle_str = "ARM® Cortex®-M4 MCU @ 180MHz — Physical 64-Pin Connector Pinout";
+    let subtitle_y = title_y + 20.0;
     if let Ok(ext) = cr.text_extents(subtitle_str) {
-        let _ = cr.move_to(board_x + (board_w - ext.width()) / 2.0, board_y + banner_h * 0.75);
+        let _ = cr.move_to(board_x + (board_w - ext.width()) / 2.0, subtitle_y);
         let _ = cr.show_text(subtitle_str);
     }
 
@@ -531,33 +532,53 @@ pub fn draw_nucleo_pinout_canvas(
     let _ = cr.show_text("B2 RESET");
 
     // 5. Draw Connector Header Titles & Active Counts
-    let header_y_coords = [
-        ("CN7", row_start_y - 8.0, col_cn7_0, "Morpho Left", true),
-        ("CN6", row_start_y + 4.0 * row_h - 8.0, col_cn6, "Power", false),
-        ("CN8", row_start_y + 13.0 * row_h - 8.0, col_cn6, "Analog In", false),
-        ("CN10", row_start_y - 8.0, col_cn10_0, "Morpho Right", true),
-        ("CN5", row_start_y - 8.0, col_cn5, "Digital High", false),
-        ("CN9", row_start_y + 11.0 * row_h - 8.0, col_cn5, "Digital Low", false),
-    ];
-
     for conn in CONNECTORS {
-        if let Some((_, hy, hx, type_title, is_morpho)) = header_y_coords.iter().find(|(name, _, _, _, _)| *name == conn.name) {
-            let active_count = conn
-                .pins
-                .iter()
-                .filter(|p| highlights.contains_key(&(conn.name, p.pin_num)))
-                .count();
+        let is_morpho = conn.name == "CN7" || conn.name == "CN10";
+        let top_pin_idx = match conn.name {
+            "CN5" => 9,
+            "CN9" => 7,
+            _ => 0,
+        };
 
-            cr.select_font_face("monospace", cairo::FontSlant::Normal, cairo::FontWeight::Bold);
-            cr.set_font_size(11.0);
+        let (cell_x, cell_y, cell_w, _cell_h) = get_pin_cell_rect(conn.name, top_pin_idx, canvas_w, canvas_h);
+        let hy = cell_y - 8.0;
 
-            if *is_morpho {
-                cr.set_source_rgb(0.22, 0.74, 0.97);
-            } else {
-                cr.set_source_rgb(0.85, 0.40, 0.95);
+        let type_title = match conn.name {
+            "CN7" => "Morpho Left",
+            "CN6" => "Power",
+            "CN8" => "Analog In",
+            "CN10" => "Morpho Right",
+            "CN5" => "Digital High",
+            "CN9" => "Digital Low",
+            _ => "",
+        };
+
+        let active_count = conn
+            .pins
+            .iter()
+            .filter(|p| highlights.contains_key(&(conn.name, p.pin_num)))
+            .count();
+
+        let header_text = format!("{} — {} ({} active)", conn.name, type_title, active_count);
+
+        cr.select_font_face("monospace", cairo::FontSlant::Normal, cairo::FontWeight::Bold);
+        cr.set_font_size(10.5);
+
+        if is_morpho {
+            cr.set_source_rgb(0.22, 0.74, 0.97);
+        } else {
+            cr.set_source_rgb(0.85, 0.40, 0.95);
+        }
+
+        if conn.name == "CN10" {
+            let morpho_right_edge = col_cn10_1 + cell_w;
+            if let Ok(ext) = cr.text_extents(&header_text) {
+                let hx = morpho_right_edge - ext.width();
+                let _ = cr.move_to(hx, hy);
+                let _ = cr.show_text(&header_text);
             }
-            let _ = cr.move_to(*hx, *hy);
-            let header_text = format!("{} — {} ({} active)", conn.name, type_title, active_count);
+        } else {
+            let _ = cr.move_to(cell_x, hy);
             let _ = cr.show_text(&header_text);
         }
     }
@@ -575,6 +596,7 @@ pub fn draw_nucleo_pinout_canvas(
             });
 
             if let Some(hl_info) = is_hl {
+                // Highlighted Pin (Active in loaded project)
                 if is_morpho {
                     cr.set_source_rgb(0.01, 0.52, 0.78);
                 } else {
@@ -596,30 +618,32 @@ pub fn draw_nucleo_pinout_canvas(
                 let _ = cr.stroke();
 
                 // Pin Number Badge Box
-                let badge_w = (cell_w * 0.16).clamp(26.0, 34.0);
+                let badge_w = (cell_w * 0.16).clamp(24.0, 32.0);
                 if is_morpho {
                     cr.set_source_rgb(0.01, 0.38, 0.60);
                 } else {
                     cr.set_source_rgb(0.50, 0.08, 0.55);
                 }
-                draw_rounded_rectangle(cr, cell_x + 4.0, cell_y + 4.0, badge_w, cell_h - 8.0, 3.0);
+                draw_rounded_rectangle(cr, cell_x + 3.0, cell_y + 3.0, badge_w, cell_h - 6.0, 3.0);
                 let _ = cr.fill();
 
                 cr.select_font_face("monospace", cairo::FontSlant::Normal, cairo::FontWeight::Bold);
-                cr.set_font_size(10.0);
+                cr.set_font_size(9.5);
                 cr.set_source_rgb(1.0, 1.0, 1.0);
                 let pnum_str = format!("{}", p.pin_num);
                 if let Ok(ext) = cr.text_extents(&pnum_str) {
-                    let tx = cell_x + 4.0 + (badge_w - ext.width()) / 2.0;
-                    let _ = cr.move_to(tx, cell_y + cell_h * 0.62);
+                    let tx = cell_x + 3.0 + (badge_w - ext.width()) / 2.0;
+                    let _ = cr.move_to(tx, cell_y + cell_h * 0.64);
                     let _ = cr.show_text(&pnum_str);
                 }
 
                 // MCU Pin Text
-                cr.set_font_size(10.5);
-                let text_start_x = cell_x + badge_w + 10.0;
-                let _ = cr.move_to(text_start_x, cell_y + cell_h * 0.62);
+                cr.set_font_size(9.5);
+                let mcu_pin_x = cell_x + badge_w + 8.0;
+                let _ = cr.move_to(mcu_pin_x, cell_y + cell_h * 0.64);
                 let _ = cr.show_text(p.mcu_pin);
+
+                let mcu_ext_w = cr.text_extents(p.mcu_pin).map(|e| e.width()).unwrap_or(24.0);
 
                 // Primary Text: #define Label if present, else Signal Name
                 let primary_text = match &hl_info.label {
@@ -633,9 +657,13 @@ pub fn draw_nucleo_pinout_canvas(
                     None => hl_info.signal.clone(),
                 };
 
+                cr.select_font_face("monospace", cairo::FontSlant::Normal, cairo::FontWeight::Bold);
+                cr.set_font_size(9.0);
                 if let Ok(ext) = cr.text_extents(&primary_text) {
-                    let text_x = (cell_x + cell_w - ext.width() - 8.0).max(text_start_x + 45.0);
-                    let _ = cr.move_to(text_x, cell_y + cell_h * 0.62);
+                    let min_x = mcu_pin_x + mcu_ext_w + 6.0;
+                    let right_x = cell_x + cell_w - ext.width() - 6.0;
+                    let text_x = right_x.max(min_x);
+                    let _ = cr.move_to(text_x, cell_y + cell_h * 0.64);
                     let _ = cr.show_text(&primary_text);
                 }
             } else {
