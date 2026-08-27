@@ -241,57 +241,77 @@ fn get_active_pin_highlights(state: &AppState) -> HashMap<(&'static str, u8), Pi
     map
 }
 
-pub fn get_pin_cell_rect(conn_name: &str, pin_idx: usize) -> (f64, f64, f64, f64) {
-    let board_x = 40.0;
-    let board_y = 50.0;
-    let board_w = 1520.0;
-    let cell_w = 200.0;
-    let cell_h = 32.0;
-    let row_h = 36.0;
-    let row_start_y = board_y + 110.0; // 160.0
+pub fn get_pin_cell_rect(
+    conn_name: &str,
+    pin_idx: usize,
+    canvas_w: f64,
+    canvas_h: f64,
+) -> (f64, f64, f64, f64) {
+    let cw = canvas_w.max(800.0);
+    let ch = canvas_h.max(600.0);
+
+    let margin_x = (cw * 0.025).max(16.0);
+    let margin_y = (ch * 0.035).max(20.0);
+
+    let board_x = margin_x;
+    let board_y = margin_y;
+    let board_w = cw - 2.0 * margin_x;
+    let board_h = ch - 2.0 * margin_y;
+
+    let pad_x = 24.0;
+    let cell_gap = 4.0;
+    let cell_w = ((board_w - 2.0 * pad_x - 48.0) / 7.6).clamp(100.0, 220.0);
+
+    let banner_h = (board_h * 0.10).clamp(50.0, 95.0);
+    let row_start_y = board_y + banner_h + 30.0;
+    let avail_h = board_h - banner_h - 70.0;
+    let row_h = (avail_h / 19.0).clamp(22.0, 42.0);
+    let cell_h = (row_h - 4.0).clamp(18.0, 36.0);
+
+    let col_cn7_0 = board_x + pad_x;
+    let col_cn7_1 = col_cn7_0 + cell_w + cell_gap;
+    let col_cn6 = col_cn7_1 + cell_w + 16.0;
+
+    let col_cn10_1 = board_x + board_w - pad_x - cell_w;
+    let col_cn10_0 = col_cn10_1 - cell_w - cell_gap;
+    let col_cn5 = col_cn10_0 - 16.0 - cell_w;
 
     match conn_name {
         "CN7" => {
             let r = pin_idx / 2;
             let c = pin_idx % 2;
-            let cell_x = board_x + 24.0 + (c as f64) * (cell_w + 4.0);
+            let cell_x = if c == 0 { col_cn7_0 } else { col_cn7_1 };
             let cell_y = row_start_y + (r as f64) * row_h;
             (cell_x, cell_y, cell_w, cell_h)
         }
         "CN6" => {
             let r = 4 + pin_idx;
-            let cell_x = board_x + 24.0 + 2.0 * (cell_w + 4.0) + 16.0; // 484.0
+            let cell_x = col_cn6;
             let cell_y = row_start_y + (r as f64) * row_h;
             (cell_x, cell_y, cell_w, cell_h)
         }
         "CN8" => {
             let r = 13 + pin_idx;
-            let cell_x = board_x + 24.0 + 2.0 * (cell_w + 4.0) + 16.0; // 484.0
+            let cell_x = col_cn6;
             let cell_y = row_start_y + (r as f64) * row_h;
             (cell_x, cell_y, cell_w, cell_h)
         }
         "CN10" => {
             let r = pin_idx / 2;
             let c = pin_idx % 2;
-            let col1_x = board_x + board_w - 24.0 - cell_w; // 1336.0
-            let col0_x = col1_x - 4.0 - cell_w; // 1132.0
-            let cell_x = if c == 0 { col0_x } else { col1_x };
+            let cell_x = if c == 0 { col_cn10_0 } else { col_cn10_1 };
             let cell_y = row_start_y + (r as f64) * row_h;
             (cell_x, cell_y, cell_w, cell_h)
         }
         "CN5" => {
-            // Physical Nucleo: Pin 10 at top (Row 0), Pin 1 at bottom (Row 9)
             let r = 9 - pin_idx;
-            let col0_x = board_x + board_w - 24.0 - cell_w - 4.0 - cell_w;
-            let cell_x = col0_x - 16.0 - cell_w; // 916.0
+            let cell_x = col_cn5;
             let cell_y = row_start_y + (r as f64) * row_h;
             (cell_x, cell_y, cell_w, cell_h)
         }
         "CN9" => {
-            // Physical Nucleo: Pin 8 at top (Row 11), Pin 1 at bottom (Row 18)
             let r = 18 - pin_idx;
-            let col0_x = board_x + board_w - 24.0 - cell_w - 4.0 - cell_w;
-            let cell_x = col0_x - 16.0 - cell_w; // 916.0
+            let cell_x = col_cn5;
             let cell_y = row_start_y + (r as f64) * row_h;
             (cell_x, cell_y, cell_w, cell_h)
         }
@@ -311,16 +331,38 @@ pub fn draw_nucleo_pinout_canvas(
     let hovered_pin = st.hovered_pinout_pin.as_ref();
     let hovered_mouse = st.hovered_pinout_mouse;
 
+    let canvas_w = width.max(800.0);
+    let canvas_h = height.max(600.0);
+
+    let margin_x = (canvas_w * 0.025).max(16.0);
+    let margin_y = (canvas_h * 0.035).max(20.0);
+
+    let board_x = margin_x;
+    let board_y = margin_y;
+    let board_w = canvas_w - 2.0 * margin_x;
+    let board_h = canvas_h - 2.0 * margin_y;
+
+    let pad_x = 24.0;
+    let cell_gap = 4.0;
+    let cell_w = ((board_w - 2.0 * pad_x - 48.0) / 7.6).clamp(100.0, 220.0);
+
+    let banner_h = (board_h * 0.10).clamp(50.0, 95.0);
+    let row_start_y = board_y + banner_h + 30.0;
+    let avail_h = board_h - banner_h - 70.0;
+    let row_h = (avail_h / 19.0).clamp(22.0, 42.0);
+
+    let col_cn7_0 = board_x + pad_x;
+    let col_cn7_1 = col_cn7_0 + cell_w + cell_gap;
+    let col_cn6 = col_cn7_1 + cell_w + 16.0;
+
+    let col_cn10_1 = board_x + board_w - pad_x - cell_w;
+    let col_cn10_0 = col_cn10_1 - cell_w - cell_gap;
+    let col_cn5 = col_cn10_0 - 16.0 - cell_w;
+
     // Canvas Background
     cr.set_source_rgb(0.04, 0.04, 0.05);
-    cr.rectangle(0.0, 0.0, width.max(1600.0), height.max(980.0));
+    cr.rectangle(0.0, 0.0, canvas_w, canvas_h);
     let _ = cr.fill();
-
-    // Board Dimensions
-    let board_x = 40.0;
-    let board_y = 50.0;
-    let board_w = 1520.0;
-    let board_h = 890.0;
 
     // 1. Board Silhouette (PCB Outline)
     cr.set_source_rgb(0.07, 0.09, 0.11);
@@ -342,8 +384,10 @@ pub fn draw_nucleo_pinout_canvas(
     }
 
     // 2. ST-LINK Debugger Top Section Notch
+    let notch_w = (board_w * 0.26).clamp(240.0, 420.0);
+    let notch_x = board_x + (board_w - notch_w) / 2.0;
     cr.set_source_rgb(0.11, 0.14, 0.17);
-    draw_rounded_rectangle(cr, board_x + 560.0, board_y + 12.0, 400.0, 24.0, 6.0);
+    draw_rounded_rectangle(cr, notch_x, board_y + 12.0, notch_w, 24.0, 6.0);
     let _ = cr.fill_preserve();
     cr.set_source_rgb(0.24, 0.30, 0.36);
     cr.set_line_width(1.0);
@@ -352,8 +396,10 @@ pub fn draw_nucleo_pinout_canvas(
     cr.select_font_face("monospace", cairo::FontSlant::Normal, cairo::FontWeight::Bold);
     cr.set_font_size(10.0);
     cr.set_source_rgb(0.50, 0.60, 0.70);
-    let _ = cr.move_to(board_x + 690.0, board_y + 28.0);
-    let _ = cr.show_text("ST-LINK V2-1 ON-BOARD DEBUGGER");
+    if let Ok(ext) = cr.text_extents("ST-LINK V2-1 ON-BOARD DEBUGGER") {
+        let _ = cr.move_to(notch_x + (notch_w - ext.width()) / 2.0, board_y + 28.0);
+        let _ = cr.show_text("ST-LINK V2-1 ON-BOARD DEBUGGER");
+    }
 
     // 3. Board Header Banner Silkscreen
     cr.select_font_face("sans-serif", cairo::FontSlant::Normal, cairo::FontWeight::Bold);
@@ -361,7 +407,7 @@ pub fn draw_nucleo_pinout_canvas(
     cr.set_source_rgb(0.92, 0.95, 0.98);
     let title_str = "STMicroelectronics NUCLEO-F446RE";
     if let Ok(ext) = cr.text_extents(title_str) {
-        let _ = cr.move_to(board_x + (board_w - ext.width()) / 2.0, board_y + 65.0);
+        let _ = cr.move_to(board_x + (board_w - ext.width()) / 2.0, board_y + banner_h * 0.45);
         let _ = cr.show_text(title_str);
     }
 
@@ -370,18 +416,19 @@ pub fn draw_nucleo_pinout_canvas(
     cr.set_source_rgb(0.55, 0.65, 0.75);
     let subtitle_str = "ARM® Cortex®-M4 MCU @ 180MHz — Physical 64-Pin Connector Pinout";
     if let Ok(ext) = cr.text_extents(subtitle_str) {
-        let _ = cr.move_to(board_x + (board_w - ext.width()) / 2.0, board_y + 85.0);
+        let _ = cr.move_to(board_x + (board_w - ext.width()) / 2.0, board_y + banner_h * 0.75);
         let _ = cr.show_text(subtitle_str);
     }
 
-    // 4. Center Component Graphics (MCU IC Chip, Buttons & LEDs) with generous 46px horizontal margins
-    let left_group_right = 684.0;
-    let right_group_left = 916.0;
+    // 4. Center Component Graphics (MCU IC Chip, Buttons & LEDs)
+    let center_left = col_cn6 + cell_w;
+    let center_right = col_cn5;
+    let center_avail_w = center_right - center_left;
+    let mcu_w = (center_avail_w * 0.65).clamp(90.0, 180.0);
+    let mcu_x = center_left + (center_avail_w - mcu_w) / 2.0;
 
-    let mcu_x = left_group_right + 46.0; // 730.0
-    let mcu_w = right_group_left - 46.0 - mcu_x; // 140.0
-    let mcu_y = board_y + 380.0; // 430.0
-    let mcu_h = 160.0;
+    let mcu_y = row_start_y + 7.5 * row_h;
+    let mcu_h = (4.5 * row_h).clamp(100.0, 180.0);
 
     // MCU LQFP64 Chip Frame
     cr.set_source_rgb(0.12, 0.15, 0.18);
@@ -401,27 +448,28 @@ pub fn draw_nucleo_pinout_canvas(
     cr.set_font_size(11.0);
     cr.set_source_rgb(0.90, 0.94, 0.98);
     if let Ok(ext) = cr.text_extents("STM32F446") {
-        let _ = cr.move_to(mcu_x + (mcu_w - ext.width()) / 2.0, mcu_y + 68.0);
+        let _ = cr.move_to(mcu_x + (mcu_w - ext.width()) / 2.0, mcu_y + mcu_h * 0.42);
         let _ = cr.show_text("STM32F446");
     }
     cr.set_font_size(10.0);
     cr.set_source_rgb(0.60, 0.72, 0.84);
     if let Ok(ext) = cr.text_extents("RET6") {
-        let _ = cr.move_to(mcu_x + (mcu_w - ext.width()) / 2.0, mcu_y + 86.0);
+        let _ = cr.move_to(mcu_x + (mcu_w - ext.width()) / 2.0, mcu_y + mcu_h * 0.55);
         let _ = cr.show_text("RET6");
     }
     cr.set_font_size(9.0);
     cr.set_source_rgb(0.45, 0.55, 0.65);
     if let Ok(ext) = cr.text_extents("LQFP64") {
-        let _ = cr.move_to(mcu_x + (mcu_w - ext.width()) / 2.0, mcu_y + 103.0);
+        let _ = cr.move_to(mcu_x + (mcu_w - ext.width()) / 2.0, mcu_y + mcu_h * 0.68);
         let _ = cr.show_text("LQFP64");
     }
 
     // User LED (LD2 - Green) Indicator Box
     let is_pa5_active = highlights.contains_key(&("CN10", 11)) || highlights.contains_key(&("CN5", 6));
-    let led_y = board_y + 230.0;
+    let led_y = row_start_y + 2.0 * row_h;
+    let led_h = (1.2 * row_h).clamp(30.0, 42.0);
     cr.set_source_rgb(0.12, 0.15, 0.18);
-    draw_rounded_rectangle(cr, mcu_x, led_y, mcu_w, 40.0, 4.0);
+    draw_rounded_rectangle(cr, mcu_x, led_y, mcu_w, led_h, 4.0);
     let _ = cr.fill_preserve();
 
     if is_pa5_active {
@@ -430,13 +478,13 @@ pub fn draw_nucleo_pinout_canvas(
         let _ = cr.stroke();
 
         cr.set_source_rgb(0.13, 0.77, 0.36);
-        cr.arc(mcu_x + 18.0, led_y + 20.0, 6.0, 0.0, 2.0 * std::f64::consts::PI);
+        cr.arc(mcu_x + 18.0, led_y + led_h / 2.0, 6.0, 0.0, 2.0 * std::f64::consts::PI);
         let _ = cr.fill();
 
         cr.select_font_face("monospace", cairo::FontSlant::Normal, cairo::FontWeight::Bold);
         cr.set_font_size(10.0);
         cr.set_source_rgb(0.20, 0.90, 0.45);
-        let _ = cr.move_to(mcu_x + 32.0, led_y + 24.0);
+        let _ = cr.move_to(mcu_x + 32.0, led_y + led_h / 2.0 + 4.0);
         let _ = cr.show_text("LD2 [ON]");
     } else {
         cr.set_source_rgb(0.25, 0.30, 0.35);
@@ -444,33 +492,34 @@ pub fn draw_nucleo_pinout_canvas(
         let _ = cr.stroke();
 
         cr.set_source_rgb(0.25, 0.30, 0.35);
-        cr.arc(mcu_x + 18.0, led_y + 20.0, 5.0, 0.0, 2.0 * std::f64::consts::PI);
+        cr.arc(mcu_x + 18.0, led_y + led_h / 2.0, 5.0, 0.0, 2.0 * std::f64::consts::PI);
         let _ = cr.fill();
 
         cr.select_font_face("monospace", cairo::FontSlant::Normal, cairo::FontWeight::Normal);
         cr.set_font_size(9.5);
         cr.set_source_rgb(0.50, 0.55, 0.60);
-        let _ = cr.move_to(mcu_x + 32.0, led_y + 24.0);
+        let _ = cr.move_to(mcu_x + 32.0, led_y + led_h / 2.0 + 4.0);
         let _ = cr.show_text("LD2 (PA5)");
     }
 
     // User Button (B1 Blue) & Reset Button (B2 Black)
-    let btn_y = board_y + 580.0;
+    let btn_y = row_start_y + 13.0 * row_h;
+    let btn_h = (1.0 * row_h).clamp(26.0, 34.0);
     let b1_w = (mcu_w - 6.0) / 2.0;
 
     // B1 Button (Blue - PC13)
     cr.set_source_rgb(0.01, 0.45, 0.75);
-    draw_rounded_rectangle(cr, mcu_x, btn_y, b1_w, 32.0, 4.0);
+    draw_rounded_rectangle(cr, mcu_x, btn_y, b1_w, btn_h, 4.0);
     let _ = cr.fill();
     cr.select_font_face("monospace", cairo::FontSlant::Normal, cairo::FontWeight::Bold);
     cr.set_font_size(9.0);
     cr.set_source_rgb(1.0, 1.0, 1.0);
-    let _ = cr.move_to(mcu_x + 10.0, btn_y + 20.0);
+    let _ = cr.move_to(mcu_x + 8.0, btn_y + btn_h / 2.0 + 3.0);
     let _ = cr.show_text("B1 USER");
 
     // B2 Button (Black - RESET)
     cr.set_source_rgb(0.20, 0.20, 0.22);
-    draw_rounded_rectangle(cr, mcu_x + b1_w + 6.0, btn_y, b1_w, 32.0, 4.0);
+    draw_rounded_rectangle(cr, mcu_x + b1_w + 6.0, btn_y, b1_w, btn_h, 4.0);
     let _ = cr.fill_preserve();
     cr.set_source_rgb(0.40, 0.40, 0.45);
     cr.set_line_width(1.0);
@@ -478,17 +527,17 @@ pub fn draw_nucleo_pinout_canvas(
     cr.select_font_face("monospace", cairo::FontSlant::Normal, cairo::FontWeight::Bold);
     cr.set_font_size(9.0);
     cr.set_source_rgb(0.85, 0.85, 0.85);
-    let _ = cr.move_to(mcu_x + b1_w + 12.0, btn_y + 20.0);
+    let _ = cr.move_to(mcu_x + b1_w + 10.0, btn_y + btn_h / 2.0 + 3.0);
     let _ = cr.show_text("B2 RESET");
 
     // 5. Draw Connector Header Titles & Active Counts
     let header_y_coords = [
-        ("CN7", board_y + 138.0, 64.0, "Morpho Left", true),
-        ("CN6", board_y + 282.0, 484.0, "Power", false),
-        ("CN8", board_y + 606.0, 484.0, "Analog In", false),
-        ("CN10", board_y + 138.0, 1132.0, "Morpho Right", true),
-        ("CN5", board_y + 138.0, 916.0, "Digital High", false),
-        ("CN9", board_y + 534.0, 916.0, "Digital Low", false),
+        ("CN7", row_start_y - 8.0, col_cn7_0, "Morpho Left", true),
+        ("CN6", row_start_y + 4.0 * row_h - 8.0, col_cn6, "Power", false),
+        ("CN8", row_start_y + 13.0 * row_h - 8.0, col_cn6, "Analog In", false),
+        ("CN10", row_start_y - 8.0, col_cn10_0, "Morpho Right", true),
+        ("CN5", row_start_y - 8.0, col_cn5, "Digital High", false),
+        ("CN9", row_start_y + 11.0 * row_h - 8.0, col_cn5, "Digital Low", false),
     ];
 
     for conn in CONNECTORS {
@@ -503,9 +552,9 @@ pub fn draw_nucleo_pinout_canvas(
             cr.set_font_size(11.0);
 
             if *is_morpho {
-                cr.set_source_rgb(0.22, 0.74, 0.97); // Morpho Cyan/Blue
+                cr.set_source_rgb(0.22, 0.74, 0.97);
             } else {
-                cr.set_source_rgb(0.85, 0.40, 0.95); // Arduino Magenta
+                cr.set_source_rgb(0.85, 0.40, 0.95);
             }
             let _ = cr.move_to(*hx, *hy);
             let header_text = format!("{} — {} ({} active)", conn.name, type_title, active_count);
@@ -513,12 +562,12 @@ pub fn draw_nucleo_pinout_canvas(
         }
     }
 
-    // 6. Draw Pin Cells for All Connectors (Audited with padded & centered pin numbers)
+    // 6. Draw Pin Cells for All Connectors
     for conn in CONNECTORS {
         let is_morpho = conn.name == "CN7" || conn.name == "CN10";
 
         for (idx, p) in conn.pins.iter().enumerate() {
-            let (cell_x, cell_y, cell_w, cell_h) = get_pin_cell_rect(conn.name, idx);
+            let (cell_x, cell_y, cell_w, cell_h) = get_pin_cell_rect(conn.name, idx, canvas_w, canvas_h);
 
             let is_hl = highlights.get(&(conn.name, p.pin_num));
             let is_hovered = hovered_pin.map_or(false, |(c_name, p_num)| {
@@ -526,7 +575,6 @@ pub fn draw_nucleo_pinout_canvas(
             });
 
             if let Some(hl_info) = is_hl {
-                // Highlighted Pin (Active in loaded project)
                 if is_morpho {
                     cr.set_source_rgb(0.01, 0.52, 0.78);
                 } else {
@@ -547,13 +595,14 @@ pub fn draw_nucleo_pinout_canvas(
                 }
                 let _ = cr.stroke();
 
-                // Pin Number Badge Box (32px wide with centered text to prevent left edge clipping)
+                // Pin Number Badge Box
+                let badge_w = (cell_w * 0.16).clamp(26.0, 34.0);
                 if is_morpho {
                     cr.set_source_rgb(0.01, 0.38, 0.60);
                 } else {
                     cr.set_source_rgb(0.50, 0.08, 0.55);
                 }
-                draw_rounded_rectangle(cr, cell_x + 4.0, cell_y + 4.0, 32.0, cell_h - 8.0, 3.0);
+                draw_rounded_rectangle(cr, cell_x + 4.0, cell_y + 4.0, badge_w, cell_h - 8.0, 3.0);
                 let _ = cr.fill();
 
                 cr.select_font_face("monospace", cairo::FontSlant::Normal, cairo::FontWeight::Bold);
@@ -561,14 +610,15 @@ pub fn draw_nucleo_pinout_canvas(
                 cr.set_source_rgb(1.0, 1.0, 1.0);
                 let pnum_str = format!("{}", p.pin_num);
                 if let Ok(ext) = cr.text_extents(&pnum_str) {
-                    let tx = cell_x + 4.0 + (32.0 - ext.width()) / 2.0;
-                    let _ = cr.move_to(tx, cell_y + 20.0);
+                    let tx = cell_x + 4.0 + (badge_w - ext.width()) / 2.0;
+                    let _ = cr.move_to(tx, cell_y + cell_h * 0.62);
                     let _ = cr.show_text(&pnum_str);
                 }
 
                 // MCU Pin Text
                 cr.set_font_size(10.5);
-                let _ = cr.move_to(cell_x + 42.0, cell_y + 20.0);
+                let text_start_x = cell_x + badge_w + 10.0;
+                let _ = cr.move_to(text_start_x, cell_y + cell_h * 0.62);
                 let _ = cr.show_text(p.mcu_pin);
 
                 // Primary Text: #define Label if present, else Signal Name
@@ -584,8 +634,8 @@ pub fn draw_nucleo_pinout_canvas(
                 };
 
                 if let Ok(ext) = cr.text_extents(&primary_text) {
-                    let text_x = (cell_x + cell_w - ext.width() - 8.0).max(cell_x + 95.0);
-                    let _ = cr.move_to(text_x, cell_y + 20.0);
+                    let text_x = (cell_x + cell_w - ext.width() - 8.0).max(text_start_x + 45.0);
+                    let _ = cr.move_to(text_x, cell_y + cell_h * 0.62);
                     let _ = cr.show_text(&primary_text);
                 }
             } else {
@@ -603,13 +653,14 @@ pub fn draw_nucleo_pinout_canvas(
                 }
                 let _ = cr.stroke();
 
-                // Pin Number Box for Neutral Cell (32px wide with centered text)
+                // Pin Number Box for Neutral Cell
+                let badge_w = (cell_w * 0.16).clamp(26.0, 34.0);
                 if is_hovered {
                     cr.set_source_rgb(0.20, 0.22, 0.26);
                 } else {
                     cr.set_source_rgb(0.12, 0.14, 0.17);
                 }
-                draw_rounded_rectangle(cr, cell_x + 4.0, cell_y + 4.0, 32.0, cell_h - 8.0, 3.0);
+                draw_rounded_rectangle(cr, cell_x + 4.0, cell_y + 4.0, badge_w, cell_h - 8.0, 3.0);
                 let _ = cr.fill();
 
                 cr.select_font_face("monospace", cairo::FontSlant::Normal, cairo::FontWeight::Normal);
@@ -621,8 +672,8 @@ pub fn draw_nucleo_pinout_canvas(
                 }
                 let pnum_str = format!("{}", p.pin_num);
                 if let Ok(ext) = cr.text_extents(&pnum_str) {
-                    let tx = cell_x + 4.0 + (32.0 - ext.width()) / 2.0;
-                    let _ = cr.move_to(tx, cell_y + 19.5);
+                    let tx = cell_x + 4.0 + (badge_w - ext.width()) / 2.0;
+                    let _ = cr.move_to(tx, cell_y + cell_h * 0.60);
                     let _ = cr.show_text(&pnum_str);
                 }
 
@@ -632,42 +683,47 @@ pub fn draw_nucleo_pinout_canvas(
                     None => "".to_string(),
                 };
                 let left_str = format!("{}{}", p.mcu_pin, label_part);
-                let _ = cr.move_to(cell_x + 42.0, cell_y + 19.5);
+                let text_start_x = cell_x + badge_w + 10.0;
+                let _ = cr.move_to(text_start_x, cell_y + cell_h * 0.60);
                 let _ = cr.show_text(&left_str);
             }
         }
     }
 
     // 7. Footer Legend Bar inside Board Outline
-    let legend_y = board_y + board_h - 32.0;
+    let legend_y = board_y + board_h - 28.0;
     cr.select_font_face("monospace", cairo::FontSlant::Normal, cairo::FontWeight::Bold);
     cr.set_font_size(10.0);
 
+    let leg1_x = board_x + (board_w * 0.02).max(16.0);
+    let leg2_x = board_x + (board_w * 0.28).max(220.0);
+    let leg3_x = board_x + (board_w * 0.60).max(480.0);
+
     // Morpho Legend
     cr.set_source_rgb(0.01, 0.52, 0.78);
-    draw_rounded_rectangle(cr, board_x + 40.0, legend_y, 14.0, 14.0, 3.0);
+    draw_rounded_rectangle(cr, leg1_x, legend_y, 14.0, 14.0, 3.0);
     let _ = cr.fill();
     cr.set_source_rgb(0.70, 0.80, 0.90);
-    let _ = cr.move_to(board_x + 60.0, legend_y + 11.0);
+    let _ = cr.move_to(leg1_x + 20.0, legend_y + 11.0);
     let _ = cr.show_text("Morpho Header (CN7 / CN10)");
 
     // Arduino Legend
     cr.set_source_rgb(0.70, 0.12, 0.75);
-    draw_rounded_rectangle(cr, board_x + 320.0, legend_y, 14.0, 14.0, 3.0);
+    draw_rounded_rectangle(cr, leg2_x, legend_y, 14.0, 14.0, 3.0);
     let _ = cr.fill();
     cr.set_source_rgb(0.70, 0.80, 0.90);
-    let _ = cr.move_to(board_x + 340.0, legend_y + 11.0);
+    let _ = cr.move_to(leg2_x + 20.0, legend_y + 11.0);
     let _ = cr.show_text("Arduino Header (CN5 / CN6 / CN8 / CN9)");
 
     // Active Signal Legend
     cr.set_source_rgb(1.0, 1.0, 1.0);
-    draw_rounded_rectangle(cr, board_x + 660.0, legend_y, 14.0, 14.0, 3.0);
+    draw_rounded_rectangle(cr, leg3_x, legend_y, 14.0, 14.0, 3.0);
     let _ = cr.fill_preserve();
     cr.set_source_rgb(0.22, 0.74, 0.97);
     cr.set_line_width(1.5);
     let _ = cr.stroke();
     cr.set_source_rgb(0.95, 0.95, 0.95);
-    let _ = cr.move_to(board_x + 682.0, legend_y + 11.0);
+    let _ = cr.move_to(leg3_x + 20.0, legend_y + 11.0);
     let _ = cr.show_text("Active Signal in Loaded Project");
 
     // 8. FINAL PASS: Compact Floating Tooltip Card
@@ -769,11 +825,15 @@ pub fn setup_nucleo_pinout_drawing_and_gestures(
     motion.connect_motion(move |_, x, y| {
         let st = state_motion.borrow();
 
+        let area = &widgets_motion.pinout_drawing_area;
+        let cw = area.width().max(800) as f64;
+        let ch = area.height().max(600) as f64;
+
         let mut hit_pin: Option<(&'static str, u8, &'static str, Option<&'static str>)> = None;
 
         for conn in CONNECTORS {
             for (idx, p) in conn.pins.iter().enumerate() {
-                let (cell_x, cell_y, cell_w, cell_h) = get_pin_cell_rect(conn.name, idx);
+                let (cell_x, cell_y, cell_w, cell_h) = get_pin_cell_rect(conn.name, idx, cw, ch);
 
                 if x >= cell_x && x <= cell_x + cell_w && y >= cell_y && y <= cell_y + cell_h {
                     hit_pin = Some((conn.name, p.pin_num, p.mcu_pin, p.default_label));
@@ -786,8 +846,6 @@ pub fn setup_nucleo_pinout_drawing_and_gestures(
         }
 
         drop(st);
-
-        let area = &widgets_motion.pinout_drawing_area;
 
         match hit_pin {
             Some((conn_name, pin_num, _mcu_pin, _default_label)) => {
@@ -846,11 +904,11 @@ mod tests {
     fn test_get_pin_cell_rect_bounds() {
         for conn in CONNECTORS {
             for (idx, p) in conn.pins.iter().enumerate() {
-                let (x, y, w, h) = get_pin_cell_rect(conn.name, idx);
-                assert!(x >= 40.0, "Pin cell X {} out of bounds for {} pin {}", x, conn.name, p.pin_num);
-                assert!(x + w <= 1560.0, "Pin cell X+W {} out of bounds for {} pin {}", x + w, conn.name, p.pin_num);
-                assert!(y >= 50.0, "Pin cell Y {} out of bounds for {} pin {}", y, conn.name, p.pin_num);
-                assert!(y + h <= 940.0, "Pin cell Y+H {} out of bounds for {} pin {}", y + h, conn.name, p.pin_num);
+                let (x, y, w, h) = get_pin_cell_rect(conn.name, idx, 1600.0, 980.0);
+                assert!(x >= 30.0, "Pin cell X {} out of bounds for {} pin {}", x, conn.name, p.pin_num);
+                assert!(x + w <= 1570.0, "Pin cell X+W {} out of bounds for {} pin {}", x + w, conn.name, p.pin_num);
+                assert!(y >= 30.0, "Pin cell Y {} out of bounds for {} pin {}", y, conn.name, p.pin_num);
+                assert!(y + h <= 960.0, "Pin cell Y+H {} out of bounds for {} pin {}", y + h, conn.name, p.pin_num);
             }
         }
     }

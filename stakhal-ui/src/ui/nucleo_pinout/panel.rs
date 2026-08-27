@@ -37,8 +37,8 @@ pub fn build_nucleo_pinout_panel() -> NucleoPinoutPanelWidgets {
     pinout_header_bar.append(&lbl_pinout_hint);
 
     let pinout_drawing_area = gtk4::DrawingArea::builder()
-        .content_width(1600)
-        .content_height(980)
+        .content_width(1200)
+        .content_height(750)
         .hexpand(true)
         .vexpand(true)
         .build();
