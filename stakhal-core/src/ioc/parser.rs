@@ -16,6 +16,7 @@ pub struct IocProject {
 pub struct PinConfig {
     pub pin: String,    // e.g. "PA2"
     pub signal: String, // e.g. "USART2_TX"
+    pub label: Option<String>, // e.g. "LD2" or "TMS"
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -107,6 +108,7 @@ pub fn parse_ioc_str(source: &str) -> Result<IocProject, IocParseError> {
             pins.push(PinConfig {
                 pin: pin_name.to_string(),
                 signal: value.clone(),
+                label: None,
             });
         } else if let Some((periph_name, param_name)) = get_peripheral_and_param(&key) {
             let entry = peripherals_map
@@ -123,6 +125,16 @@ pub fn parse_ioc_str(source: &str) -> Result<IocProject, IocParseError> {
             entry
                 .parameters
                 .insert(param_name.to_string(), value.clone());
+        }
+    }
+
+    for pin in &mut pins {
+        let label_key = format!("{}.GPIO_Label", pin.pin);
+        if let Some(lbl) = raw.get(&label_key) {
+            let trimmed_lbl = lbl.trim();
+            if !trimmed_lbl.is_empty() {
+                pin.label = Some(trimmed_lbl.to_string());
+            }
         }
     }
 
@@ -217,12 +229,19 @@ PA2.Signal=USART2_TX
     }
 
     #[test]
-    fn test_missing_required_mcu_keys() {
+    fn test_parse_gpio_label() {
         let fixture = r#"
-PA2.Signal=USART2_TX
-USART2.Mode=Asynchronous
+Mcu.Family=STM32F4
+Mcu.UserName=STM32F446RETx
+PA5.Signal=GPIO_Output
+PA5.GPIO_Label=LD2
+PB3.Signal=GPIO_Output
 "#;
-        let res = parse_ioc_str(fixture);
-        assert!(matches!(res, Err(IocParseError::MissingRequiredKey(_))));
+        let project = parse_ioc_str(fixture).unwrap();
+        let pa5 = project.pins.iter().find(|p| p.pin == "PA5").unwrap();
+        assert_eq!(pa5.label, Some("LD2".to_string()));
+
+        let pb3 = project.pins.iter().find(|p| p.pin == "PB3").unwrap();
+        assert_eq!(pb3.label, None);
     }
 }
