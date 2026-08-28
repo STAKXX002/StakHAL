@@ -289,6 +289,8 @@ row, listboxrow, actionrow {
         stack_back3.set_visible_child_full("overview", gtk4::StackTransitionType::SlideRight);
     });
 
+
+
     let state_fit = Rc::clone(&state);
     let widgets_fit = Rc::clone(&widgets);
     widgets.btn_fit_to_view.connect_clicked(move |_| {
@@ -755,7 +757,10 @@ mod tests {
         assert_eq!(pin_loc.morpho, Some(("CN10", 11)));
         assert_eq!(pin_loc.arduino, Some(("CN5", 6, "D13")));
     }
+
+
 }
+
 
 
 

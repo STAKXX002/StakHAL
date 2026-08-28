@@ -62,3 +62,4 @@ pub fn build_nucleo_pinout_panel() -> NucleoPinoutPanelWidgets {
         pinout_scrolled,
     }
 }
+
