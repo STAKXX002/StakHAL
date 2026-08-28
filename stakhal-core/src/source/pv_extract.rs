@@ -9,12 +9,12 @@ use crate::source::marker_scan::{scan_file, ScanError};
 pub struct PvDeclaration {
     pub name: String,
     pub type_str: String,              // e.g. "uint32_t", "float", "TIM_HandleTypeDef"
-    pub initial_value: Option<String>, // e.g. "0", "3.14f" — None if uninitialized
+    pub initial_value: Option<String>, // e.g. "0", "3.14f" - None if uninitialized
     pub is_pointer: bool,
     pub is_array: bool,
-    pub array_dims: Option<String>, // raw text inside [], e.g. "64" — None if not an array
+    pub array_dims: Option<String>, // raw text inside [], e.g. "64" - None if not an array
     pub raw_text: String, // the exact full declaration statement text, verbatim, as a fallback for display even if structured fields are imperfect
-    pub byte_range: (usize, usize), // full declaration statement's span in the whole file (not region-relative) — needed later for write-back of a single declaration
+    pub byte_range: (usize, usize), // full declaration statement's span in the whole file (not region-relative) - needed later for write-back of a single declaration
     pub line: usize, // 1-indexed line number where the declaration statement begins
 }
 

@@ -1,13 +1,13 @@
 //! Physical connector pinout for the NUCLEO-F446RE board.
 //!
-//! Source: ST UM1724 "STM32 Nucleo-64 boards" user manual —
+//! Source: ST UM1724 "STM32 Nucleo-64 boards" user manual -
 //! Table 19 "Arduino connectors on NUCLEO-F446RE" (CN5, CN6, CN8, CN9) and
 //! Table 27 "STMicroelectronics Morpho connector on NUCLEO-F401RE,
 //! NUCLEO-F411RE, NUCLEO-F446RE" (CN7, CN10). Cross-checked against both
 //! the official document text and the board silkscreen reference diagram.
 //!
 //! This module is intentionally board-specific (F446RE only, per current
-//! scope) rather than generic across the whole Nucleo-64 family — other
+//! scope) rather than generic across the whole Nucleo-64 family - other
 //! MCU variants remap a handful of these pins (notably around CN10 pins
 //! 15-18 and 25-30) and folding that in later is a straightforward
 //! extension of this same shape, not a redesign.
@@ -55,7 +55,7 @@ pub const NUCLEO_F446RE_PINOUT: &[PinLocation] = &[
     PinLocation { mcu_pin: "PA1", morpho: Some(("CN7", 30)), arduino: Some(("CN8", 2, "A1")) },
     PinLocation { mcu_pin: "PA4", morpho: Some(("CN7", 32)), arduino: Some(("CN8", 3, "A2")) },
     PinLocation { mcu_pin: "PB0", morpho: Some(("CN7", 34)), arduino: Some(("CN8", 4, "A3")) },
-    // PC1/PC0 share pins with PB9/PB8 via solder bridge (SB56/SB51) —
+    // PC1/PC0 share pins with PB9/PB8 via solder bridge (SB56/SB51) -
     // PC1/PC0 is the default (as-shipped) routing.
     PinLocation { mcu_pin: "PC1", morpho: Some(("CN7", 36)), arduino: Some(("CN8", 5, "A4")) },
     PinLocation { mcu_pin: "PC0", morpho: Some(("CN7", 38)), arduino: Some(("CN8", 6, "A5")) },
@@ -97,7 +97,7 @@ pub const NUCLEO_F446RE_PINOUT: &[PinLocation] = &[
 ];
 
 /// Look up the physical board location(s) for an MCU pin name (e.g. "PA5").
-/// Returns None if the pin isn't broken out on this board (rare — most
+/// Returns None if the pin isn't broken out on this board (rare - most
 /// STM32F446RETx GPIO pins are, since it's a LQFP64 package on a Nucleo-64).
 pub fn lookup_pin(mcu_pin: &str) -> Option<&'static PinLocation> {
     NUCLEO_F446RE_PINOUT.iter().find(|p| p.mcu_pin == mcu_pin)
@@ -110,7 +110,7 @@ mod tests {
     #[test]
     fn known_pin_has_both_headers() {
         // PA5 / D13 is the most commonly referenced pin (onboard LED on
-        // many Nucleo boards' Arduino silkscreen) — good canary for both
+        // many Nucleo boards' Arduino silkscreen) - good canary for both
         // Morpho and Arduino sides being wired up correctly.
         let loc = lookup_pin("PA5").expect("PA5 should be in the table");
         assert_eq!(loc.morpho, Some(("CN10", 11)));

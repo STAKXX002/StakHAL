@@ -21,7 +21,7 @@ pub struct HalIrqMapping {
     pub irq_handler_name: &'static str,          // e.g. "USART2_IRQHandler"
     pub hal_dispatch_fn: &'static str,            // e.g. "HAL_UART_IRQHandler"
     pub weak_callbacks: &'static [&'static str], // e.g. ["HAL_UART_RxCpltCallback", "HAL_UART_TxCpltCallback"]
-    pub peripheral_prefix: &'static str,          // e.g. "USART" — matches ioc::parser prefix
+    pub peripheral_prefix: &'static str,          // e.g. "USART" - matches ioc::parser prefix
 }
 
 pub static HAL_IRQ_MAPPINGS: &[HalIrqMapping] = &[
