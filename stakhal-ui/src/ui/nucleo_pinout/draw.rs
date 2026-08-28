@@ -306,6 +306,20 @@ pub fn draw_nucleo_pinout_canvas(
     let hovered_pin = st.hovered_pinout_pin.as_ref();
     let hovered_mouse = st.hovered_pinout_mouse;
 
+    let active_conflicts: Vec<(&'static str, &stakhal_core::nucleo_pinout::ReservedPin)> = {
+        let mut list = Vec::new();
+        if let Some(project) = &st.loaded_project {
+            for pin_cfg in &project.pins {
+                if let Some(res) = stakhal_core::nucleo_pinout::check_reserved(&pin_cfg.pin) {
+                    if !list.iter().any(|(p, _)| *p == res.mcu_pin) {
+                        list.push((res.mcu_pin, res));
+                    }
+                }
+            }
+        }
+        list
+    };
+
     let canvas_w = width.max(800.0);
     let canvas_h = height.max(600.0);
 
@@ -395,6 +409,32 @@ pub fn draw_nucleo_pinout_canvas(
     if let Ok(ext) = cr.text_extents(subtitle_str) {
         let _ = cr.move_to(board_x + (board_w - ext.width()) / 2.0, subtitle_y);
         let _ = cr.show_text(subtitle_str);
+    }
+
+    if !active_conflicts.is_empty() {
+        let count = active_conflicts.len();
+        let has_critical = active_conflicts
+            .iter()
+            .any(|(_, r)| r.severity == stakhal_core::nucleo_pinout::ReservedSeverity::Critical);
+        let (cr_r, cr_g, cr_b) = if has_critical {
+            (239.0 / 255.0, 68.0 / 255.0, 68.0 / 255.0)
+        } else {
+            (245.0 / 255.0, 158.0 / 255.0, 11.0 / 255.0)
+        };
+
+        let banner_str = if count == 1 {
+            "⚠ 1 pin conflict detected — see highlighted pins below".to_string()
+        } else {
+            format!("⚠ {} pin conflicts detected — see highlighted pins below", count)
+        };
+
+        cr.select_font_face("sans-serif", cairo::FontSlant::Normal, cairo::FontWeight::Bold);
+        cr.set_font_size(11.0);
+        cr.set_source_rgb(cr_r, cr_g, cr_b);
+        if let Ok(ext) = cr.text_extents(&banner_str) {
+            let _ = cr.move_to(board_x + (board_w - ext.width()) / 2.0, subtitle_y + 18.0);
+            let _ = cr.show_text(&banner_str);
+        }
     }
 
     // 4. Center Component Graphics (MCU IC Chip, Buttons & LEDs)
@@ -569,7 +609,20 @@ pub fn draw_nucleo_pinout_canvas(
             });
 
             if let Some(hl_info) = is_hl {
-                // Highlighted Pin (Active in loaded project) - background #121212, highlight #22c55e
+                let reserved_info = stakhal_core::nucleo_pinout::check_reserved(p.mcu_pin);
+                let (hl_r, hl_g, hl_b) = match reserved_info {
+                    Some(res) => match res.severity {
+                        stakhal_core::nucleo_pinout::ReservedSeverity::Critical => {
+                            (239.0 / 255.0, 68.0 / 255.0, 68.0 / 255.0)
+                        }
+                        stakhal_core::nucleo_pinout::ReservedSeverity::Caution => {
+                            (245.0 / 255.0, 158.0 / 255.0, 11.0 / 255.0)
+                        }
+                    },
+                    None => (34.0 / 255.0, 197.0 / 255.0, 94.0 / 255.0),
+                };
+
+                // Highlighted Pin (Active in loaded project) - background #121212
                 cr.set_source_rgb(18.0 / 255.0, 18.0 / 255.0, 18.0 / 255.0);
                 cr.rectangle(cell_x, cell_y, cell_w, cell_h);
                 let _ = cr.fill_preserve();
@@ -578,14 +631,14 @@ pub fn draw_nucleo_pinout_canvas(
                     cr.set_source_rgb(1.0, 1.0, 1.0);
                     cr.set_line_width(1.8);
                 } else {
-                    cr.set_source_rgb(34.0 / 255.0, 197.0 / 255.0, 94.0 / 255.0);
+                    cr.set_source_rgb(hl_r, hl_g, hl_b);
                     cr.set_line_width(1.5);
                 }
                 let _ = cr.stroke();
 
-                // Pin Number Badge Box - sharp 0px corners, filled green #22c55e
+                // Pin Number Badge Box - sharp 0px corners, filled with highlight color
                 let badge_w = (cell_w * 0.16).clamp(24.0, 32.0);
-                cr.set_source_rgb(34.0 / 255.0, 197.0 / 255.0, 94.0 / 255.0);
+                cr.set_source_rgb(hl_r, hl_g, hl_b);
                 cr.rectangle(cell_x + 3.0, cell_y + 3.0, badge_w, cell_h - 6.0);
                 let _ = cr.fill();
 
@@ -608,7 +661,7 @@ pub fn draw_nucleo_pinout_canvas(
 
                 let mcu_ext_w = cr.text_extents(p.mcu_pin).map(|e| e.width()).unwrap_or(24.0);
 
-                // Primary Text: #define Label if present, else Signal Name - #22c55e green
+                // Primary Text: #define Label if present, else Signal Name
                 let primary_text = match &hl_info.label {
                     Some(lbl) => {
                         if lbl.ends_with("_Pin") {
@@ -622,7 +675,7 @@ pub fn draw_nucleo_pinout_canvas(
 
                 cr.select_font_face("monospace", cairo::FontSlant::Normal, cairo::FontWeight::Bold);
                 cr.set_font_size(9.0);
-                cr.set_source_rgb(34.0 / 255.0, 197.0 / 255.0, 94.0 / 255.0);
+                cr.set_source_rgb(hl_r, hl_g, hl_b);
                 if let Ok(ext) = cr.text_extents(&primary_text) {
                     let min_x = mcu_pin_x + mcu_ext_w + 6.0;
                     let right_x = cell_x + cell_w - ext.width() - 6.0;
@@ -707,7 +760,7 @@ pub fn draw_nucleo_pinout_canvas(
     let _ = cr.move_to(leg_x + 22.0, legend_y + 11.0);
     let _ = cr.show_text("Active Signal in Loaded Project");
 
-    // 8. FINAL PASS: Compact Floating Tooltip Card - sharp 0px corners, monochrome/#22c55e
+    // 8. FINAL PASS: Compact Floating Tooltip Card - sharp 0px corners, monochrome/#22c55e/conflict
     if let (Some((conn_name, pin_num)), Some((mx, my))) = (hovered_pin, hovered_mouse) {
         if let Some(conn) = CONNECTORS.iter().find(|c| c.name == conn_name) {
             if let Some(p) = conn.pins.iter().find(|p| p.pin_num == *pin_num) {
@@ -726,6 +779,21 @@ pub fn draw_nucleo_pinout_canvas(
                     None => "Unused in Project".to_string(),
                 };
 
+                let reserved_info = if is_hl.is_some() {
+                    stakhal_core::nucleo_pinout::check_reserved(p.mcu_pin)
+                } else {
+                    None
+                };
+
+                let line3 = reserved_info.map(|res| match res.severity {
+                    stakhal_core::nucleo_pinout::ReservedSeverity::Critical => {
+                        format!("WARNING: {}", res.reason)
+                    }
+                    stakhal_core::nucleo_pinout::ReservedSeverity::Caution => {
+                        format!("CAUTION: {}", res.reason)
+                    }
+                });
+
                 cr.select_font_face("sans-serif", cairo::FontSlant::Normal, cairo::FontWeight::Bold);
                 cr.set_font_size(10.0);
                 let w1 = cr.text_extents(&line1).map(|e| e.width()).unwrap_or(120.0);
@@ -734,12 +802,17 @@ pub fn draw_nucleo_pinout_canvas(
                 cr.set_font_size(9.5);
                 let w2 = cr.text_extents(&line2).map(|e| e.width()).unwrap_or(120.0);
 
-                let tt_w = (w1.max(w2) + 24.0).max(160.0);
-                let tt_h = 42.0;
+                let w3 = line3
+                    .as_ref()
+                    .map(|l3| cr.text_extents(l3).map(|e| e.width()).unwrap_or(120.0))
+                    .unwrap_or(0.0);
+
+                let tt_w = (w1.max(w2).max(w3) + 24.0).max(160.0);
+                let tt_h = if line3.is_some() { 58.0 } else { 42.0 };
 
                 // Compact Floating Position offset near cursor
                 let mut tt_x = mx + 12.0;
-                let mut tt_y = my - 48.0;
+                let mut tt_y = my - (tt_h + 6.0);
 
                 if tt_x + tt_w > board_x + board_w - 15.0 {
                     tt_x = (mx - tt_w - 12.0).max(board_x + 15.0);
@@ -756,12 +829,26 @@ pub fn draw_nucleo_pinout_canvas(
                 cr.rectangle(tt_x, tt_y, tt_w, tt_h);
                 let _ = cr.fill_preserve();
 
-                // Border: #22c55e green if active, #262626 if unused
-                if is_hl.is_some() {
-                    cr.set_source_rgb(34.0 / 255.0, 197.0 / 255.0, 94.0 / 255.0);
-                } else {
-                    cr.set_source_rgb(38.0 / 255.0, 38.0 / 255.0, 38.0 / 255.0);
-                }
+                // Border color
+                let (border_r, border_g, border_b) = match reserved_info {
+                    Some(res) => match res.severity {
+                        stakhal_core::nucleo_pinout::ReservedSeverity::Critical => {
+                            (239.0 / 255.0, 68.0 / 255.0, 68.0 / 255.0)
+                        }
+                        stakhal_core::nucleo_pinout::ReservedSeverity::Caution => {
+                            (245.0 / 255.0, 158.0 / 255.0, 11.0 / 255.0)
+                        }
+                    },
+                    None => {
+                        if is_hl.is_some() {
+                            (34.0 / 255.0, 197.0 / 255.0, 94.0 / 255.0)
+                        } else {
+                            (38.0 / 255.0, 38.0 / 255.0, 38.0 / 255.0)
+                        }
+                    }
+                };
+
+                cr.set_source_rgb(border_r, border_g, border_b);
                 cr.set_line_width(1.2);
                 let _ = cr.stroke();
 
@@ -772,16 +859,25 @@ pub fn draw_nucleo_pinout_canvas(
                 let _ = cr.move_to(tt_x + 10.0, tt_y + 16.0);
                 let _ = cr.show_text(&line1);
 
-                // Line 2: Signal / Status Info (#22c55e if active, #737373 if unused)
+                // Line 2: Signal / Status Info
                 cr.select_font_face("monospace", cairo::FontSlant::Normal, cairo::FontWeight::Bold);
                 cr.set_font_size(9.5);
                 if is_hl.is_some() {
-                    cr.set_source_rgb(34.0 / 255.0, 197.0 / 255.0, 94.0 / 255.0);
+                    cr.set_source_rgb(border_r, border_g, border_b);
                 } else {
                     cr.set_source_rgb(115.0 / 255.0, 115.0 / 255.0, 115.0 / 255.0);
                 }
                 let _ = cr.move_to(tt_x + 10.0, tt_y + 32.0);
                 let _ = cr.show_text(&line2);
+
+                // Line 3: Conflict Reason Warning
+                if let Some(ref l3) = line3 {
+                    cr.select_font_face("monospace", cairo::FontSlant::Normal, cairo::FontWeight::Bold);
+                    cr.set_font_size(9.5);
+                    cr.set_source_rgb(border_r, border_g, border_b);
+                    let _ = cr.move_to(tt_x + 10.0, tt_y + 48.0);
+                    let _ = cr.show_text(l3);
+                }
             }
         }
     }
@@ -892,7 +988,7 @@ mod tests {
     }
 
     #[test]
-    fn test_draw_nucleo_pinout_canvas_monochrome_render() {
+    fn test_draw_nucleo_pinout_canvas_rendering() {
         if let Err(err) = gtk4::init() {
             eprintln!("GTK display not available, skipping render test: {}", err);
             return;
@@ -908,6 +1004,21 @@ mod tests {
         let main_c_path = fixture_dir.join("Core/Src/main.c");
         if let Ok(project) = stakhal_core::ir::schema::load_project(&ioc_path, &main_c_path) {
             state.borrow_mut().loaded_project = Some(project);
+        }
+
+        draw_nucleo_pinout_canvas(&area, &cr, 1200.0, 750.0, &state);
+        surface.flush();
+
+        // Render pass 2 with reserved pin conflict on PA13
+        if let Some(mut project) = state.borrow_mut().loaded_project.clone() {
+            project.pins.push(stakhal_core::ioc::parser::PinConfig {
+                pin: "PA13".to_string(),
+                signal: "GPIO_Output".to_string(),
+                label: Some("DBG_SWDIO".to_string()),
+            });
+            state.borrow_mut().loaded_project = Some(project);
+            state.borrow_mut().hovered_pinout_pin = Some(("CN7".to_string(), 13));
+            state.borrow_mut().hovered_pinout_mouse = Some((100.0, 200.0));
         }
 
         draw_nucleo_pinout_canvas(&area, &cr, 1200.0, 750.0, &state);

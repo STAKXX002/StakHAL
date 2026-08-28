@@ -103,6 +103,56 @@ pub fn lookup_pin(mcu_pin: &str) -> Option<&'static PinLocation> {
     NUCLEO_F446RE_PINOUT.iter().find(|p| p.mcu_pin == mcu_pin)
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ReservedSeverity {
+    Critical,
+    Caution,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct ReservedPin {
+    pub mcu_pin: &'static str,
+    pub reason: &'static str,
+    pub severity: ReservedSeverity,
+}
+
+pub const RESERVED_PINS: &[ReservedPin] = &[
+    ReservedPin {
+        mcu_pin: "PA13",
+        reason: "PA13 is SWDIO — used by the onboard debugger. Reusing this pin will break reprogramming.",
+        severity: ReservedSeverity::Critical,
+    },
+    ReservedPin {
+        mcu_pin: "PA14",
+        reason: "PA14 is SWCLK — used by the onboard debugger. Reusing this pin will break reprogramming.",
+        severity: ReservedSeverity::Critical,
+    },
+    ReservedPin {
+        mcu_pin: "PH0",
+        reason: "PH0 is OSC_IN — system main oscillator input.",
+        severity: ReservedSeverity::Caution,
+    },
+    ReservedPin {
+        mcu_pin: "PH1",
+        reason: "PH1 is OSC_OUT — system main oscillator output.",
+        severity: ReservedSeverity::Caution,
+    },
+    ReservedPin {
+        mcu_pin: "PC14",
+        reason: "PC14 is OSC32_IN — 32.768 kHz RTC oscillator input.",
+        severity: ReservedSeverity::Caution,
+    },
+    ReservedPin {
+        mcu_pin: "PC15",
+        reason: "PC15 is OSC32_OUT — 32.768 kHz RTC oscillator output.",
+        severity: ReservedSeverity::Caution,
+    },
+];
+
+pub fn check_reserved(mcu_pin: &str) -> Option<&'static ReservedPin> {
+    RESERVED_PINS.iter().find(|p| p.mcu_pin == mcu_pin)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -135,5 +185,19 @@ mod tests {
         for entry in NUCLEO_F446RE_PINOUT {
             assert!(seen.insert(entry.mcu_pin), "duplicate entry for {}", entry.mcu_pin);
         }
+    }
+
+    #[test]
+    fn test_reserved_pins_critical_and_none() {
+        let pa13 = check_reserved("PA13").expect("PA13 should be reserved");
+        assert_eq!(pa13.severity, ReservedSeverity::Critical);
+
+        let pa14 = check_reserved("PA14").expect("PA14 should be reserved");
+        assert_eq!(pa14.severity, ReservedSeverity::Critical);
+
+        let ph0 = check_reserved("PH0").expect("PH0 should be reserved");
+        assert_eq!(ph0.severity, ReservedSeverity::Caution);
+
+        assert!(check_reserved("PB0").is_none());
     }
 }
