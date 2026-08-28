@@ -22,9 +22,7 @@ struct IrqChainInfo {
 }
 
 #[derive(Debug)]
-#[allow(dead_code)]
 struct PeripheralLane {
-    name: String,
     init_node: Option<String>,
     irq_chains: Vec<IrqChainInfo>,
 }
@@ -146,7 +144,6 @@ pub fn compute_graph_layout(
         let init_node = periph_init_map.get(&name).cloned();
         let irq_chains = irq_chains_by_periph.remove(&name).unwrap_or_default();
         lanes.push(PeripheralLane {
-            name,
             init_node,
             irq_chains,
         });

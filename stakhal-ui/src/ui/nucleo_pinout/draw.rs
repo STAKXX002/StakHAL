@@ -13,13 +13,7 @@ pub struct PinDef {
 
 pub struct ConnectorDef {
     pub name: &'static str,
-    #[allow(dead_code)]
-    pub title: &'static str,
     pub pins: &'static [PinDef],
-    #[allow(dead_code)]
-    pub rows: u8,
-    #[allow(dead_code)]
-    pub cols: u8,
 }
 
 const CN7_PINS: &[PinDef] = &[
@@ -151,45 +145,27 @@ const CN9_PINS: &[PinDef] = &[
 pub const CONNECTORS: &[ConnectorDef] = &[
     ConnectorDef {
         name: "CN7",
-        title: "CN7 — Morpho Left",
         pins: CN7_PINS,
-        rows: 19,
-        cols: 2,
     },
     ConnectorDef {
         name: "CN6",
-        title: "CN6 — Power",
         pins: CN6_PINS,
-        rows: 8,
-        cols: 1,
     },
     ConnectorDef {
         name: "CN8",
-        title: "CN8 — Analog In",
         pins: CN8_PINS,
-        rows: 6,
-        cols: 1,
     },
     ConnectorDef {
         name: "CN10",
-        title: "CN10 — Morpho Right",
         pins: CN10_PINS,
-        rows: 19,
-        cols: 2,
     },
     ConnectorDef {
         name: "CN5",
-        title: "CN5 — Digital High",
         pins: CN5_PINS,
-        rows: 10,
-        cols: 1,
     },
     ConnectorDef {
         name: "CN9",
-        title: "CN9 — Digital Low",
         pins: CN9_PINS,
-        rows: 8,
-        cols: 1,
     },
 ];
 
@@ -809,11 +785,6 @@ pub fn draw_nucleo_pinout_canvas(
             }
         }
     }
-}
-
-#[allow(dead_code)]
-pub fn draw_rounded_rectangle(cr: &cairo::Context, x: f64, y: f64, w: f64, h: f64, _r: f64) {
-    cr.rectangle(x, y, w, h);
 }
 
 pub fn setup_nucleo_pinout_drawing_and_gestures(
