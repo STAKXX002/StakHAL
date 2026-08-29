@@ -5,6 +5,96 @@ use syntect::easy::HighlightLines;
 use syntect::highlighting::ThemeSet;
 use syntect::parsing::SyntaxSet;
 
+pub const COLOR_BG_MAIN: egui::Color32 = egui::Color32::from_rgb(0x0a, 0x0a, 0x0a);
+pub const COLOR_BG_CARD: egui::Color32 = egui::Color32::from_rgb(0x12, 0x12, 0x12);
+pub const COLOR_BG_HOVER: egui::Color32 = egui::Color32::from_rgb(0x1a, 0x1a, 0x1a);
+pub const COLOR_BG_ACTIVE: egui::Color32 = egui::Color32::from_rgb(0x26, 0x26, 0x26);
+
+pub const COLOR_TEXT_PRIMARY: egui::Color32 = egui::Color32::from_rgb(0xe5, 0xe5, 0xe5);
+pub const COLOR_TEXT_DIMMED: egui::Color32 = egui::Color32::from_rgb(0x73, 0x73, 0x73);
+pub const COLOR_TEXT_HOVER: egui::Color32 = egui::Color32::from_rgb(0xff, 0xff, 0xff);
+
+pub const COLOR_BORDER_DEFAULT: egui::Color32 = egui::Color32::from_rgb(0x26, 0x26, 0x26);
+pub const COLOR_BORDER_HOVER: egui::Color32 = egui::Color32::from_rgb(0x52, 0x52, 0x52);
+
+pub const COLOR_STATUS_OK: egui::Color32 = egui::Color32::from_rgb(0x22, 0xc5, 0x5e);
+pub const COLOR_STATUS_WARN: egui::Color32 = egui::Color32::from_rgb(0xf5, 0x9e, 0x0b);
+pub const COLOR_STATUS_ERROR: egui::Color32 = egui::Color32::from_rgb(0xef, 0x44, 0x44);
+
+pub fn stakhal_visuals() -> egui::Visuals {
+    let mut visuals = egui::Visuals::dark();
+
+    visuals.override_text_color = Some(COLOR_TEXT_PRIMARY);
+    visuals.window_fill = COLOR_BG_MAIN;
+    visuals.panel_fill = COLOR_BG_MAIN;
+    visuals.extreme_bg_color = COLOR_BG_MAIN;
+    visuals.faint_bg_color = COLOR_BG_CARD;
+    visuals.code_bg_color = COLOR_BG_MAIN;
+
+    visuals.window_stroke = egui::Stroke::new(1.0f32, COLOR_BORDER_DEFAULT);
+    visuals.window_corner_radius = egui::CornerRadius::ZERO;
+    visuals.menu_corner_radius = egui::CornerRadius::ZERO;
+
+    visuals.widgets.noninteractive = egui::style::WidgetVisuals {
+        bg_fill: COLOR_BG_CARD,
+        weak_bg_fill: COLOR_BG_CARD,
+        bg_stroke: egui::Stroke::new(1.0f32, COLOR_BORDER_DEFAULT),
+        corner_radius: egui::CornerRadius::ZERO,
+        fg_stroke: egui::Stroke::new(1.0f32, COLOR_TEXT_PRIMARY),
+        expansion: 0.0,
+    };
+
+    visuals.widgets.inactive = egui::style::WidgetVisuals {
+        bg_fill: COLOR_BG_CARD,
+        weak_bg_fill: COLOR_BG_CARD,
+        bg_stroke: egui::Stroke::new(1.0f32, COLOR_BORDER_DEFAULT),
+        corner_radius: egui::CornerRadius::ZERO,
+        fg_stroke: egui::Stroke::new(1.0f32, COLOR_TEXT_PRIMARY),
+        expansion: 0.0,
+    };
+
+    visuals.widgets.hovered = egui::style::WidgetVisuals {
+        bg_fill: COLOR_BG_HOVER,
+        weak_bg_fill: COLOR_BG_HOVER,
+        bg_stroke: egui::Stroke::new(1.0f32, COLOR_BORDER_HOVER),
+        corner_radius: egui::CornerRadius::ZERO,
+        fg_stroke: egui::Stroke::new(1.0f32, COLOR_TEXT_HOVER),
+        expansion: 0.0,
+    };
+
+    visuals.widgets.active = egui::style::WidgetVisuals {
+        bg_fill: COLOR_BG_ACTIVE,
+        weak_bg_fill: COLOR_BG_ACTIVE,
+        bg_stroke: egui::Stroke::new(1.0f32, COLOR_BORDER_HOVER),
+        corner_radius: egui::CornerRadius::ZERO,
+        fg_stroke: egui::Stroke::new(1.0f32, COLOR_TEXT_HOVER),
+        expansion: 0.0,
+    };
+
+    visuals.widgets.open = egui::style::WidgetVisuals {
+        bg_fill: COLOR_BG_HOVER,
+        weak_bg_fill: COLOR_BG_HOVER,
+        bg_stroke: egui::Stroke::new(1.0f32, COLOR_BORDER_HOVER),
+        corner_radius: egui::CornerRadius::ZERO,
+        fg_stroke: egui::Stroke::new(1.0f32, COLOR_TEXT_HOVER),
+        expansion: 0.0,
+    };
+
+    visuals.selection = egui::style::Selection {
+        bg_fill: egui::Color32::from_rgba_premultiplied(0x22, 0xc5, 0x5e, 60),
+        stroke: egui::Stroke::new(1.0f32, COLOR_STATUS_OK),
+    };
+    visuals.hyperlink_color = COLOR_STATUS_OK;
+
+    visuals.warn_fg_color = COLOR_STATUS_WARN;
+    visuals.error_fg_color = COLOR_STATUS_ERROR;
+
+    visuals.popup_shadow = egui::Shadow::NONE;
+    visuals.window_shadow = egui::Shadow::NONE;
+
+    visuals
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum View {
     Inspector,
@@ -38,6 +128,10 @@ pub struct StakHalEguiApp {
 
     pub syntax_set: SyntaxSet,
     pub theme_set: ThemeSet,
+
+    pub screenshot_dir: Option<PathBuf>,
+    pub screenshot_step: usize,
+    pub screenshot_requested: bool,
 }
 
 impl Default for StakHalEguiApp {
@@ -67,6 +161,10 @@ impl Default for StakHalEguiApp {
 
             syntax_set: SyntaxSet::load_defaults_newlines(),
             theme_set: ThemeSet::load_defaults(),
+
+            screenshot_dir: None,
+            screenshot_step: 0,
+            screenshot_requested: false,
         };
 
         // Try loading last project from config if available
@@ -261,6 +359,78 @@ impl StakHalEguiApp {
 
 impl eframe::App for StakHalEguiApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        ctx.set_visuals(stakhal_visuals());
+        ctx.style_mut(|style| {
+            style.spacing.item_spacing = egui::vec2(6.0, 4.0);
+            style.spacing.button_padding = egui::vec2(8.0, 4.0);
+            style.spacing.window_margin = egui::Margin::same(8);
+            style.scroll_animation = egui::style::ScrollAnimation::none();
+        });
+
+        // Screenshot capture state machine
+        if let Some(ref dir) = self.screenshot_dir.clone() {
+            if self.loaded_project.is_none() {
+                let fixture_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                    .join("../stakhal-core/tests/fixtures/stakhal_blink_f446re");
+                if fixture_dir.exists() {
+                    self.load_project_from_dir(fixture_dir);
+                }
+            }
+
+            for event in ctx.input(|i| i.raw.events.clone()) {
+                if let egui::Event::Screenshot { image, .. } = event {
+                    let filename = match self.screenshot_step {
+                        0 => "inspector.png",
+                        1 => "source_view.png",
+                        2 => "call_graph.png",
+                        _ => "screenshot.png",
+                    };
+                    let width = image.width() as u32;
+                    let height = image.height() as u32;
+                    if std::fs::create_dir_all(dir).is_ok() {
+                        let ppm_path = dir.join(filename).with_extension("ppm");
+                        let mut ppm_data = format!("P6\n{} {}\n255\n", width, height).into_bytes();
+                        for color in &image.pixels {
+                            ppm_data.push(color.r());
+                            ppm_data.push(color.g());
+                            ppm_data.push(color.b());
+                        }
+                        if std::fs::write(&ppm_path, &ppm_data).is_ok() {
+                            let png_path = dir.join(filename);
+                            let _ = std::process::Command::new("convert")
+                                .arg(&ppm_path)
+                                .arg(&png_path)
+                                .status();
+                            println!("[SCREENSHOT SAVED] Written: {}", png_path.display());
+                        }
+                    }
+
+                    self.screenshot_step += 1;
+                    match self.screenshot_step {
+                        1 => {
+                            self.current_view = View::Source { pv_index: 0 };
+                            self.should_scroll_to_decl = true;
+                            self.screenshot_requested = false;
+                        }
+                        2 => {
+                            self.current_view = View::CallGraph;
+                            self.update_call_graph();
+                            self.fit_call_graph_to_view(egui::vec2(1160.0, 720.0));
+                            self.screenshot_requested = false;
+                        }
+                        _ => {
+                            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+                        }
+                    }
+                }
+            }
+
+            if self.screenshot_step <= 2 && !self.screenshot_requested {
+                self.screenshot_requested = true;
+                ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(Default::default()));
+            }
+        }
+
         egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
             match self.current_view {
                 View::Inspector => {
@@ -286,20 +456,20 @@ impl eframe::App for StakHalEguiApp {
                         ui.separator();
 
                         if let Some(ref path) = self.project_path {
-                            ui.label(format!("Project: {}", path.display()));
+                            ui.label(egui::RichText::new(format!("Project: {}", path.display())).color(COLOR_TEXT_DIMMED));
                         } else {
-                            ui.label("No folder selected");
+                            ui.label(egui::RichText::new("No folder selected").color(COLOR_TEXT_DIMMED));
                         }
                     });
 
                     if self.ioc_path.is_some() || self.main_c_path.is_some() {
                         ui.horizontal(|ui| {
                             if let Some(ref ioc) = self.ioc_path {
-                                ui.label(format!("IOC: {}", ioc.display()));
+                                ui.label(egui::RichText::new(format!("IOC: {}", ioc.display())).color(COLOR_TEXT_DIMMED));
                             }
                             ui.separator();
                             if let Some(ref main_c) = self.main_c_path {
-                                ui.label(format!("Main C: {}", main_c.display()));
+                                ui.label(egui::RichText::new(format!("Main C: {}", main_c.display())).color(COLOR_TEXT_DIMMED));
                             }
                         });
                     }
@@ -312,17 +482,17 @@ impl eframe::App for StakHalEguiApp {
                                 .get("ProjectManager.ProjectName")
                                 .cloned()
                                 .unwrap_or_else(|| "—".to_string());
-                            ui.label(format!("NAME: {}", project_name));
+                            ui.label(egui::RichText::new(format!("NAME: {}", project_name)).color(COLOR_TEXT_DIMMED));
                             ui.separator();
-                            ui.label(format!("FAMILY: {}", project.mcu_family));
+                            ui.label(egui::RichText::new(format!("FAMILY: {}", project.mcu_family)).color(COLOR_TEXT_DIMMED));
                             ui.separator();
-                            ui.label(format!("MCU: {}", project.mcu_name));
+                            ui.label(egui::RichText::new(format!("MCU: {}", project.mcu_name)).color(COLOR_TEXT_DIMMED));
                         });
                     }
 
                     if let Some(ref err) = self.error_message {
                         ui.separator();
-                        ui.colored_label(egui::Color32::RED, format!("Error: {}", err));
+                        ui.colored_label(COLOR_STATUS_ERROR, format!("Error: {}", err));
                     }
                 }
                 View::Source { pv_index } => {
@@ -347,13 +517,13 @@ impl eframe::App for StakHalEguiApp {
 
                         if let Some(ref main_c) = self.main_c_path {
                             ui.separator();
-                            ui.label(format!("Source: {}", main_c.display()));
+                            ui.label(egui::RichText::new(format!("Source: {}", main_c.display())).color(COLOR_TEXT_DIMMED));
                         }
                     });
 
                     if let Some(ref err) = self.edit_error {
                         ui.separator();
-                        ui.colored_label(egui::Color32::RED, format!("Save Error: {}", err));
+                        ui.colored_label(COLOR_STATUS_ERROR, format!("Save Error: {}", err));
                     }
                 }
                 View::CallGraph => {
@@ -369,11 +539,11 @@ impl eframe::App for StakHalEguiApp {
                         }
 
                         ui.separator();
-                        ui.label(format!(
+                        ui.label(egui::RichText::new(format!(
                             "[ CALL GRAPH DIAGRAM | Edges: {} | Zoom: {:.0}% ]",
                             self.graph_edges.len(),
                             self.graph_zoom * 100.0
-                        ));
+                        )).color(COLOR_TEXT_DIMMED));
                     });
                 }
             }
@@ -394,10 +564,13 @@ impl eframe::App for StakHalEguiApp {
 
                             egui::ScrollArea::vertical()
                                 .id_salt("peripherals_scroll")
+                                .animated(false)
+                                .drag_to_scroll(true)
+                                .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::VisibleWhenNeeded)
                                 .show(ui, |ui| {
                                     if let Some(ref project) = self.loaded_project {
                                         if project.peripherals.is_empty() {
-                                            ui.label("No peripherals declared");
+                                            ui.label(egui::RichText::new("No peripherals declared").color(COLOR_TEXT_DIMMED));
                                         } else {
                                             for periph in &project.peripherals {
                                                 ui.group(|ui| {
@@ -406,19 +579,19 @@ impl eframe::App for StakHalEguiApp {
                                                         ui.with_layout(
                                                             egui::Layout::right_to_left(egui::Align::Center),
                                                             |ui| {
-                                                                ui.label(format!(
+                                                                ui.label(egui::RichText::new(format!(
                                                                     "{} params",
                                                                     periph.parameters.len()
-                                                                ));
+                                                                )).color(COLOR_TEXT_DIMMED));
                                                             },
                                                         );
                                                     });
-                                                    ui.label(periph.mode.as_deref().unwrap_or("—"));
+                                                    ui.label(egui::RichText::new(periph.mode.as_deref().unwrap_or("—")).color(COLOR_TEXT_DIMMED));
                                                 });
                                             }
                                         }
                                     } else {
-                                        ui.label("No project loaded");
+                                        ui.label(egui::RichText::new("No project loaded").color(COLOR_TEXT_DIMMED));
                                     }
                                 });
                         });
@@ -430,6 +603,9 @@ impl eframe::App for StakHalEguiApp {
 
                             egui::ScrollArea::vertical()
                                 .id_salt("regions_scroll")
+                                .animated(false)
+                                .drag_to_scroll(true)
+                                .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::VisibleWhenNeeded)
                                 .show(ui, |ui| {
                                     if !self.user_regions.is_empty() {
                                         for region in &self.user_regions {
@@ -440,22 +616,22 @@ impl eframe::App for StakHalEguiApp {
                                                         ui.with_layout(
                                                             egui::Layout::right_to_left(egui::Align::Center),
                                                             |ui| {
-                                                                ui.label("[implicit]");
+                                                                ui.label(egui::RichText::new("[implicit]").color(COLOR_TEXT_DIMMED));
                                                             },
                                                         );
                                                     }
                                                 });
-                                                ui.label(format!(
+                                                ui.label(egui::RichText::new(format!(
                                                     "L{}-L{} (bytes {}..{})",
                                                     region.line_range.0,
                                                     region.line_range.1,
                                                     region.byte_range.0,
                                                     region.byte_range.1
-                                                ));
+                                                )).color(COLOR_TEXT_DIMMED));
                                             });
                                         }
                                     } else {
-                                        ui.label("No regions found");
+                                        ui.label(egui::RichText::new("No regions found").color(COLOR_TEXT_DIMMED));
                                     }
                                 });
                         });
@@ -468,6 +644,9 @@ impl eframe::App for StakHalEguiApp {
                             let mut clicked_pv_index = None;
                             egui::ScrollArea::vertical()
                                 .id_salt("pv_scroll")
+                                .animated(false)
+                                .drag_to_scroll(true)
+                                .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::VisibleWhenNeeded)
                                 .show(ui, |ui| {
                                     if !self.pv_declarations.is_empty() {
                                         for (idx, pv) in self.pv_declarations.iter().enumerate() {
@@ -477,7 +656,7 @@ impl eframe::App for StakHalEguiApp {
                                                     ui.with_layout(
                                                         egui::Layout::right_to_left(egui::Align::Center),
                                                         |ui| {
-                                                            ui.label(format!("Line {}", pv.line));
+                                                            ui.label(egui::RichText::new(format!("Line {}", pv.line)).color(COLOR_TEXT_DIMMED));
                                                         },
                                                     );
                                                 });
@@ -485,7 +664,7 @@ impl eframe::App for StakHalEguiApp {
                                                     Some(val) => format!("{} = {}", pv.type_str, val),
                                                     None => pv.type_str.clone(),
                                                 };
-                                                ui.label(subtitle);
+                                                ui.label(egui::RichText::new(subtitle).color(COLOR_TEXT_DIMMED));
                                             });
 
                                             let interact_resp = ui.interact(
@@ -493,12 +672,15 @@ impl eframe::App for StakHalEguiApp {
                                                 card_response.response.id,
                                                 egui::Sense::click(),
                                             );
+                                            if interact_resp.hovered() {
+                                                ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+                                            }
                                             if interact_resp.clicked() {
                                                 clicked_pv_index = Some(idx);
                                             }
                                         }
                                     } else {
-                                        ui.label("No PV variables found");
+                                        ui.label(egui::RichText::new("No PV variables found").color(COLOR_TEXT_DIMMED));
                                     }
                                 });
 
@@ -685,16 +867,16 @@ impl eframe::App for StakHalEguiApp {
 
                                     let edge_color = match edge.edge_type {
                                         stakhal_core::graph::EdgeType::Init => {
-                                            egui::Color32::from_rgb(100, 180, 240)
+                                            egui::Color32::from_rgb(0x60, 0xa5, 0xfa)
                                         }
                                         stakhal_core::graph::EdgeType::IrqEntry => {
-                                            egui::Color32::from_rgb(240, 180, 100)
+                                            COLOR_STATUS_WARN
                                         }
                                         stakhal_core::graph::EdgeType::HalDispatch => {
-                                            egui::Color32::from_rgb(180, 100, 240)
+                                            egui::Color32::from_rgb(0xc0, 0x84, 0xfc)
                                         }
                                         stakhal_core::graph::EdgeType::WeakOverride => {
-                                            egui::Color32::from_rgb(100, 240, 180)
+                                            COLOR_STATUS_OK
                                         }
                                     };
 
@@ -717,16 +899,16 @@ impl eframe::App for StakHalEguiApp {
                                 );
 
                                 let fill_color = if header.is_collapsed {
-                                    egui::Color32::from_rgb(60, 60, 80)
+                                    egui::Color32::from_rgb(0x18, 0x18, 0x1c)
                                 } else {
-                                    egui::Color32::from_rgb(40, 80, 120)
+                                    egui::Color32::from_rgb(0x15, 0x22, 0x32)
                                 };
 
-                                painter.rect_filled(header_rect, 4.0 * zoom, fill_color);
+                                painter.rect_filled(header_rect, egui::CornerRadius::ZERO, fill_color);
                                 painter.rect_stroke(
                                     header_rect,
-                                    4.0 * zoom,
-                                    egui::Stroke::new(1.5 * zoom, egui::Color32::from_rgb(120, 160, 220)),
+                                    egui::CornerRadius::ZERO,
+                                    egui::Stroke::new(1.0 * zoom, COLOR_BORDER_DEFAULT),
                                     egui::StrokeKind::Outside,
                                 );
 
@@ -738,7 +920,7 @@ impl eframe::App for StakHalEguiApp {
                                     egui::Align2::CENTER_CENTER,
                                     text,
                                     egui::FontId::monospace(font_size),
-                                    egui::Color32::WHITE,
+                                    COLOR_TEXT_PRIMARY,
                                 );
 
                                 if response.clicked() {
@@ -761,31 +943,31 @@ impl eframe::App for StakHalEguiApp {
 
                                 let (fill_color, stroke_color) = if id == "main" {
                                     (
-                                        egui::Color32::from_rgb(30, 80, 50),
-                                        egui::Color32::from_rgb(60, 180, 100),
+                                        egui::Color32::from_rgb(0x0e, 0x28, 0x18),
+                                        COLOR_STATUS_OK,
                                     )
                                 } else if id.starts_with("MX_") {
                                     (
-                                        egui::Color32::from_rgb(30, 60, 90),
-                                        egui::Color32::from_rgb(80, 140, 220),
+                                        egui::Color32::from_rgb(0x12, 0x20, 0x30),
+                                        egui::Color32::from_rgb(0x38, 0x80, 0xd0),
                                     )
                                 } else if id.ends_with("_IRQHandler") {
                                     (
-                                        egui::Color32::from_rgb(90, 60, 30),
-                                        egui::Color32::from_rgb(220, 140, 60),
+                                        egui::Color32::from_rgb(0x2a, 0x1d, 0x0c),
+                                        COLOR_STATUS_WARN,
                                     )
                                 } else {
                                     (
-                                        egui::Color32::from_rgb(45, 45, 55),
-                                        egui::Color32::from_rgb(100, 100, 120),
+                                        egui::Color32::from_rgb(0x14, 0x14, 0x17),
+                                        COLOR_BORDER_DEFAULT,
                                     )
                                 };
 
-                                painter.rect_filled(node_rect, 6.0 * zoom, fill_color);
+                                painter.rect_filled(node_rect, egui::CornerRadius::ZERO, fill_color);
                                 painter.rect_stroke(
                                     node_rect,
-                                    6.0 * zoom,
-                                    egui::Stroke::new(1.5 * zoom, stroke_color),
+                                    egui::CornerRadius::ZERO,
+                                    egui::Stroke::new(1.0 * zoom, stroke_color),
                                     egui::StrokeKind::Outside,
                                 );
 
@@ -795,7 +977,7 @@ impl eframe::App for StakHalEguiApp {
                                     egui::Align2::CENTER_CENTER,
                                     id,
                                     egui::FontId::monospace(font_size),
-                                    egui::Color32::WHITE,
+                                    COLOR_TEXT_PRIMARY,
                                 );
                             }
                         });
@@ -891,11 +1073,35 @@ fn get_line_content(content: &str, line_1based: usize) -> Option<String> {
 }
 
 fn main() -> eframe::Result<()> {
-    let native_options = eframe::NativeOptions::default();
+    let mut screenshot_dir = None;
+    if let Ok(dir_str) = std::env::var("STAKHAL_SCREENSHOT_DIR") {
+        screenshot_dir = Some(PathBuf::from(dir_str));
+    } else {
+        let args: Vec<String> = std::env::args().collect();
+        for i in 0..args.len() {
+            if args[i] == "--screenshot-dir" && i + 1 < args.len() {
+                screenshot_dir = Some(PathBuf::from(&args[i + 1]));
+                break;
+            }
+        }
+    }
+
+    let native_options = eframe::NativeOptions {
+        viewport: egui::ViewportBuilder::default()
+            .with_inner_size([1200.0, 800.0])
+            .with_title("StakHAL — Hardware Abstraction Inspector (egui)"),
+        ..Default::default()
+    };
+
     eframe::run_native(
         "StakHAL — Hardware Abstraction Inspector (egui)",
         native_options,
-        Box::new(|_cc| Ok(Box::new(StakHalEguiApp::default()))),
+        Box::new(|cc| {
+            cc.egui_ctx.set_visuals(stakhal_visuals());
+            let mut app = StakHalEguiApp::default();
+            app.screenshot_dir = screenshot_dir;
+            Ok(Box::new(app))
+        }),
     )
 }
 
