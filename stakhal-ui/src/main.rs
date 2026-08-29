@@ -227,8 +227,7 @@ row, listboxrow, actionrow {
     let window = adw::ApplicationWindow::builder()
         .application(app)
         .title("StakHAL — Hardware Abstraction Inspector")
-        .default_width(1200)
-        .default_height(800)
+        .maximized(true)
         .content(&toast_overlay)
         .build();
 
