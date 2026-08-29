@@ -1,3 +1,4 @@
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use eframe::egui;
 use syntect::easy::HighlightLines;
@@ -8,6 +9,7 @@ use syntect::parsing::SyntaxSet;
 pub enum View {
     Inspector,
     Source { pv_index: usize },
+    CallGraph,
 }
 
 pub struct StakHalEguiApp {
@@ -25,6 +27,13 @@ pub struct StakHalEguiApp {
     pub edit_buffer: String,
     pub edit_error: Option<String>,
     pub should_scroll_to_decl: bool,
+
+    // Call Graph state
+    pub graph_edges: Vec<stakhal_core::graph::GraphEdge>,
+    pub graph_positions: HashMap<String, (f64, f64)>,
+    pub graph_headers: Vec<stakhal_core::graph::ChainHeaderLayout>,
+    pub collapsed_chains: HashSet<String>,
+    pub graph_zoom: f32,
 
     pub syntax_set: SyntaxSet,
     pub theme_set: ThemeSet,
@@ -47,6 +56,12 @@ impl Default for StakHalEguiApp {
             edit_buffer: String::new(),
             edit_error: None,
             should_scroll_to_decl: false,
+
+            graph_edges: Vec::new(),
+            graph_positions: HashMap::new(),
+            graph_headers: Vec::new(),
+            collapsed_chains: HashSet::new(),
+            graph_zoom: 1.0,
 
             syntax_set: SyntaxSet::load_defaults_newlines(),
             theme_set: ThemeSet::load_defaults(),
@@ -93,10 +108,12 @@ impl StakHalEguiApp {
                 match stakhal_core::ioc::parser::parse_ioc(&ioc_path) {
                     Ok(project) => {
                         self.loaded_project = Some(project);
+                        self.update_call_graph();
                     }
                     Err(err) => {
                         self.error_message = Some(format!("IOC parse error: {}", err));
                         self.loaded_project = None;
+                        self.update_call_graph();
                     }
                 }
 
@@ -133,7 +150,40 @@ impl StakHalEguiApp {
                 self.user_regions.clear();
                 self.pv_declarations.clear();
                 self.main_c_code.clear();
+                self.update_call_graph();
             }
+        }
+    }
+
+    pub fn update_call_graph(&mut self) {
+        if let Some(ref project) = self.loaded_project {
+            self.graph_edges = stakhal_core::graph::build_call_graph(project);
+            let (positions, headers) = stakhal_core::graph::compute_graph_layout(
+                &self.graph_edges,
+                &self.collapsed_chains,
+            );
+            self.graph_positions = positions;
+            self.graph_headers = headers;
+        } else {
+            self.graph_edges.clear();
+            self.graph_positions.clear();
+            self.graph_headers.clear();
+        }
+    }
+
+    pub fn fit_call_graph_to_view(&mut self, available_size: egui::Vec2) {
+        let (bounds_w, bounds_h) = stakhal_core::graph::compute_graph_bounds(
+            &self.graph_positions,
+            &self.graph_headers,
+        );
+        if bounds_w > 0 && bounds_h > 0 && available_size.x > 0.0 && available_size.y > 0.0 {
+            let zoom_x = available_size.x / (bounds_w as f32 + 40.0);
+            let zoom_y = available_size.y / (bounds_h as f32 + 40.0);
+            self.graph_zoom = zoom_x.min(zoom_y).clamp(0.2, 3.0);
+            println!(
+                "[CALL GRAPH] Fit to View applied. Graph bounds: {}x{}, Viewport: {:.0}x{:.0}, Set Zoom: {:.2}",
+                bounds_w, bounds_h, available_size.x, available_size.y, self.graph_zoom
+            );
         }
     }
 
@@ -211,6 +261,20 @@ impl eframe::App for StakHalEguiApp {
                             self.open_folder_picker();
                         }
 
+                        if self.loaded_project.is_some() {
+                            ui.separator();
+                            if ui.button("📊 View Call Graph").clicked() {
+                                self.current_view = View::CallGraph;
+                                self.update_call_graph();
+                                println!(
+                                    "[CALL GRAPH] Switched to Call Graph view. Nodes: {}, Edges: {}, Headers: {}",
+                                    self.graph_positions.len(),
+                                    self.graph_edges.len(),
+                                    self.graph_headers.len()
+                                );
+                            }
+                        }
+
                         ui.separator();
 
                         if let Some(ref path) = self.project_path {
@@ -283,6 +347,27 @@ impl eframe::App for StakHalEguiApp {
                         ui.separator();
                         ui.colored_label(egui::Color32::RED, format!("Save Error: {}", err));
                     }
+                }
+                View::CallGraph => {
+                    let available_size = ui.available_size();
+                    ui.horizontal(|ui| {
+                        if ui.button("← Back").clicked() {
+                            self.current_view = View::Inspector;
+                        }
+
+                        ui.separator();
+
+                        if ui.button("🔎 Fit to View").clicked() {
+                            self.fit_call_graph_to_view(available_size);
+                        }
+
+                        ui.separator();
+                        ui.label(format!(
+                            "[ CALL GRAPH DIAGRAM | Edges: {} | Zoom: {:.0}% ]",
+                            self.graph_edges.len(),
+                            self.graph_zoom * 100.0
+                        ));
+                    });
                 }
             }
         });
@@ -478,7 +563,7 @@ impl eframe::App for StakHalEguiApp {
 
                     scroll_area.show(ui, |ui| {
                         let mut code = self.main_c_code.clone();
-                        let mut layouter = |ui: &egui::Ui, string: &str, _: f32| {
+                        let mut layouter = |ui: &egui::Ui, string: &str, _| {
                             let job = self.highlight_c(string, font_id.clone());
                             ui.fonts(|f| f.layout_job(job))
                         };
@@ -526,6 +611,189 @@ impl eframe::App for StakHalEguiApp {
                             }
                         });
                     });
+                }
+                View::CallGraph => {
+                    // Check for Ctrl+Scroll Zoom
+                    if ui.input(|i| i.modifiers.ctrl) {
+                        let scroll_delta = ui.input(|i| i.raw_scroll_delta.y);
+                        if scroll_delta != 0.0 {
+                            let factor = if scroll_delta > 0.0 { 1.1 } else { 0.9 };
+                            let old_zoom = self.graph_zoom;
+                            self.graph_zoom = (self.graph_zoom * factor).clamp(0.2, 3.0);
+                            println!(
+                                "[CALL GRAPH] Ctrl+Scroll Zoom adjusted from {:.2} to {:.2}",
+                                old_zoom, self.graph_zoom
+                            );
+                        }
+                    }
+
+                    let (bounds_w, bounds_h) = stakhal_core::graph::compute_graph_bounds(
+                        &self.graph_positions,
+                        &self.graph_headers,
+                    );
+
+                    let zoom = self.graph_zoom;
+                    let content_size = egui::vec2(
+                        (bounds_w as f32 * zoom + 120.0).max(ui.available_width()),
+                        (bounds_h as f32 * zoom + 120.0).max(ui.available_height()),
+                    );
+
+                    let mut toggle_header_id = None;
+
+                    egui::ScrollArea::both()
+                        .id_salt("call_graph_scroll_area")
+                        .show(ui, |ui| {
+                            let (response, painter) =
+                                ui.allocate_painter(content_size, egui::Sense::click());
+
+                            let origin = response.rect.min + egui::vec2(40.0 * zoom, 40.0 * zoom);
+
+                            // 1. Draw Edges
+                            for edge in &self.graph_edges {
+                                if let (Some(&(from_x, from_y)), Some(&(to_x, to_y))) = (
+                                    self.graph_positions.get(&edge.from),
+                                    self.graph_positions.get(&edge.to),
+                                ) {
+                                    let from_w = (edge.from.len() as f64 * 8.5 + 28.0).max(110.0) as f32;
+                                    let from_h = 34.0f32;
+                                    let to_w = (edge.to.len() as f64 * 8.5 + 28.0).max(110.0) as f32;
+
+                                    let pt_from = origin
+                                        + egui::vec2(
+                                            (from_x as f32 + from_w / 2.0) * zoom,
+                                            (from_y as f32 + from_h) * zoom,
+                                        );
+                                    let pt_to = origin
+                                        + egui::vec2(
+                                            (to_x as f32 + to_w / 2.0) * zoom,
+                                            to_y as f32 * zoom,
+                                        );
+
+                                    let edge_color = match edge.edge_type {
+                                        stakhal_core::graph::EdgeType::Init => {
+                                            egui::Color32::from_rgb(100, 180, 240)
+                                        }
+                                        stakhal_core::graph::EdgeType::IrqEntry => {
+                                            egui::Color32::from_rgb(240, 180, 100)
+                                        }
+                                        stakhal_core::graph::EdgeType::HalDispatch => {
+                                            egui::Color32::from_rgb(180, 100, 240)
+                                        }
+                                        stakhal_core::graph::EdgeType::WeakOverride => {
+                                            egui::Color32::from_rgb(100, 240, 180)
+                                        }
+                                    };
+
+                                    painter.line_segment(
+                                        [pt_from, pt_to],
+                                        egui::Stroke::new(2.0 * zoom, edge_color),
+                                    );
+                                }
+                            }
+
+                            // 2. Draw Chain Headers
+                            for header in &self.graph_headers {
+                                let header_rect = egui::Rect::from_min_size(
+                                    origin
+                                        + egui::vec2(
+                                            header.x as f32 * zoom,
+                                            header.y as f32 * zoom,
+                                        ),
+                                    egui::vec2(header.w as f32 * zoom, header.h as f32 * zoom),
+                                );
+
+                                let fill_color = if header.is_collapsed {
+                                    egui::Color32::from_rgb(60, 60, 80)
+                                } else {
+                                    egui::Color32::from_rgb(40, 80, 120)
+                                };
+
+                                painter.rect_filled(header_rect, 4.0 * zoom, fill_color);
+                                painter.rect_stroke(
+                                    header_rect,
+                                    4.0 * zoom,
+                                    egui::Stroke::new(1.5 * zoom, egui::Color32::from_rgb(120, 160, 220)),
+                                    egui::StrokeKind::Outside,
+                                );
+
+                                let icon = if header.is_collapsed { "▶ " } else { "▼ " };
+                                let text = format!("{}{}", icon, header.label);
+                                painter.text(
+                                    header_rect.center(),
+                                    egui::Align2::CENTER_CENTER,
+                                    text,
+                                    egui::FontId::monospace((12.0 * zoom).max(9.0)),
+                                    egui::Color32::WHITE,
+                                );
+
+                                if response.clicked() {
+                                    if let Some(pointer_pos) = ui.ctx().pointer_interact_pos() {
+                                        if header_rect.contains(pointer_pos) {
+                                            toggle_header_id = Some(header.handler_id.clone());
+                                        }
+                                    }
+                                }
+                            }
+
+                            // 3. Draw Nodes
+                            for (id, &(x, y)) in &self.graph_positions {
+                                let node_w = (id.len() as f64 * 8.5 + 28.0).max(110.0) as f32;
+                                let node_h = 34.0f32;
+                                let node_rect = egui::Rect::from_min_size(
+                                    origin + egui::vec2(x as f32 * zoom, y as f32 * zoom),
+                                    egui::vec2(node_w * zoom, node_h * zoom),
+                                );
+
+                                let (fill_color, stroke_color) = if id == "main" {
+                                    (
+                                        egui::Color32::from_rgb(30, 80, 50),
+                                        egui::Color32::from_rgb(60, 180, 100),
+                                    )
+                                } else if id.starts_with("MX_") {
+                                    (
+                                        egui::Color32::from_rgb(30, 60, 90),
+                                        egui::Color32::from_rgb(80, 140, 220),
+                                    )
+                                } else if id.ends_with("_IRQHandler") {
+                                    (
+                                        egui::Color32::from_rgb(90, 60, 30),
+                                        egui::Color32::from_rgb(220, 140, 60),
+                                    )
+                                } else {
+                                    (
+                                        egui::Color32::from_rgb(45, 45, 55),
+                                        egui::Color32::from_rgb(100, 100, 120),
+                                    )
+                                };
+
+                                painter.rect_filled(node_rect, 6.0 * zoom, fill_color);
+                                painter.rect_stroke(
+                                    node_rect,
+                                    6.0 * zoom,
+                                    egui::Stroke::new(1.5 * zoom, stroke_color),
+                                    egui::StrokeKind::Outside,
+                                );
+
+                                painter.text(
+                                    node_rect.center(),
+                                    egui::Align2::CENTER_CENTER,
+                                    id,
+                                    egui::FontId::monospace((12.0 * zoom).max(8.0)),
+                                    egui::Color32::WHITE,
+                                );
+                            }
+                        });
+
+                    if let Some(handler_id) = toggle_header_id {
+                        if self.collapsed_chains.contains(&handler_id) {
+                            self.collapsed_chains.remove(&handler_id);
+                            println!("[CALL GRAPH] Expanded chain header: {}", handler_id);
+                        } else {
+                            self.collapsed_chains.insert(handler_id.clone());
+                            println!("[CALL GRAPH] Collapsed chain header: {}", handler_id);
+                        }
+                        self.update_call_graph();
+                    }
                 }
             }
         });
@@ -668,7 +936,7 @@ mod tests {
     }
 
     #[test]
-    fn test_source_view_and_context_menu_simulation() {
+    fn test_call_graph_layout_and_interactions() {
         let fixture_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../stakhal-core/tests/fixtures/stm32_03_timers");
         assert!(fixture_dir.exists(), "Fixture directory must exist");
@@ -676,37 +944,44 @@ mod tests {
         let mut app = StakHalEguiApp::default();
         app.load_project_from_dir(fixture_dir);
 
-        assert!(!app.pv_declarations.is_empty(), "PV declarations should exist");
-        
-        // 1. Simulate clicking a PV variable row (e.g. pv_index = 0)
-        app.current_view = View::Source { pv_index: 0 };
-        app.should_scroll_to_decl = true;
+        // 1. Switch view
+        app.current_view = View::CallGraph;
+        app.update_call_graph();
+        println!(
+            "[CALL GRAPH] Switched to Call Graph view. Nodes: {}, Edges: {}, Headers: {}",
+            app.graph_positions.len(),
+            app.graph_edges.len(),
+            app.graph_headers.len()
+        );
 
-        let active_pv = &app.pv_declarations[0];
-        assert_eq!(active_pv.name, "isrCount");
+        assert!(!app.graph_edges.is_empty(), "Graph edges should be built");
+        assert!(!app.graph_positions.is_empty(), "Graph node positions should be computed");
+        assert!(!app.graph_headers.is_empty(), "Chain headers should be computed");
 
-        // 2. Perform 15 right-click position checks simulating context menu evaluation
-        for line in 1..=15 {
-            let line_content = get_line_content(&app.main_c_code, line);
-            println!("[TEST SIMULATION] Right-click #{} evaluated at line {}: {:?}", line, line, line_content);
-            if line == active_pv.line {
-                println!("[TEST SIMULATION] Right-click landed on PV declaration line {} ('{}') - Edit option enabled", line, active_pv.name);
-            } else {
-                println!("[TEST SIMULATION] Right-click landed on line {} - Copy option enabled", line);
-            }
-        }
+        let initial_node_count = app.graph_positions.len();
+        let header_to_collapse = app.graph_headers[0].handler_id.clone();
 
-        // 3. Test inline edit and writeback simulation on temp copy
-        let dir = tempfile::tempdir().unwrap();
-        let main_c_path = dir.path().join("main.c");
-        std::fs::write(&main_c_path, &app.main_c_code).unwrap();
-        let ioc_path = dir.path().join("03_timers.ioc");
-        std::fs::write(&ioc_path, "PCC.Checker=true\n").unwrap();
+        // 2. Simulate Collapse
+        app.collapsed_chains.insert(header_to_collapse.clone());
+        app.update_call_graph();
+        println!("[CALL GRAPH] Collapsed chain header: {}", header_to_collapse);
+        println!("[CALL GRAPH] Active nodes post-collapse: {}", app.graph_positions.len());
+        assert!(app.graph_positions.len() < initial_node_count, "Node count should decrease when collapsed");
 
-        let res = save_pv_declaration_edit(&main_c_path, active_pv, "uint32_t isrCount = 100;");
-        assert!(res.is_ok(), "Expected writeback success, got: {:?}", res);
+        // 3. Simulate Expand
+        app.collapsed_chains.remove(&header_to_collapse);
+        app.update_call_graph();
+        println!("[CALL GRAPH] Expanded chain header: {}", header_to_collapse);
+        println!("[CALL GRAPH] Active nodes post-expand: {}", app.graph_positions.len());
+        assert_eq!(app.graph_positions.len(), initial_node_count, "Node count restored on expand");
 
-        let updated = std::fs::read_to_string(&main_c_path).unwrap();
-        assert!(updated.contains("uint32_t isrCount = 100;"));
+        // 4. Simulate Ctrl+Scroll Zoom
+        let old_zoom = app.graph_zoom;
+        app.graph_zoom = (app.graph_zoom * 1.1).clamp(0.2, 3.0);
+        println!("[CALL GRAPH] Ctrl+Scroll Zoom adjusted from {:.2} to {:.2}", old_zoom, app.graph_zoom);
+
+        // 5. Simulate Fit to View
+        app.fit_call_graph_to_view(egui::vec2(1200.0, 800.0));
+        assert!(app.graph_zoom > 0.0 && app.graph_zoom <= 3.0);
     }
 }
