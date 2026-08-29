@@ -227,6 +227,8 @@ row, listboxrow, actionrow {
     let window = adw::ApplicationWindow::builder()
         .application(app)
         .title("StakHAL — Hardware Abstraction Inspector")
+        .default_width(1200)
+        .default_height(800)
         .maximized(true)
         .content(&toast_overlay)
         .build();
@@ -430,6 +432,7 @@ row, listboxrow, actionrow {
 
     right_click_gesture.connect_pressed(move |g, _n_press, x, y| {
         let widgets = &widgets_right_click;
+        let is_open = widgets.context_menu_popover.is_visible();
         widgets.context_menu_popover.popdown();
         g.set_state(gtk4::EventSequenceState::Claimed);
         let st = state_right_click.borrow();
@@ -452,57 +455,67 @@ row, listboxrow, actionrow {
         };
         drop(st);
 
-        widgets.context_menu_popover.set_child(None::<&gtk4::Widget>);
+        let widgets_show = Rc::clone(widgets);
+        let state_edit_show = Rc::clone(&state_right_click);
+        let show_menu = move || {
+            widgets_show.context_menu_popover.set_child(None::<&gtk4::Widget>);
 
-        let menu_box = gtk4::Box::builder()
-            .orientation(gtk4::Orientation::Vertical)
-            .spacing(4)
-            .margin_top(4)
-            .margin_bottom(4)
-            .margin_start(4)
-            .margin_end(4)
-            .build();
+            let menu_box = gtk4::Box::builder()
+                .orientation(gtk4::Orientation::Vertical)
+                .spacing(4)
+                .margin_top(4)
+                .margin_bottom(4)
+                .margin_start(4)
+                .margin_end(4)
+                .build();
 
-        let btn_copy = gtk4::Button::builder()
-            .label("Copy")
-            .icon_name("edit-copy-symbolic")
-            .halign(gtk4::Align::Fill)
-            .css_classes(vec!["stakhal-btn".to_string(), "flat".to_string()])
-            .build();
-        btn_copy.set_cursor_from_name(Some("pointer"));
-
-        let popover_clone = widgets.context_menu_popover.clone();
-        let widgets_copy = Rc::clone(&widgets);
-        btn_copy.connect_clicked(move |_| {
-            let clipboard = widgets_copy.source_view.display().clipboard();
-            widgets_copy.source_buffer.copy_clipboard(&clipboard);
-            popover_clone.popdown();
-        });
-        menu_box.append(&btn_copy);
-
-        if is_decl_line {
-            let btn_edit = gtk4::Button::builder()
-                .label("Edit Declaration")
-                .icon_name("document-edit-symbolic")
+            let btn_copy = gtk4::Button::builder()
+                .label("Copy")
+                .icon_name("edit-copy-symbolic")
                 .halign(gtk4::Align::Fill)
                 .css_classes(vec!["stakhal-btn".to_string(), "flat".to_string()])
                 .build();
-            btn_edit.set_cursor_from_name(Some("pointer"));
+            btn_copy.set_cursor_from_name(Some("pointer"));
 
-            let popover_edit_clone = widgets.context_menu_popover.clone();
-            let state_edit = Rc::clone(&state_right_click);
-            let widgets_edit = Rc::clone(&widgets);
-            btn_edit.connect_clicked(move |_| {
-                popover_edit_clone.popdown();
-                enter_inline_edit_mode(&state_edit, &widgets_edit);
+            let popover_clone = widgets_show.context_menu_popover.clone();
+            let widgets_copy = Rc::clone(&widgets_show);
+            btn_copy.connect_clicked(move |_| {
+                let clipboard = widgets_copy.source_view.display().clipboard();
+                widgets_copy.source_buffer.copy_clipboard(&clipboard);
+                popover_clone.popdown();
             });
-            menu_box.append(&btn_edit);
-        }
+            menu_box.append(&btn_copy);
 
-        widgets.context_menu_popover.set_child(Some(&menu_box));
-        let rect = gdk::Rectangle::new(x as i32, y as i32, 1, 1);
-        widgets.context_menu_popover.set_pointing_to(Some(&rect));
-        widgets.context_menu_popover.popup();
+            if is_decl_line {
+                let btn_edit = gtk4::Button::builder()
+                    .label("Edit Declaration")
+                    .icon_name("document-edit-symbolic")
+                    .halign(gtk4::Align::Fill)
+                    .css_classes(vec!["stakhal-btn".to_string(), "flat".to_string()])
+                    .build();
+                btn_edit.set_cursor_from_name(Some("pointer"));
+
+                let popover_edit_clone = widgets_show.context_menu_popover.clone();
+                let state_edit = Rc::clone(&state_edit_show);
+                let widgets_edit = Rc::clone(&widgets_show);
+                btn_edit.connect_clicked(move |_| {
+                    popover_edit_clone.popdown();
+                    enter_inline_edit_mode(&state_edit, &widgets_edit);
+                });
+                menu_box.append(&btn_edit);
+            }
+
+            widgets_show.context_menu_popover.set_child(Some(&menu_box));
+            let rect = gdk::Rectangle::new(x as i32, y as i32, 1, 1);
+            widgets_show.context_menu_popover.set_pointing_to(Some(&rect));
+            widgets_show.context_menu_popover.popup();
+        };
+
+        if is_open {
+            glib::idle_add_local_once(show_menu);
+        } else {
+            show_menu();
+        }
     });
     widgets.source_view.add_controller(right_click_gesture);
 
@@ -535,6 +548,17 @@ row, listboxrow, actionrow {
     let widgets_load = Rc::clone(&widgets);
     widgets.btn_load.connect_clicked(move |_| {
         do_load_project(&state_load, &widgets_load);
+    });
+
+    let win_map = window.clone();
+    window.connect_map(move |_| {
+        let win = win_map.clone();
+        glib::idle_add_local_once(move || {
+            let width = win.width();
+            let height = win.height();
+            let is_max = win.is_maximized();
+            println!("[WINDOW MAP SIGNAL] Window mapped: width={}, height={}, maximized={}", width, height, is_max);
+        });
     });
 
     window.present();
