@@ -34,6 +34,7 @@ pub struct StakHalEguiApp {
     pub graph_headers: Vec<stakhal_core::graph::ChainHeaderLayout>,
     pub collapsed_chains: HashSet<String>,
     pub graph_zoom: f32,
+    pub fit_to_view_requested: bool,
 
     pub syntax_set: SyntaxSet,
     pub theme_set: ThemeSet,
@@ -62,6 +63,7 @@ impl Default for StakHalEguiApp {
             graph_headers: Vec::new(),
             collapsed_chains: HashSet::new(),
             graph_zoom: 1.0,
+            fit_to_view_requested: false,
 
             syntax_set: SyntaxSet::load_defaults_newlines(),
             theme_set: ThemeSet::load_defaults(),
@@ -171,18 +173,24 @@ impl StakHalEguiApp {
         }
     }
 
-    pub fn fit_call_graph_to_view(&mut self, available_size: egui::Vec2) {
+    pub fn fit_call_graph_to_view(&mut self, viewport_size: egui::Vec2) {
         let (bounds_w, bounds_h) = stakhal_core::graph::compute_graph_bounds(
             &self.graph_positions,
             &self.graph_headers,
         );
-        if bounds_w > 0 && bounds_h > 0 && available_size.x > 0.0 && available_size.y > 0.0 {
-            let zoom_x = available_size.x / (bounds_w as f32 + 40.0);
-            let zoom_y = available_size.y / (bounds_h as f32 + 40.0);
+        println!(
+            "[CALL GRAPH] Fit to View requested. Computed graph bounds: {}x{}, Available viewport: {:.0}x{:.0}",
+            bounds_w, bounds_h, viewport_size.x, viewport_size.y
+        );
+        if bounds_w > 0 && bounds_h > 0 && viewport_size.x > 50.0 && viewport_size.y > 50.0 {
+            let padding = 60.0;
+            let zoom_x = viewport_size.x / (bounds_w as f32 + padding);
+            let zoom_y = viewport_size.y / (bounds_h as f32 + padding);
+            let old_zoom = self.graph_zoom;
             self.graph_zoom = zoom_x.min(zoom_y).clamp(0.2, 3.0);
             println!(
-                "[CALL GRAPH] Fit to View applied. Graph bounds: {}x{}, Viewport: {:.0}x{:.0}, Set Zoom: {:.2}",
-                bounds_w, bounds_h, available_size.x, available_size.y, self.graph_zoom
+                "[CALL GRAPH] Fit to View applied. Zoom changed from {:.2} to {:.2}",
+                old_zoom, self.graph_zoom
             );
         }
     }
@@ -349,7 +357,6 @@ impl eframe::App for StakHalEguiApp {
                     }
                 }
                 View::CallGraph => {
-                    let available_size = ui.available_size();
                     ui.horizontal(|ui| {
                         if ui.button("← Back").clicked() {
                             self.current_view = View::Inspector;
@@ -358,7 +365,7 @@ impl eframe::App for StakHalEguiApp {
                         ui.separator();
 
                         if ui.button("🔎 Fit to View").clicked() {
-                            self.fit_call_graph_to_view(available_size);
+                            self.fit_to_view_requested = true;
                         }
 
                         ui.separator();
@@ -613,6 +620,13 @@ impl eframe::App for StakHalEguiApp {
                     });
                 }
                 View::CallGraph => {
+                    // Check if Fit to View was requested from Top Panel
+                    if self.fit_to_view_requested {
+                        let central_viewport = ui.available_size();
+                        self.fit_call_graph_to_view(central_viewport);
+                        self.fit_to_view_requested = false;
+                    }
+
                     // Check for Ctrl+Scroll Zoom
                     if ui.input(|i| i.modifiers.ctrl) {
                         let scroll_delta = ui.input(|i| i.raw_scroll_delta.y);
@@ -718,11 +732,12 @@ impl eframe::App for StakHalEguiApp {
 
                                 let icon = if header.is_collapsed { "▶ " } else { "▼ " };
                                 let text = format!("{}{}", icon, header.label);
+                                let font_size = (12.0 * zoom).max(1.0);
                                 painter.text(
                                     header_rect.center(),
                                     egui::Align2::CENTER_CENTER,
                                     text,
-                                    egui::FontId::monospace((12.0 * zoom).max(9.0)),
+                                    egui::FontId::monospace(font_size),
                                     egui::Color32::WHITE,
                                 );
 
@@ -774,11 +789,12 @@ impl eframe::App for StakHalEguiApp {
                                     egui::StrokeKind::Outside,
                                 );
 
+                                let font_size = (12.0 * zoom).max(1.0);
                                 painter.text(
                                     node_rect.center(),
                                     egui::Align2::CENTER_CENTER,
                                     id,
-                                    egui::FontId::monospace((12.0 * zoom).max(8.0)),
+                                    egui::FontId::monospace(font_size),
                                     egui::Color32::WHITE,
                                 );
                             }
@@ -980,8 +996,8 @@ mod tests {
         app.graph_zoom = (app.graph_zoom * 1.1).clamp(0.2, 3.0);
         println!("[CALL GRAPH] Ctrl+Scroll Zoom adjusted from {:.2} to {:.2}", old_zoom, app.graph_zoom);
 
-        // 5. Simulate Fit to View
-        app.fit_call_graph_to_view(egui::vec2(1200.0, 800.0));
-        assert!(app.graph_zoom > 0.0 && app.graph_zoom <= 3.0);
+        // 5. Simulate Fit to View with central panel viewport size (e.g. 1904x950)
+        app.fit_call_graph_to_view(egui::vec2(1904.0, 950.0));
+        assert!(app.graph_zoom > 0.5 && app.graph_zoom <= 3.0);
     }
 }
