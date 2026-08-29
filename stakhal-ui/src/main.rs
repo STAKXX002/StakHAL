@@ -38,10 +38,11 @@ const APP_ID: &str = "com.stakhal.ui";
 fn main() {
     let app = adw::Application::builder()
         .application_id(APP_ID)
+        .flags(gio::ApplicationFlags::NON_UNIQUE)
         .build();
 
     app.connect_activate(build_ui);
-    app.run();
+    app.run_with_args(&["stakhal-ui"]);
 }
 
 fn build_ui(app: &adw::Application) {
@@ -429,8 +430,9 @@ row, listboxrow, actionrow {
     let widgets_right_click = Rc::clone(&widgets);
 
     right_click_gesture.connect_pressed(move |g, _n_press, x, y| {
-        g.set_state(gtk4::EventSequenceState::Claimed);
         let widgets = &widgets_right_click;
+        widgets.context_menu_popover.popdown();
+        g.set_state(gtk4::EventSequenceState::Claimed);
         let st = state_right_click.borrow();
 
         let (buffer_x, buffer_y) = widgets.source_view.window_to_buffer_coords(
