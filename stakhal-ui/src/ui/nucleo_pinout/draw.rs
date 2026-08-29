@@ -1009,16 +1009,17 @@ mod tests {
         draw_nucleo_pinout_canvas(&area, &cr, 1200.0, 750.0, &state);
         surface.flush();
 
-        // Render pass 2 with reserved pin conflict on PA13
-        if let Some(mut project) = state.borrow_mut().loaded_project.clone() {
+        let existing_project = state.borrow().loaded_project.clone();
+        if let Some(mut project) = existing_project {
             project.pins.push(stakhal_core::ioc::parser::PinConfig {
                 pin: "PA13".to_string(),
                 signal: "GPIO_Output".to_string(),
                 label: Some("DBG_SWDIO".to_string()),
             });
-            state.borrow_mut().loaded_project = Some(project);
-            state.borrow_mut().hovered_pinout_pin = Some(("CN7".to_string(), 13));
-            state.borrow_mut().hovered_pinout_mouse = Some((100.0, 200.0));
+            let mut st = state.borrow_mut();
+            st.loaded_project = Some(project);
+            st.hovered_pinout_pin = Some(("CN7".to_string(), 13));
+            st.hovered_pinout_mouse = Some((100.0, 200.0));
         }
 
         draw_nucleo_pinout_canvas(&area, &cr, 1200.0, 750.0, &state);
