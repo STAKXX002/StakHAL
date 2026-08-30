@@ -6,16 +6,16 @@ use syntect::highlighting::ThemeSet;
 use syntect::parsing::SyntaxSet;
 
 pub const COLOR_BG_MAIN: egui::Color32 = egui::Color32::from_rgb(0x0a, 0x0a, 0x0a);
-pub const COLOR_BG_CARD: egui::Color32 = egui::Color32::from_rgb(0x12, 0x12, 0x12);
-pub const COLOR_BG_HOVER: egui::Color32 = egui::Color32::from_rgb(0x1a, 0x1a, 0x1a);
-pub const COLOR_BG_ACTIVE: egui::Color32 = egui::Color32::from_rgb(0x26, 0x26, 0x26);
+pub const COLOR_BG_CARD: egui::Color32 = egui::Color32::from_rgb(0x1f, 0x1f, 0x1f);
+pub const COLOR_BG_HOVER: egui::Color32 = egui::Color32::from_rgb(0x33, 0x33, 0x33);
+pub const COLOR_BG_ACTIVE: egui::Color32 = egui::Color32::from_rgb(0x44, 0x44, 0x44);
 
 pub const COLOR_TEXT_PRIMARY: egui::Color32 = egui::Color32::from_rgb(0xe5, 0xe5, 0xe5);
-pub const COLOR_TEXT_DIMMED: egui::Color32 = egui::Color32::from_rgb(0x73, 0x73, 0x73);
+pub const COLOR_TEXT_DIMMED: egui::Color32 = egui::Color32::from_rgb(0x8c, 0x8c, 0x8c);
 pub const COLOR_TEXT_HOVER: egui::Color32 = egui::Color32::from_rgb(0xff, 0xff, 0xff);
 
-pub const COLOR_BORDER_DEFAULT: egui::Color32 = egui::Color32::from_rgb(0x26, 0x26, 0x26);
-pub const COLOR_BORDER_HOVER: egui::Color32 = egui::Color32::from_rgb(0x52, 0x52, 0x52);
+pub const COLOR_BORDER_DEFAULT: egui::Color32 = egui::Color32::from_rgb(0x3a, 0x3a, 0x3a);
+pub const COLOR_BORDER_HOVER: egui::Color32 = egui::Color32::from_rgb(0x73, 0x73, 0x73);
 
 pub const COLOR_STATUS_OK: egui::Color32 = egui::Color32::from_rgb(0x22, 0xc5, 0x5e);
 pub const COLOR_STATUS_WARN: egui::Color32 = egui::Color32::from_rgb(0xf5, 0x9e, 0x0b);
@@ -31,58 +31,58 @@ pub fn stakhal_visuals() -> egui::Visuals {
     visuals.faint_bg_color = COLOR_BG_CARD;
     visuals.code_bg_color = COLOR_BG_MAIN;
 
-    visuals.window_stroke = egui::Stroke::new(1.0f32, COLOR_BORDER_DEFAULT);
+    visuals.window_stroke = egui::Stroke::new(1.5f32, COLOR_BORDER_DEFAULT);
     visuals.window_corner_radius = egui::CornerRadius::ZERO;
     visuals.menu_corner_radius = egui::CornerRadius::ZERO;
 
     visuals.widgets.noninteractive = egui::style::WidgetVisuals {
         bg_fill: COLOR_BG_CARD,
         weak_bg_fill: COLOR_BG_CARD,
-        bg_stroke: egui::Stroke::new(1.0f32, COLOR_BORDER_DEFAULT),
+        bg_stroke: egui::Stroke::new(1.5f32, COLOR_BORDER_DEFAULT),
         corner_radius: egui::CornerRadius::ZERO,
-        fg_stroke: egui::Stroke::new(1.0f32, COLOR_TEXT_PRIMARY),
+        fg_stroke: egui::Stroke::new(1.5f32, COLOR_TEXT_PRIMARY),
         expansion: 0.0,
     };
 
     visuals.widgets.inactive = egui::style::WidgetVisuals {
         bg_fill: COLOR_BG_CARD,
         weak_bg_fill: COLOR_BG_CARD,
-        bg_stroke: egui::Stroke::new(1.0f32, COLOR_BORDER_DEFAULT),
+        bg_stroke: egui::Stroke::new(1.5f32, COLOR_BORDER_DEFAULT),
         corner_radius: egui::CornerRadius::ZERO,
-        fg_stroke: egui::Stroke::new(1.0f32, COLOR_TEXT_PRIMARY),
+        fg_stroke: egui::Stroke::new(1.5f32, COLOR_TEXT_PRIMARY),
         expansion: 0.0,
     };
 
     visuals.widgets.hovered = egui::style::WidgetVisuals {
         bg_fill: COLOR_BG_HOVER,
         weak_bg_fill: COLOR_BG_HOVER,
-        bg_stroke: egui::Stroke::new(1.0f32, COLOR_BORDER_HOVER),
+        bg_stroke: egui::Stroke::new(1.5f32, COLOR_BORDER_HOVER),
         corner_radius: egui::CornerRadius::ZERO,
-        fg_stroke: egui::Stroke::new(1.0f32, COLOR_TEXT_HOVER),
+        fg_stroke: egui::Stroke::new(1.5f32, COLOR_TEXT_HOVER),
         expansion: 0.0,
     };
 
     visuals.widgets.active = egui::style::WidgetVisuals {
         bg_fill: COLOR_BG_ACTIVE,
         weak_bg_fill: COLOR_BG_ACTIVE,
-        bg_stroke: egui::Stroke::new(1.0f32, COLOR_BORDER_HOVER),
+        bg_stroke: egui::Stroke::new(1.5f32, COLOR_BORDER_HOVER),
         corner_radius: egui::CornerRadius::ZERO,
-        fg_stroke: egui::Stroke::new(1.0f32, COLOR_TEXT_HOVER),
+        fg_stroke: egui::Stroke::new(1.5f32, COLOR_TEXT_HOVER),
         expansion: 0.0,
     };
 
     visuals.widgets.open = egui::style::WidgetVisuals {
         bg_fill: COLOR_BG_HOVER,
         weak_bg_fill: COLOR_BG_HOVER,
-        bg_stroke: egui::Stroke::new(1.0f32, COLOR_BORDER_HOVER),
+        bg_stroke: egui::Stroke::new(1.5f32, COLOR_BORDER_HOVER),
         corner_radius: egui::CornerRadius::ZERO,
-        fg_stroke: egui::Stroke::new(1.0f32, COLOR_TEXT_HOVER),
+        fg_stroke: egui::Stroke::new(1.5f32, COLOR_TEXT_HOVER),
         expansion: 0.0,
     };
 
     visuals.selection = egui::style::Selection {
         bg_fill: egui::Color32::from_rgba_premultiplied(0x22, 0xc5, 0x5e, 60),
-        stroke: egui::Stroke::new(1.0f32, COLOR_STATUS_OK),
+        stroke: egui::Stroke::new(1.5f32, COLOR_STATUS_OK),
     };
     visuals.hyperlink_color = COLOR_STATUS_OK;
 
@@ -741,7 +741,11 @@ impl eframe::App for StakHalEguiApp {
                     let row_height = ui.fonts(|f| f.row_height(&font_id));
 
                     let target_line = active_pv.as_ref().map(|pv| pv.line).unwrap_or(1);
-                    let mut scroll_area = egui::ScrollArea::vertical().id_salt("source_code_scroll");
+                    let mut scroll_area = egui::ScrollArea::vertical()
+                        .id_salt("source_code_scroll")
+                        .animated(false)
+                        .drag_to_scroll(true)
+                        .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::VisibleWhenNeeded);
 
                     if self.should_scroll_to_decl {
                         let target_scroll_y =
@@ -838,6 +842,7 @@ impl eframe::App for StakHalEguiApp {
 
                     egui::ScrollArea::both()
                         .id_salt("call_graph_scroll_area")
+                        .animated(false)
                         .show(ui, |ui| {
                             let (response, painter) =
                                 ui.allocate_painter(content_size, egui::Sense::click());
