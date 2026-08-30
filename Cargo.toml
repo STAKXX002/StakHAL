@@ -3,6 +3,5 @@ resolver = "2"
 members = [
     "stakhal-core",
     "stakhal-ui",
-    "stakhal-ui-egui",
 ]
 
