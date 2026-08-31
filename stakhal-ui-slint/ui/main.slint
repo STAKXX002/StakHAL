@@ -1,0 +1,169 @@
+import { ScrollView, Button } from "std-widgets.slint";
+
+export struct NodeData {
+    id: string,
+    label: string,
+    x: length,
+    y: length,
+    width: length,
+    height: length,
+    is_header: bool,
+    is_collapsed: bool,
+    handler_id: string,
+}
+
+export struct EdgeData {
+    x1: float,
+    y1: float,
+    x2: float,
+    y2: float,
+    cp1_x: float,
+    cp1_y: float,
+    cp2_x: float,
+    cp2_y: float,
+}
+
+export component MainWindow inherits Window {
+    title: "StakHAL Call Graph - Slint Prototype";
+    min-width: 1000px;
+    min-height: 750px;
+    background: #09090b;
+
+    in property <[NodeData]> nodes;
+    in property <[EdgeData]> edges;
+    in property <length> canvas-width: 1200px;
+    in property <length> canvas-height: 900px;
+    in property <string> project-name: "stakhal_blink_f446re";
+
+    callback header-clicked(string);
+
+    VerticalLayout {
+        padding: 16px;
+        spacing: 12px;
+
+        // Top Header Bar
+        HorizontalLayout {
+            spacing: 16px;
+            height: 36px;
+
+            Text {
+                text: "STAKHAL CALL GRAPH [SLINT PROTOTYPE]";
+                font-size: 16px;
+                font-weight: 700;
+                color: #f4f4f5;
+                vertical-alignment: center;
+            }
+
+            Rectangle { horizontal-stretch: 1; }
+
+            Text {
+                text: "Project: " + root.project-name;
+                font-size: 13px;
+                color: #a1a1aa;
+                vertical-alignment: center;
+            }
+        }
+
+        // Subtitle / License attribution notice
+        HorizontalLayout {
+            height: 18px;
+            Text {
+                text: "Click header boxes to expand/collapse chains. Built with Slint (Royalty-Free / Community License).";
+                font-size: 11px;
+                color: #71717a;
+                vertical-alignment: center;
+            }
+        }
+
+        // Graph Canvas area inside ScrollView
+        Rectangle {
+            vertical-stretch: 1;
+            background: #18181b;
+            border-color: #27272a;
+            border-width: 1px;
+            border-radius: 6px;
+            clip: true;
+
+            ScrollView {
+                width: 100%;
+                height: 100%;
+
+                Rectangle {
+                    width: root.canvas-width;
+                    height: root.canvas-height;
+                    background: #0d0d11;
+
+                    // Edges
+                    for edge in root.edges : Path {
+                        x: 0px;
+                        y: 0px;
+                        width: root.canvas-width;
+                        height: root.canvas-height;
+                        viewbox-x: 0;
+                        viewbox-y: 0;
+                        viewbox-width: root.canvas-width / 1px;
+                        viewbox-height: root.canvas-height / 1px;
+                        stroke: #52525b;
+                        stroke-width: 2px;
+
+                        MoveTo { x: edge.x1; y: edge.y1; }
+                        CubicTo {
+                            control-1-x: edge.cp1-x;
+                            control-1-y: edge.cp1-y;
+                            control-2-x: edge.cp2-x;
+                            control-2-y: edge.cp2-y;
+                            x: edge.x2;
+                            y: edge.y2;
+                        }
+                    }
+
+                    // Nodes & Chain Headers
+                    for node in root.nodes : Rectangle {
+                        x: node.x;
+                        y: node.y;
+                        width: node.width;
+                        height: node.height;
+                        border-radius: 6px;
+                        border-width: 1px;
+                        border-color: node.is-header ? (node.is-collapsed ? #eab308 : #3b82f6) : (node.id == "main" ? #22c55e : #3f3f46);
+                        background: node.is-header ? (node.is-collapsed ? #422006 : #1e3a8a) : (node.id == "main" ? #14532d : #18181b);
+
+                        // Top accent strip for non-header nodes
+                        if (!node.is-header) : Rectangle {
+                            x: 0px;
+                            y: 0px;
+                            width: parent.width;
+                            height: 4px;
+                            background: node.id == "main" ? #4ade80 : #a1a1aa;
+                            border-radius: 4px;
+                        }
+
+                        HorizontalLayout {
+                            padding-left: 8px;
+                            padding-right: 8px;
+                            alignment: center;
+
+                            Text {
+                                text: node.label;
+                                color: node.is-header ? (node.is-collapsed ? #fef08a : #93c5fd) : (node.id == "main" ? #86efac : #e4e4e7);
+                                font-size: 12px;
+                                font-weight: (node.is-header || node.id == "main") ? 600 : 400;
+                                vertical-alignment: center;
+                                horizontal-alignment: center;
+                                overflow: elide;
+                            }
+                        }
+
+                        TouchArea {
+                            enabled: node.is-header;
+                            mouse-cursor: pointer;
+                            clicked => {
+                                root.header-clicked(node.handler-id);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
