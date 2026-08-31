@@ -1,0 +1,15 @@
+[package]
+name = "stakhal-ui-slint"
+version = "0.1.0"
+edition = "2021"
+authors = ["StakHAL Team"]
+description = "Slint UI prototype for StakHAL call graph rendering"
+# License notice: StakHAL is open-source (MIT). Slint is used under Royalty-free / Community License terms.
+
+[dependencies]
+stakhal-core = { path = "../stakhal-core" }
+slint = "1.9"
+image = "0.25"
+
+[build-dependencies]
+slint-build = "1.9"
