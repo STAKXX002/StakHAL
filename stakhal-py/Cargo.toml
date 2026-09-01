@@ -1,0 +1,12 @@
+[package]
+name = "stakhal-py"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "stakhal_py"
+crate-type = ["cdylib"]
+
+[dependencies]
+stakhal-core = { path = "../stakhal-core" }
+pyo3 = { version = "0.24", features = ["extension-module"] }

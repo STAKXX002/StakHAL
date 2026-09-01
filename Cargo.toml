@@ -4,5 +4,6 @@ members = [
     "stakhal-core",
     "stakhal-ui",
     "stakhal-ui-slint",
+    "stakhal-py",
 ]
 
