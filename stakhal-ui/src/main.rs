@@ -4,13 +4,26 @@ use std::rc::Rc;
 use gtk4::{gdk, gio, glib};
 use gtk4::prelude::*;
 use libadwaita as adw;
+use libadwaita::prelude::*;
 
 use stakhal_core::ioc::discovery::discover_project_files;
 use stakhal_core::ir::schema::load_project;
 
 mod config;
 mod state;
+mod toolchain;
 mod ui;
+
+fn append_log_text(view: &gtk4::TextView, text: &str) {
+    let buffer = view.buffer();
+    let mut end_iter = buffer.end_iter();
+    buffer.insert(&mut end_iter, text);
+    if !text.ends_with('\n') {
+        buffer.insert(&mut buffer.end_iter(), "\n");
+    }
+    let mark = buffer.create_mark(None, &buffer.end_iter(), false);
+    view.scroll_to_mark(&mark, 0.0, true, 0.0, 1.0);
+}
 
 use config::{load_app_config, save_app_config};
 use state::{AppState, AppWidgets};
@@ -141,6 +154,7 @@ row, listboxrow, actionrow {
         overview_box,
         btn_browse,
         btn_load,
+        btn_build_flash,
         btn_call_graph,
         btn_nucleo_pinout,
         lbl_discovered_dir,
@@ -153,6 +167,9 @@ row, listboxrow, actionrow {
         lbl_region_header,
         list_peripherals,
         list_user_regions,
+        build_log_view,
+        lbl_build_status,
+        btn_clear_log,
     } = build_main_panel();
 
     let StateDiagramPanelWidgets {
@@ -211,6 +228,7 @@ row, listboxrow, actionrow {
         lbl_ioc_path,
         lbl_main_c_path,
         btn_load,
+        btn_build_flash: btn_build_flash.clone(),
         btn_call_graph: btn_call_graph.clone(),
         btn_nucleo_pinout: btn_nucleo_pinout.clone(),
         lbl_project_name,
@@ -220,6 +238,9 @@ row, listboxrow, actionrow {
         lbl_region_header,
         list_peripherals,
         list_user_regions,
+        build_log_view: build_log_view.clone(),
+        lbl_build_status: lbl_build_status.clone(),
+        btn_clear_log: btn_clear_log.clone(),
         diagram_drawing_area: diagram_drawing_area.clone(),
         btn_fit_to_view: btn_fit_to_view.clone(),
         diagram_scrolled: diagram_scrolled.clone(),
@@ -325,6 +346,145 @@ row, listboxrow, actionrow {
         do_load_project(&state_load, &widgets_load);
     });
 
+    // Connect Clear Console Button
+    let log_view_clear = widgets.build_log_view.clone();
+    let status_clear = widgets.lbl_build_status.clone();
+    widgets.btn_clear_log.connect_clicked(move |_| {
+        log_view_clear.buffer().set_text("");
+        status_clear.set_text("IDLE");
+    });
+
+    // Connect Build & Flash Button
+    let state_bf = Rc::clone(&state);
+    let widgets_bf = Rc::clone(&widgets);
+    widgets.btn_build_flash.connect_clicked(move |_| {
+        let (project_dir, has_makefile) = {
+            let st = state_bf.borrow();
+            (st.project_dir.clone(), st.has_makefile)
+        };
+
+        let dir = match project_dir {
+            Some(d) if has_makefile => d,
+            _ => {
+                widgets_bf.toast_overlay.add_toast(adw::Toast::new("No project with Makefile loaded"));
+                return;
+            }
+        };
+
+        {
+            let mut st = state_bf.borrow_mut();
+            if st.build_in_progress {
+                return;
+            }
+            st.build_in_progress = true;
+        }
+
+        widgets_bf.btn_build_flash.set_sensitive(false);
+        widgets_bf.lbl_build_status.set_text("BUILDING...");
+
+        let make_jobs = toolchain::runner::get_make_jobs_flag();
+        append_log_text(&widgets_bf.build_log_view, "============================================================");
+        append_log_text(&widgets_bf.build_log_view, &format!("[BUILD] Running `make {}` in {}", make_jobs, dir.display()));
+        append_log_text(&widgets_bf.build_log_view, "============================================================");
+
+        if !toolchain::runner::is_executable_on_path("make") {
+            append_log_text(&widgets_bf.build_log_view, "[ERROR] 'make' executable not found on PATH. Please install build-essential.");
+            widgets_bf.lbl_build_status.set_text("BUILD FAILED");
+            state_bf.borrow_mut().build_in_progress = false;
+            widgets_bf.btn_build_flash.set_sensitive(true);
+            return;
+        }
+
+        let rx = toolchain::runner::spawn_streaming_process(
+            "make".to_string(),
+            vec![make_jobs],
+            dir.clone(),
+        );
+
+        let state_timer = Rc::clone(&state_bf);
+        let widgets_timer = Rc::clone(&widgets_bf);
+        let dir_timer = dir.clone();
+
+        glib::timeout_add_local(std::time::Duration::from_millis(25), move || {
+            let mut finished = None;
+            while let Ok(evt) = rx.try_recv() {
+                match evt {
+                    toolchain::runner::ProcessEvent::Line(line) => {
+                        append_log_text(&widgets_timer.build_log_view, &line);
+                    }
+                    toolchain::runner::ProcessEvent::Finished(success, code) => {
+                        finished = Some((success, code));
+                    }
+                    toolchain::runner::ProcessEvent::FailedToStart(err) => {
+                        append_log_text(&widgets_timer.build_log_view, &format!("[ERROR] {}", err));
+                    }
+                    _ => {}
+                }
+            }
+
+            if let Some((success, code)) = finished {
+                let mut st = state_timer.borrow_mut();
+                st.build_in_progress = false;
+                widgets_timer.btn_build_flash.set_sensitive(st.has_makefile);
+
+                if success {
+                    append_log_text(&widgets_timer.build_log_view, "\n[BUILD SUCCESS] `make` finished successfully.");
+                    let res = toolchain::makefile::resolve_build_artifact(&dir_timer);
+                    match res {
+                        toolchain::makefile::ArtifactResolution::Exact(bin_path) => {
+                            append_log_text(&widgets_timer.build_log_view, &format!("[ARTIFACT] Resolved output binary: {}", bin_path.display()));
+                            widgets_timer.lbl_build_status.set_text("BUILD OK");
+                        }
+                        toolchain::makefile::ArtifactResolution::MultipleCandidates(candidates) => {
+                            append_log_text(&widgets_timer.build_log_view, &format!("[ARTIFACT] Found {} candidate .bin files in build directory:", candidates.len()));
+                            for c in &candidates {
+                                append_log_text(&widgets_timer.build_log_view, &format!("  - {}", c.display()));
+                            }
+                            widgets_timer.lbl_build_status.set_text("AMBIGUOUS");
+
+                            let dialog = adw::MessageDialog::builder()
+                                .heading("Multiple Build Artifacts Found")
+                                .body("Please select which binary to target:")
+                                .transient_for(&widgets_timer.window)
+                                .build();
+                            for (idx, c) in candidates.iter().enumerate() {
+                                let name = c.file_name().unwrap_or_default().to_string_lossy();
+                                dialog.add_response(&idx.to_string(), &name);
+                            }
+                            dialog.add_response("cancel", "Cancel");
+                            let log_view_dlg = widgets_timer.build_log_view.clone();
+                            let status_dlg = widgets_timer.lbl_build_status.clone();
+                            let cand_clone = candidates.clone();
+                            dialog.connect_response(None, move |_, resp| {
+                                if resp != "cancel" {
+                                    if let Ok(idx) = resp.parse::<usize>() {
+                                        if let Some(chosen) = cand_clone.get(idx) {
+                                            append_log_text(&log_view_dlg, &format!("[ARTIFACT] Selected candidate: {}", chosen.display()));
+                                            status_dlg.set_text("BUILD OK");
+                                        }
+                                    }
+                                }
+                            });
+                            dialog.present();
+                        }
+                        toolchain::makefile::ArtifactResolution::NoneFound(expected) => {
+                            append_log_text(&widgets_timer.build_log_view, &format!("[ERROR] Build succeeded but target .bin was not found. Expected: {}", expected.display()));
+                            widgets_timer.lbl_build_status.set_text("ARTIFACT MISSING");
+                        }
+                    }
+                } else {
+                    let code_str = code.map(|c| c.to_string()).unwrap_or_else(|| "unknown".to_string());
+                    append_log_text(&widgets_timer.build_log_view, &format!("\n[BUILD FAILED] make exited with error code {}. Flashing halted.", code_str));
+                    widgets_timer.lbl_build_status.set_text("BUILD FAILED");
+                }
+
+                return glib::ControlFlow::Break;
+            }
+
+            glib::ControlFlow::Continue
+        });
+    });
+
     let win_map = window.clone();
     window.connect_map(move |_| {
         let win = win_map.clone();
@@ -354,6 +514,10 @@ fn try_discover_folder(dir: &Path, state: &Rc<RefCell<AppState>>, widgets: &Rc<A
     let mut st = state.borrow_mut();
     st.project_dir = Some(dir.to_path_buf());
     widgets.lbl_discovered_dir.set_text(&dir.display().to_string());
+
+    let has_makefile = dir.join("Makefile").is_file();
+    st.has_makefile = has_makefile;
+    widgets.btn_build_flash.set_sensitive(has_makefile);
 
     match discover_project_files(dir) {
         Ok((ioc_path, main_c_path)) => {
@@ -393,6 +557,13 @@ fn do_load_project(state: &Rc<RefCell<AppState>>, widgets: &Rc<AppWidgets>) {
     };
 
     save_app_config(&dir_path.display().to_string());
+
+    let has_makefile = dir_path.join("Makefile").is_file();
+    {
+        let mut st = state.borrow_mut();
+        st.has_makefile = has_makefile;
+    }
+    widgets.btn_build_flash.set_sensitive(has_makefile);
 
     match load_project(&ioc_path, &main_c_path) {
         Ok(project) => {

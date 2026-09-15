@@ -27,6 +27,12 @@ pub struct AppState {
     // Nucleo pinout state
     pub hovered_pinout_pin: Option<(String, u8)>,
     pub hovered_pinout_mouse: Option<(f64, f64)>,
+
+    // Build & flash state
+    pub build_in_progress: bool,
+    pub has_makefile: bool,
+    #[allow(dead_code)]
+    pub selected_probe: Option<String>,
 }
 
 impl Default for AppState {
@@ -50,6 +56,9 @@ impl Default for AppState {
             drag_start_pan_pos: (40.0, 40.0),
             hovered_pinout_pin: None,
             hovered_pinout_mouse: None,
+            build_in_progress: false,
+            has_makefile: false,
+            selected_probe: None,
         }
     }
 }
@@ -71,6 +80,12 @@ pub struct AppWidgets {
     pub lbl_region_header: gtk4::Label,
     pub list_peripherals: gtk4::ListBox,
     pub list_user_regions: gtk4::ListBox,
+
+    // Build & flash widgets
+    pub btn_build_flash: gtk4::Button,
+    pub build_log_view: gtk4::TextView,
+    pub lbl_build_status: gtk4::Label,
+    pub btn_clear_log: gtk4::Button,
 
     // State diagram widgets
     pub diagram_drawing_area: gtk4::DrawingArea,

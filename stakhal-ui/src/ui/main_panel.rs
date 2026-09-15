@@ -7,6 +7,7 @@ pub struct MainPanelWidgets {
     pub overview_box: gtk4::Box,
     pub btn_browse: gtk4::Button,
     pub btn_load: gtk4::Button,
+    pub btn_build_flash: gtk4::Button,
     pub btn_call_graph: gtk4::Button,
     pub btn_nucleo_pinout: gtk4::Button,
     pub lbl_discovered_dir: gtk4::Label,
@@ -19,6 +20,9 @@ pub struct MainPanelWidgets {
     pub lbl_region_header: gtk4::Label,
     pub list_peripherals: gtk4::ListBox,
     pub list_user_regions: gtk4::ListBox,
+    pub build_log_view: gtk4::TextView,
+    pub lbl_build_status: gtk4::Label,
+    pub btn_clear_log: gtk4::Button,
 }
 
 pub fn build_main_panel() -> MainPanelWidgets {
@@ -51,6 +55,14 @@ pub fn build_main_panel() -> MainPanelWidgets {
 
     let btn_load = create_icon_button("Load Project", "system-run-symbolic", true);
     btn_load.set_sensitive(false);
+
+    let btn_build_flash = gtk4::Button::builder()
+        .label("[ ⚡ Build & Flash ]")
+        .css_classes(vec!["stakhal-btn".to_string(), "suggested-action".to_string()])
+        .sensitive(false)
+        .tooltip_text("Build project with make and flash to STM32 target via ST-Link")
+        .build();
+    btn_build_flash.set_cursor_from_name(Some("pointer"));
 
     let btn_call_graph = gtk4::Button::builder()
         .label("[ State Machine Graph ]")
@@ -95,6 +107,7 @@ pub fn build_main_panel() -> MainPanelWidgets {
     toolbar_box.append(&btn_browse);
     toolbar_box.append(&paths_box);
     toolbar_box.append(&btn_load);
+    toolbar_box.append(&btn_build_flash);
     toolbar_box.append(&btn_call_graph);
     toolbar_box.append(&btn_nucleo_pinout);
 
@@ -164,10 +177,70 @@ pub fn build_main_panel() -> MainPanelWidgets {
         .vexpand(true)
         .margin_start(18)
         .margin_end(18)
-        .margin_bottom(18)
+        .margin_bottom(12)
         .build();
     columns_box.append(&col_peripherals);
     columns_box.append(&col_regions);
+
+    // Build & Flash Console Panel
+    let lbl_console_header = gtk4::Label::builder()
+        .label("[ ▸ BUILD & FLASH CONSOLE ]")
+        .halign(gtk4::Align::Start)
+        .css_classes(vec!["title-4".to_string()])
+        .build();
+
+    let lbl_build_status = gtk4::Label::builder()
+        .label("IDLE")
+        .valign(gtk4::Align::Center)
+        .css_classes(vec!["card".to_string(), "caption".to_string(), "dim-label".to_string()])
+        .build();
+
+    let btn_clear_log = gtk4::Button::builder()
+        .label("Clear")
+        .css_classes(vec!["flat".to_string(), "caption".to_string()])
+        .tooltip_text("Clear console logs")
+        .build();
+
+    let console_header_box = gtk4::Box::builder()
+        .orientation(gtk4::Orientation::Horizontal)
+        .spacing(10)
+        .build();
+    console_header_box.append(&lbl_console_header);
+    console_header_box.append(&lbl_build_status);
+    let console_spacer = gtk4::Box::builder().hexpand(true).build();
+    console_header_box.append(&console_spacer);
+    console_header_box.append(&btn_clear_log);
+
+    let build_log_view = gtk4::TextView::builder()
+        .editable(false)
+        .cursor_visible(false)
+        .monospace(true)
+        .wrap_mode(gtk4::WrapMode::WordChar)
+        .top_margin(6)
+        .bottom_margin(6)
+        .left_margin(8)
+        .right_margin(8)
+        .build();
+
+    let build_scrolled = gtk4::ScrolledWindow::builder()
+        .hscrollbar_policy(gtk4::PolicyType::Automatic)
+        .vscrollbar_policy(gtk4::PolicyType::Automatic)
+        .min_content_height(140)
+        .max_content_height(220)
+        .vexpand(false)
+        .child(&build_log_view)
+        .css_classes(vec!["card".to_string()])
+        .build();
+
+    let console_panel_box = gtk4::Box::builder()
+        .orientation(gtk4::Orientation::Vertical)
+        .spacing(6)
+        .margin_start(18)
+        .margin_end(18)
+        .margin_bottom(14)
+        .build();
+    console_panel_box.append(&console_header_box);
+    console_panel_box.append(&build_scrolled);
 
     let overview_box = gtk4::Box::builder()
         .orientation(gtk4::Orientation::Vertical)
@@ -175,11 +248,13 @@ pub fn build_main_panel() -> MainPanelWidgets {
     overview_box.append(&toolbar_box);
     overview_box.append(&status_bar_box);
     overview_box.append(&columns_box);
+    overview_box.append(&console_panel_box);
 
     MainPanelWidgets {
         overview_box,
         btn_browse,
         btn_load,
+        btn_build_flash,
         btn_call_graph,
         btn_nucleo_pinout,
         lbl_discovered_dir,
@@ -192,6 +267,9 @@ pub fn build_main_panel() -> MainPanelWidgets {
         lbl_region_header,
         list_peripherals,
         list_user_regions,
+        build_log_view,
+        lbl_build_status,
+        btn_clear_log,
     }
 }
 
