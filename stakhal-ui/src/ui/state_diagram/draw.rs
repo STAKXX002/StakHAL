@@ -1,7 +1,7 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 use gtk4::cairo;
-use stakhal_core::graph::compute_state_machine_layout;
+use stakhal_core::graph::{compute_state_machine_layout, is_fault_state};
 use crate::state::AppState;
 
 // Strict Monochrome Theme & Reserved Fault Color Tokens
@@ -104,6 +104,20 @@ pub fn draw_state_diagram(
             Some(sel) => edge.from == sel || edge.to == sel,
             None => false,
         };
+
+        // DECLUTTERING RULE:
+        // When NO node is selected, collapsed high-fan-in edges (like the 12 transitions to FAULT)
+        // are NOT drawn as full lines. They are represented by badges on the source nodes.
+        if selected_node.is_none() && edge.is_high_fan_in {
+            continue;
+        }
+
+        // When a node IS selected, only draw edges connected to that node.
+        // Non-connected high-fan-in edges stay collapsed to keep clutter low.
+        if selected_node.is_some() && !is_connected_to_selection && edge.is_high_fan_in {
+            continue;
+        }
+
         let is_dimmed = selected_node.is_some() && !is_connected_to_selection;
 
         // Draw bezier connector
@@ -120,21 +134,21 @@ pub fn draw_state_diagram(
 
         if edge.is_fault {
             if is_dimmed {
-                cr.set_source_rgba(COLOR_FAULT_RED.0, COLOR_FAULT_RED.1, COLOR_FAULT_RED.2, 0.25);
-                cr.set_line_width(1.0);
+                cr.set_source_rgba(COLOR_FAULT_RED.0, COLOR_FAULT_RED.1, COLOR_FAULT_RED.2, 0.15);
+                cr.set_line_width(0.8);
             } else if is_connected_to_selection {
                 cr.set_source_rgba(COLOR_FAULT_RED.0, COLOR_FAULT_RED.1, COLOR_FAULT_RED.2, 1.0);
-                cr.set_line_width(2.5);
+                cr.set_line_width(2.6);
             } else {
                 cr.set_source_rgba(COLOR_FAULT_RED.0, COLOR_FAULT_RED.1, COLOR_FAULT_RED.2, 0.85);
                 cr.set_line_width(1.8);
             }
         } else if is_connected_to_selection {
             cr.set_source_rgba(1.0, 1.0, 1.0, 0.95);
-            cr.set_line_width(2.2);
+            cr.set_line_width(2.4);
         } else if is_dimmed {
-            cr.set_source_rgba(0.35, 0.35, 0.35, 0.2);
-            cr.set_line_width(1.0);
+            cr.set_source_rgba(0.35, 0.35, 0.35, 0.15);
+            cr.set_line_width(0.8);
         } else {
             cr.set_source_rgba(0.45, 0.45, 0.45, 0.65);
             cr.set_line_width(1.4);
@@ -171,13 +185,38 @@ pub fn draw_state_diagram(
         let is_selected = selected_node == Some(id.as_str());
         let is_hovered = hovered_node == Some(id.as_str());
 
-        draw_rounded_node(cr, node.x, node.y, node.width, node.height, 6.0, node.is_fault, node.is_initial, is_selected, is_hovered);
+        let is_connected_to_selection = match selected_node {
+            Some(sel) => {
+                node.id == sel
+                    || layout.edges.iter().any(|e| {
+                        (e.from == sel && e.to == node.id) || (e.to == sel && e.from == node.id)
+                    })
+            }
+            None => true,
+        };
+        let is_dimmed_node = selected_node.is_some() && !is_connected_to_selection;
+
+        draw_rounded_node(
+            cr,
+            node.x,
+            node.y,
+            node.width,
+            node.height,
+            6.0,
+            node.is_fault,
+            node.is_initial,
+            is_selected,
+            is_hovered,
+            is_dimmed_node,
+        );
 
         // Draw node label
         cr.select_font_face("monospace", cairo::FontSlant::Normal, cairo::FontWeight::Bold);
         cr.set_font_size(12.0);
 
-        if node.is_fault {
+        if is_dimmed_node {
+            cr.set_source_rgba(0.4, 0.4, 0.4, 0.4);
+        } else if node.is_fault {
             cr.set_source_rgb(COLOR_FAULT_RED.0, COLOR_FAULT_RED.1, COLOR_FAULT_RED.2);
         } else if is_selected {
             cr.set_source_rgb(1.0, 1.0, 1.0);
@@ -194,17 +233,64 @@ pub fn draw_state_diagram(
         let _ = cr.move_to(text_x, text_y);
         let _ = cr.show_text(&node.label);
 
-        // Small tag badge (INITIAL or FAULT)
+        // Top-left tag badge (INITIAL or FAULT)
         if node.is_initial {
             cr.set_font_size(8.0);
-            cr.set_source_rgb(0.65, 0.65, 0.65);
+            if is_dimmed_node {
+                cr.set_source_rgba(0.4, 0.4, 0.4, 0.3);
+            } else {
+                cr.set_source_rgb(0.65, 0.65, 0.65);
+            }
             let _ = cr.move_to(node.x + 8.0, node.y + 12.0);
             let _ = cr.show_text("● INIT");
         } else if node.is_fault {
             cr.set_font_size(8.0);
-            cr.set_source_rgb(COLOR_FAULT_RED.0, COLOR_FAULT_RED.1, COLOR_FAULT_RED.2);
+            if is_dimmed_node {
+                cr.set_source_rgba(COLOR_FAULT_RED.0, COLOR_FAULT_RED.1, COLOR_FAULT_RED.2, 0.3);
+            } else {
+                cr.set_source_rgb(COLOR_FAULT_RED.0, COLOR_FAULT_RED.1, COLOR_FAULT_RED.2);
+            }
             let _ = cr.move_to(node.x + 8.0, node.y + 12.0);
             let _ = cr.show_text("▲ FAULT");
+        }
+
+        // Top-right cluster tag
+        if !node.cluster.is_empty() && node.cluster != "INITIAL" && node.cluster != "FAULT" {
+            cr.set_font_size(7.0);
+            if is_dimmed_node {
+                cr.set_source_rgba(0.35, 0.35, 0.35, 0.25);
+            } else {
+                cr.set_source_rgba(0.5, 0.5, 0.5, 0.5);
+            }
+            if let Ok(c_ext) = cr.text_extents(&node.cluster) {
+                let _ = cr.move_to(node.x + node.width - c_ext.width() - 8.0, node.y + 12.0);
+                let _ = cr.show_text(&node.cluster);
+            }
+        }
+
+        // Footer badges:
+        // On FAULT node: show incoming trigger count
+        if node.is_fault && node.incoming_count > 0 {
+            let badge_text = format!("{} Triggers", node.incoming_count);
+            draw_node_badge(
+                cr,
+                node.x + node.width - 70.0,
+                node.y + node.height - 15.0,
+                &badge_text,
+                true,
+                is_dimmed_node,
+            );
+        }
+
+        // On non-fault nodes: show collapsed indicator badges for distant high-fan-in targets (e.g. FAULT)
+        if !node.is_fault {
+            for (idx, target) in node.collapsed_out_badges.iter().enumerate() {
+                let is_fault_target = is_fault_state(target);
+                let badge_label = if is_fault_target { "▲ FAULT" } else { target.as_str() };
+                let bx = node.x + node.width - 56.0 - idx as f64 * 58.0;
+                let by = node.y + node.height - 15.0;
+                draw_node_badge(cr, bx, by, badge_label, is_fault_target, is_dimmed_node);
+            }
         }
     }
 }
@@ -235,6 +321,7 @@ fn draw_rounded_node(
     is_initial: bool,
     is_selected: bool,
     is_hovered: bool,
+    is_dimmed: bool,
 ) {
     cr.new_path();
     cr.arc(x + w - r, y + r, r, -std::f64::consts::FRAC_PI_2, 0.0);
@@ -244,7 +331,9 @@ fn draw_rounded_node(
     cr.close_path();
 
     // Node fill
-    if is_fault {
+    if is_dimmed {
+        cr.set_source_rgba(0.06, 0.06, 0.06, 0.5);
+    } else if is_fault {
         cr.set_source_rgba(COLOR_FAULT_FILL.0, COLOR_FAULT_FILL.1, COLOR_FAULT_FILL.2, COLOR_FAULT_FILL.3);
     } else if is_selected {
         cr.set_source_rgba(COLOR_NODE_FILL_SELECTED.0, COLOR_NODE_FILL_SELECTED.1, COLOR_NODE_FILL_SELECTED.2, COLOR_NODE_FILL_SELECTED.3);
@@ -258,7 +347,10 @@ fn draw_rounded_node(
     let _ = cr.fill_preserve();
 
     // Node stroke
-    if is_fault {
+    if is_dimmed {
+        cr.set_source_rgba(0.2, 0.2, 0.2, 0.35);
+        cr.set_line_width(1.0);
+    } else if is_fault {
         cr.set_source_rgb(COLOR_FAULT_RED.0, COLOR_FAULT_RED.1, COLOR_FAULT_RED.2);
         cr.set_line_width(if is_selected { 2.5 } else { 1.8 });
     } else if is_selected {
@@ -275,6 +367,77 @@ fn draw_rounded_node(
         cr.set_line_width(1.2);
     }
     let _ = cr.stroke();
+}
+
+fn draw_node_badge(
+    cr: &cairo::Context,
+    x: f64,
+    y: f64,
+    text: &str,
+    is_fault: bool,
+    is_dimmed: bool,
+) {
+    cr.select_font_face("monospace", cairo::FontSlant::Normal, cairo::FontWeight::Bold);
+    cr.set_font_size(7.5);
+
+    let (ext_w, ext_h, ext_xb, ext_yb) = if let Ok(e) = cr.text_extents(text) {
+        (e.width(), e.height(), e.x_bearing(), e.y_bearing())
+    } else {
+        (0.0, 0.0, 0.0, 0.0)
+    };
+
+    let pad_x = 4.0;
+    let pad_y = 2.0;
+    let w = ext_w + pad_x * 2.0;
+    let h = ext_h + pad_y * 2.0;
+    let r = 3.0;
+
+    cr.new_path();
+    cr.arc(x + w - r, y + r, r, -std::f64::consts::FRAC_PI_2, 0.0);
+    cr.arc(x + w - r, y + h - r, r, 0.0, std::f64::consts::FRAC_PI_2);
+    cr.arc(x + r, y + h - r, r, std::f64::consts::FRAC_PI_2, std::f64::consts::PI);
+    cr.arc(x + r, y + r, r, std::f64::consts::PI, 3.0 * std::f64::consts::FRAC_PI_2);
+    cr.close_path();
+
+    if is_fault {
+        if is_dimmed {
+            cr.set_source_rgba(COLOR_FAULT_FILL.0, COLOR_FAULT_FILL.1, COLOR_FAULT_FILL.2, 0.3);
+            let _ = cr.fill_preserve();
+            cr.set_source_rgba(COLOR_FAULT_RED.0, COLOR_FAULT_RED.1, COLOR_FAULT_RED.2, 0.25);
+        } else {
+            cr.set_source_rgba(COLOR_FAULT_FILL.0, COLOR_FAULT_FILL.1, COLOR_FAULT_FILL.2, 0.95);
+            let _ = cr.fill_preserve();
+            cr.set_source_rgba(COLOR_FAULT_RED.0, COLOR_FAULT_RED.1, COLOR_FAULT_RED.2, 0.85);
+        }
+    } else {
+        if is_dimmed {
+            cr.set_source_rgba(0.12, 0.12, 0.12, 0.3);
+            let _ = cr.fill_preserve();
+            cr.set_source_rgba(0.3, 0.3, 0.3, 0.25);
+        } else {
+            cr.set_source_rgba(0.16, 0.16, 0.16, 0.95);
+            let _ = cr.fill_preserve();
+            cr.set_source_rgba(0.45, 0.45, 0.45, 0.85);
+        }
+    }
+    cr.set_line_width(0.8);
+    let _ = cr.stroke();
+
+    if is_fault {
+        if is_dimmed {
+            cr.set_source_rgba(COLOR_FAULT_RED.0, COLOR_FAULT_RED.1, COLOR_FAULT_RED.2, 0.3);
+        } else {
+            cr.set_source_rgb(COLOR_FAULT_RED.0, COLOR_FAULT_RED.1, COLOR_FAULT_RED.2);
+        }
+    } else {
+        if is_dimmed {
+            cr.set_source_rgba(0.6, 0.6, 0.6, 0.3);
+        } else {
+            cr.set_source_rgb(0.8, 0.8, 0.8);
+        }
+    }
+    let _ = cr.move_to(x + pad_x - ext_xb, y + pad_y - ext_yb);
+    let _ = cr.show_text(text);
 }
 
 fn draw_guard_badge(
@@ -382,21 +545,34 @@ mod tests {
 
         state.borrow_mut().loaded_project = Some(project);
 
-        // 1. Initial draw
+        // 1. Initial draw (unselected default view - low clutter with collapsed badges)
         draw_state_diagram(&cr, 1200.0, 800.0, &state);
         surface.flush();
 
         // Verify layout was computed
         assert!(state.borrow().state_diagram_layout.is_some());
-        assert_eq!(state.borrow().state_diagram_layout.as_ref().unwrap().nodes.len(), 14);
+        let layout = state.borrow().state_diagram_layout.clone().unwrap();
+        assert_eq!(layout.nodes.len(), 14);
+        assert_eq!(layout.edges.len(), 31);
 
-        // 2. Select FAULT node
+        // 2. Select GOING node (expand outgoing edges including to FAULT)
+        state.borrow_mut().selected_state_node = Some("GOING".to_string());
+        draw_state_diagram(&cr, 1200.0, 800.0, &state);
+        surface.flush();
+
+        // 3. Select FAULT node (expand all 12 fault triggers)
         state.borrow_mut().selected_state_node = Some("FAULT".to_string());
         draw_state_diagram(&cr, 1200.0, 800.0, &state);
         surface.flush();
 
-        // 3. Hover CALIBRATING node
+        // 4. Hover CALIBRATING node while FAULT is selected
         state.borrow_mut().hovered_state_node = Some("CALIBRATING".to_string());
+        draw_state_diagram(&cr, 1200.0, 800.0, &state);
+        surface.flush();
+
+        // 5. Deselect (click background -> return to low clutter collapsed view)
+        state.borrow_mut().selected_state_node = None;
+        state.borrow_mut().hovered_state_node = None;
         draw_state_diagram(&cr, 1200.0, 800.0, &state);
         surface.flush();
     }

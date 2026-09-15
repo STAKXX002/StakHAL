@@ -26,7 +26,7 @@ pub fn build_state_diagram_panel() -> StateDiagramPanelWidgets {
     combo_state_machine.set_tooltip_text(Some("Select application state machine"));
 
     let lbl_diagram_hint = gtk4::Label::builder()
-        .label("Scroll to zoom, drag background to pan, click node to inspect")
+        .label("Scroll to zoom • Drag to pan • Click node to inspect • Click canvas to collapse")
         .halign(gtk4::Align::End)
         .hexpand(true)
         .css_classes(vec!["dim-label".to_string(), "caption".to_string()])
@@ -47,7 +47,7 @@ pub fn build_state_diagram_panel() -> StateDiagramPanelWidgets {
     diagram_header_bar.append(&lbl_diagram_hint);
 
     let lbl_selected_info = gtk4::Label::builder()
-        .label("Select a state node to inspect transitions and guard triggers.")
+        .label("Click a state node to inspect full transition paths • Click background to collapse high-fan-in edges.")
         .halign(gtk4::Align::Start)
         .hexpand(true)
         .margin_start(18)

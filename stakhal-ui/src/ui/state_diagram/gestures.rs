@@ -44,10 +44,17 @@ pub fn setup_state_diagram_drawing_and_gestures(
             }
         }
 
-        st.selected_state_node = hit_node.clone();
+        // Toggle selection off if clicking the already selected node, or collapse if clicking background
+        if hit_node.is_none() || st.selected_state_node == hit_node {
+            st.selected_state_node = None;
+        } else {
+            st.selected_state_node = hit_node.clone();
+        }
+
+        let current_sel = st.selected_state_node.clone();
 
         // Update selected info label
-        if let Some(ref sel) = hit_node {
+        if let Some(ref sel) = current_sel {
             if let Some(ref p) = st.loaded_project {
                 if !p.state_machines.is_empty() {
                     let sm = &p.state_machines[st.selected_state_machine];
@@ -63,7 +70,7 @@ pub fn setup_state_diagram_drawing_and_gestures(
                 }
             }
         } else {
-            info_click.set_text("Select a state node to inspect transitions and guard triggers.");
+            info_click.set_text("Click a node to inspect full transition paths • Click background to collapse high-fan-in edges");
         }
 
         area_click.queue_draw();
