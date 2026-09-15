@@ -355,32 +355,44 @@ impl BoundingBox {
     }
 }
 
-/// Compute layered node-link graph layout for a state machine using rust-sugiyama.
+/// Compute layered node-link graph layout with hub-anchored swimlanes.
 pub fn compute_state_machine_layout(sm: &AppStateMachine) -> StateMachineLayout {
     let node_width = 175.0;
     let node_height = 54.0;
-    let left_margin = 110.0;
-    let top_margin = 80.0;
-
     let initial_name = sm.var.initial_value.as_deref().unwrap_or("IDLE");
 
-    // 1. Calculate in/out degrees for high-fan-in identification and collapsed badge counts
-    let mut in_degrees: HashMap<String, usize> = HashMap::new();
-    let mut out_degrees: HashMap<String, usize> = HashMap::new();
+    // 1. Calculate operational and total in/out degrees
+    let mut total_in_degrees: HashMap<String, usize> = HashMap::new();
+    let mut total_out_degrees: HashMap<String, usize> = HashMap::new();
+    let mut op_in_degrees: HashMap<String, usize> = HashMap::new();
+    let mut op_out_degrees: HashMap<String, usize> = HashMap::new();
     for st in &sm.states {
-        in_degrees.insert(st.clone(), 0);
-        out_degrees.insert(st.clone(), 0);
+        total_in_degrees.insert(st.clone(), 0);
+        total_out_degrees.insert(st.clone(), 0);
+        op_in_degrees.insert(st.clone(), 0);
+        op_out_degrees.insert(st.clone(), 0);
     }
     for t in &sm.transitions {
-        if t.from != "(any state)" {
-            *out_degrees.entry(t.from.clone()).or_default() += 1;
+        if t.from != t.to {
+            if t.from != "(any state)" {
+                *total_out_degrees.entry(t.from.clone()).or_default() += 1;
+            }
+            *total_in_degrees.entry(t.to.clone()).or_default() += 1;
+
+            if !t.is_fault && !is_fault_state(&t.to) {
+                if t.from != "(any state)" {
+                    *op_out_degrees.entry(t.from.clone()).or_default() += 1;
+                }
+                *op_in_degrees.entry(t.to.clone()).or_default() += 1;
+            }
         }
-        *in_degrees.entry(t.to.clone()).or_default() += 1;
     }
 
+    // High fan-in threshold for badge-only collapsing (e.g. 12 transitions to FAULT)
     let mut high_fan_in_nodes = HashSet::new();
-    for (st, &deg) in &in_degrees {
-        if deg >= 4 || is_fault_state(st) {
+    for st in &sm.states {
+        let total_in = sm.transitions.iter().filter(|t| t.to == *st && t.from != *st).count();
+        if total_in >= 4 || is_fault_state(st) {
             high_fan_in_nodes.insert(st.clone());
         }
     }
@@ -395,96 +407,233 @@ pub fn compute_state_machine_layout(sm: &AppStateMachine) -> StateMachineLayout 
         }
     }
 
-    // 2. Build petgraph StableDiGraph
-    let (graph, _node_map) = build_state_machine_graph(sm);
-
-    // 3. Configure and execute rust-sugiyama layered layout
-    let config = Config {
-        vertex_spacing: 100.0,
-        c_minimization: CrossingMinimization::Median,
-        transpose: true,
-        ..Default::default()
-    };
-
-    // Node dimensions transposed: (node_height, node_width) so layers rank horizontally left-to-right
-    let size_fn = |_idx: NodeIndex, _node: &StateNode| (node_height, node_width);
-    let layouts = rust_sugiyama::from_graph(&graph, &size_fn, &config);
-
-    // 4. Map Sugiyama coordinates to canvas
-    let mut raw_positions: HashMap<String, (f64, f64)> = HashMap::new();
-    let mut fault_nodes: Vec<String> = Vec::new();
-
-    for (nodes, _w, _h) in layouts {
-        for (node_idx, (sx, sy)) in nodes {
-            let node = &graph[node_idx];
-            if node.is_fault {
-                fault_nodes.push(node.id.clone());
-            } else {
-                raw_positions.insert(node.id.clone(), (sx, sy));
+    // Identify hub nodes by degree threshold: operational degree >= 4
+    let mut hub_nodes = HashSet::new();
+    for st in &sm.states {
+        if !is_fault_state(st) {
+            let op_deg = op_in_degrees.get(st).copied().unwrap_or(0) + op_out_degrees.get(st).copied().unwrap_or(0);
+            if op_deg >= 4 {
+                hub_nodes.insert(st.clone());
             }
         }
     }
 
-    let min_sx = raw_positions.values().map(|(sx, _sy)| *sx).fold(f64::MAX, f64::min);
-    let min_sy = raw_positions.values().map(|(_sx, sy)| *sy).fold(f64::MAX, f64::min);
+    // Designate entry hub: initial state if present, else hub with highest operational out-degree
+    let entry_hub = if hub_nodes.contains(initial_name) {
+        initial_name.to_string()
+    } else {
+        hub_nodes
+            .iter()
+            .max_by_key(|h| op_out_degrees.get(*h).copied().unwrap_or(0))
+            .cloned()
+            .unwrap_or_else(|| initial_name.to_string())
+    };
+
+    let mut exit_hubs: Vec<String> = hub_nodes.iter().filter(|h| **h != entry_hub).cloned().collect();
+    exit_hubs.sort();
+
+    // 2. Partition non-hub, non-fault states into logical flow lanes
+    let mut lane_clusters: Vec<(&'static str, Vec<String>)> = vec![
+        ("CALIBRATION", Vec::new()),
+        ("MECHANISM", Vec::new()),
+        ("MOTION", Vec::new()),
+        ("RECOVERY", Vec::new()),
+    ];
+    let mut other_states = Vec::new();
+
+    for st in &sm.states {
+        if is_fault_state(st) || hub_nodes.contains(st) {
+            continue;
+        }
+        let cluster = infer_cluster_name(st, initial_name);
+        if let Some((_, list)) = lane_clusters.iter_mut().find(|(c, _)| *c == cluster) {
+            list.push(st.clone());
+        } else {
+            other_states.push(st.clone());
+        }
+    }
+    if !other_states.is_empty() {
+        lane_clusters.push(("GENERAL", other_states));
+    }
+    lane_clusters.retain(|(_, list)| !list.is_empty());
+
+    // 3. Run rust-sugiyama on each lane independently
+    let config = Config {
+        vertex_spacing: 80.0,
+        c_minimization: CrossingMinimization::Median,
+        transpose: true,
+        ..Default::default()
+    };
+    let size_fn = |_idx: NodeIndex, _node: &StateNode| (node_height, node_width);
+
+    let mut lane_node_ranks: HashMap<String, usize> = HashMap::new();
+    let mut max_rank_in_any_lane = 0;
+
+    for (_cluster_name, lane_states) in &lane_clusters {
+        let lane_state_set: HashSet<String> = lane_states.iter().cloned().collect();
+        let mut lane_graph = StableDiGraph::new();
+        let mut lane_map = HashMap::new();
+
+        for st in lane_states {
+            let idx = lane_graph.add_node(StateNode {
+                id: st.clone(),
+                is_initial: false,
+                is_fault: false,
+                cluster: infer_cluster_name(st, initial_name).to_string(),
+            });
+            lane_map.insert(st.clone(), idx);
+        }
+
+        // Intra-lane edges only
+        for t in &sm.transitions {
+            if lane_state_set.contains(&t.from) && lane_state_set.contains(&t.to) && t.from != t.to {
+                lane_graph.add_edge(
+                    lane_map[&t.from],
+                    lane_map[&t.to],
+                    TransitionEdge {
+                        guard: t.guard.clone(),
+                        is_fault: false,
+                        transition_type: t.transition_type.clone(),
+                    },
+                );
+            }
+        }
+
+        let layouts = rust_sugiyama::from_graph(&lane_graph, &size_fn, &config);
+        let mut sorted_nodes: Vec<(String, f64)> = Vec::new();
+        for (nodes, _w, _h) in layouts {
+            for (node_idx, (_sx, sy)) in nodes {
+                sorted_nodes.push((lane_graph[node_idx].id.clone(), sy));
+            }
+        }
+        sorted_nodes.sort_by(|a, b| a.1.total_cmp(&b.1));
+
+        for (rank, (name, _)) in sorted_nodes.into_iter().enumerate() {
+            lane_node_ranks.insert(name, rank);
+            if rank > max_rank_in_any_lane {
+                max_rank_in_any_lane = rank;
+            }
+        }
+    }
+
+    // 4. Geometry & Positioning of Hubs and Swimlanes
+    let left_margin = 110.0;
+    let top_margin = 80.0;
+    let lane_gap = 130.0;
+    let hub_to_lane_gap = 140.0;
+    let rank_step_x = node_width + 80.0; // 255.0
+
+    let lane_start_x = left_margin + node_width + hub_to_lane_gap; // 110 + 175 + 140 = 425.0
 
     let mut nodes_layout = HashMap::new();
-    let mut max_op_x = left_margin;
-    let mut max_op_y = top_margin;
+    let mut lane_y_positions: HashMap<String, f64> = HashMap::new();
 
-    for (id, (sx, sy)) in &raw_positions {
-        let x = (sy - min_sy) + left_margin;
-        let y = (sx - min_sx) + top_margin;
+    // 4a. Position lane nodes in horizontal rows
+    for (lane_idx, (cluster_name, lane_states)) in lane_clusters.iter().enumerate() {
+        let lane_y = top_margin + lane_idx as f64 * lane_gap;
+        lane_y_positions.insert(cluster_name.to_string(), lane_y);
 
-        let is_initial = id == initial_name;
-        let cluster = infer_cluster_name(id, initial_name).to_string();
-        let in_count = in_degrees.get(id).copied().unwrap_or(0);
-        let out_count = out_degrees.get(id).copied().unwrap_or(0);
-        let collapsed_badges = collapsed_out_map.get(id).cloned().unwrap_or_default();
+        for st in lane_states {
+            let rank = lane_node_ranks.get(st).copied().unwrap_or(0);
+            let x = lane_start_x + rank as f64 * rank_step_x;
+            let y = lane_y;
 
+            let in_count = total_in_degrees.get(st).copied().unwrap_or(0);
+            let out_count = total_out_degrees.get(st).copied().unwrap_or(0);
+            let collapsed_badges = collapsed_out_map.get(st).cloned().unwrap_or_default();
+
+            nodes_layout.insert(
+                st.clone(),
+                NodeLayout {
+                    id: st.clone(),
+                    label: st.clone(),
+                    x,
+                    y,
+                    width: node_width,
+                    height: node_height,
+                    is_fault: false,
+                    is_initial: false,
+                    cluster: cluster_name.to_string(),
+                    collapsed_out_badges: collapsed_badges,
+                    incoming_count: in_count,
+                    outgoing_count: out_count,
+                },
+            );
+        }
+    }
+
+    let max_lane_x = lane_start_x + max_rank_in_any_lane as f64 * rank_step_x + node_width;
+    let lowest_lane_y = top_margin + lane_clusters.len().saturating_sub(1) as f64 * lane_gap;
+
+    // 4b. Position Entry Hub (IDLE) pinned on left
+    let entry_y = (top_margin + lowest_lane_y - lane_gap) * 0.5; // vertically centered among top lanes
+    let entry_x = left_margin;
+    {
+        let in_count = total_in_degrees.get(&entry_hub).copied().unwrap_or(0);
+        let out_count = total_out_degrees.get(&entry_hub).copied().unwrap_or(0);
+        let collapsed_badges = collapsed_out_map.get(&entry_hub).cloned().unwrap_or_default();
         nodes_layout.insert(
-            id.clone(),
+            entry_hub.clone(),
             NodeLayout {
-                id: id.clone(),
-                label: id.clone(),
-                x,
-                y,
+                id: entry_hub.clone(),
+                label: entry_hub.clone(),
+                x: entry_x,
+                y: entry_y,
                 width: node_width,
                 height: node_height,
                 is_fault: false,
-                is_initial,
-                cluster,
+                is_initial: true,
+                cluster: "INITIAL".to_string(),
                 collapsed_out_badges: collapsed_badges,
                 incoming_count: in_count,
                 outgoing_count: out_count,
             },
         );
-
-        if x + node_width > max_op_x {
-            max_op_x = x + node_width;
-        }
-        if y + node_height > max_op_y {
-            max_op_y = y + node_height;
-        }
     }
 
-    // Centered horizontal placement for FAULT state(s), 80px below the operational graph
-    let fault_y = max_op_y + 80.0;
-    let center_x = (left_margin + max_op_x) * 0.5;
-    let fault_count = fault_nodes.len().max(1);
+    // 4c. Position Exit Hub(s) (RETURNED) pinned on lower-right
+    let exit_x = max_lane_x + hub_to_lane_gap;
+    let exit_y = lowest_lane_y - lane_gap * 0.5; // centered between MOTION and RECOVERY
+    for exit_hub in &exit_hubs {
+        let in_count = total_in_degrees.get(exit_hub).copied().unwrap_or(0);
+        let out_count = total_out_degrees.get(exit_hub).copied().unwrap_or(0);
+        let collapsed_badges = collapsed_out_map.get(exit_hub).cloned().unwrap_or_default();
+        nodes_layout.insert(
+            exit_hub.clone(),
+            NodeLayout {
+                id: exit_hub.clone(),
+                label: exit_hub.clone(),
+                x: exit_x,
+                y: exit_y,
+                width: node_width,
+                height: node_height,
+                is_fault: false,
+                is_initial: false,
+                cluster: infer_cluster_name(exit_hub, initial_name).to_string(),
+                collapsed_out_badges: collapsed_badges,
+                incoming_count: in_count,
+                outgoing_count: out_count,
+            },
+        );
+    }
+
+    let max_total_op_x = exit_x + node_width;
+    let max_total_op_y = lowest_lane_y + node_height;
+
+    // 4d. Position FAULT node(s) pinned centered at bottom
+    let fault_y = max_total_op_y + 80.0;
+    let center_x = (left_margin + max_total_op_x) * 0.5;
+    let fault_states: Vec<String> = sm.states.iter().filter(|s| is_fault_state(s)).cloned().collect();
+    let fault_count = fault_states.len().max(1);
     let total_fault_w = fault_count as f64 * node_width + fault_count.saturating_sub(1) as f64 * 40.0;
     let fault_start_x = center_x - total_fault_w * 0.5;
 
-    let mut max_x = max_op_x;
-
-    for (col_idx, node_id) in fault_nodes.iter().enumerate() {
+    for (col_idx, node_id) in fault_states.iter().enumerate() {
         let x = fault_start_x + col_idx as f64 * (node_width + 40.0);
         let y = fault_y;
-        let cluster = "FAULT".to_string();
-        let in_count = in_degrees.get(node_id).copied().unwrap_or(0);
-        let out_count = out_degrees.get(node_id).copied().unwrap_or(0);
+        let in_count = total_in_degrees.get(node_id).copied().unwrap_or(0);
+        let out_count = total_out_degrees.get(node_id).copied().unwrap_or(0);
         let collapsed_badges = collapsed_out_map.get(node_id).cloned().unwrap_or_default();
-
         nodes_layout.insert(
             node_id.clone(),
             NodeLayout {
@@ -496,42 +645,54 @@ pub fn compute_state_machine_layout(sm: &AppStateMachine) -> StateMachineLayout 
                 height: node_height,
                 is_fault: true,
                 is_initial: false,
-                cluster,
+                cluster: "FAULT".to_string(),
                 collapsed_out_badges: collapsed_badges,
                 incoming_count: in_count,
                 outgoing_count: out_count,
             },
         );
-
-        if x + node_width > max_x {
-            max_x = x + node_width;
-        }
     }
-
-    let max_y = fault_y + node_height;
 
     // Generate cluster lane headers for UI drawing
-    let mut cluster_nodes_map: HashMap<String, Vec<&NodeLayout>> = HashMap::new();
-    for node in nodes_layout.values() {
-        cluster_nodes_map.entry(node.cluster.clone()).or_default().push(node);
-    }
-
     let mut lanes = Vec::new();
-    for (cluster_name, cnodes) in cluster_nodes_map {
-        let min_x = cnodes.iter().map(|n| n.x).fold(f64::MAX, f64::min);
-        let max_x_c = cnodes.iter().map(|n| n.x + n.width).fold(f64::MIN, f64::max);
-        let min_y = cnodes.iter().map(|n| n.y).fold(f64::MAX, f64::min);
+    for (cluster_name, lane_states) in &lane_clusters {
+        let mut min_x = f64::MAX;
+        let mut max_x = f64::MIN;
+        let mut min_y = f64::MAX;
+        for st in lane_states {
+            if let Some(nl) = nodes_layout.get(st) {
+                min_x = min_x.min(nl.x);
+                max_x = max_x.max(nl.x + nl.width);
+                min_y = min_y.min(nl.y);
+            }
+        }
         lanes.push(LaneLayout {
-            name: cluster_name,
+            name: cluster_name.to_string(),
             y: min_y,
             x_start: min_x,
-            x_end: max_x_c,
+            x_end: max_x,
+        });
+    }
+    if !fault_states.is_empty() {
+        lanes.push(LaneLayout {
+            name: "FAULT".to_string(),
+            y: fault_y,
+            x_start: fault_start_x,
+            x_end: fault_start_x + total_fault_w,
         });
     }
     lanes.sort_by(|a, b| a.y.total_cmp(&b.y));
 
-    // 5. Compute Bézier edge routing
+    // 5. Bézier Edge Routing with Multi-Point Hub Anchors
     let mut edges_layout = Vec::new();
+
+    // Map outgoing edges from entry_hub by target to distribute anchors
+    let entry_outgoing: Vec<&AppTransition> = sm
+        .transitions
+        .iter()
+        .filter(|t| t.from == entry_hub && !t.is_fault && !is_fault_state(&t.to))
+        .collect();
+
     for t in &sm.transitions {
         let from_layout = nodes_layout.get(&t.from);
         let to_layout = nodes_layout.get(&t.to);
@@ -550,8 +711,69 @@ pub fn compute_state_machine_layout(sm: &AppStateMachine) -> StateMachineLayout 
                 let control2 = (end.0, end.1 - dy * 0.45);
                 let label_pos = (from.x + from.width * 0.5, from.y + from.height + 24.0);
                 (start, end, control1, control2, label_pos)
+            } else if t.from == entry_hub {
+                // Outgoing from Entry Hub (IDLE): stack connection anchors along right edge based on target vertical order
+                let target_order = entry_outgoing
+                    .iter()
+                    .position(|x| x.to == t.to && x.guard == t.guard)
+                    .unwrap_or(0);
+                let n_conns = entry_outgoing.len().max(1);
+                let fraction = (target_order as f64 + 1.0) / (n_conns as f64 + 1.0);
+                let start_y = from.y + from.height * fraction;
+                let start = (from.x + from.width, start_y);
+                let end = (to.x, to.y + to.height * 0.5);
+
+                let dx = (end.0 - start.0).max(30.0);
+                let control1 = (start.0 + dx * 0.35, start.1);
+                let control2 = (end.0 - dx * 0.35, end.1);
+                let label_y = (start.1 + end.1) * 0.5 + if start.1 > end.1 { -14.0 } else { 14.0 };
+                let label_pos = ((start.0 + end.0) * 0.5, label_y);
+                (start, end, control1, control2, label_pos)
+            } else if t.to == entry_hub {
+                // Returning to Entry Hub (IDLE): route back smoothly
+                if from.y <= to.y {
+                    // Coming from upper lane (e.g. CAL_BACKOFF -> IDLE, CLOSING -> IDLE)
+                    let start = (from.x + from.width * 0.5, from.y);
+                    let end = (to.x + to.width * 0.6, to.y);
+                    let arc_y = (from.y - 35.0).max(25.0);
+                    let control1 = (from.x + from.width * 0.5, arc_y);
+                    let control2 = (to.x + to.width * 0.6, arc_y);
+                    let label_pos = ((start.0 + end.0) * 0.5, arc_y - 12.0);
+                    (start, end, control1, control2, label_pos)
+                } else {
+                    // Coming from lower lane (e.g. OPENING -> IDLE)
+                    let start = (from.x, from.y + from.height * 0.5);
+                    let end = (to.x + to.width, to.y + to.height * 0.8);
+                    let control1 = ((start.0 + end.0) * 0.5, start.1 + 20.0);
+                    let control2 = ((start.0 + end.0) * 0.5, end.1);
+                    let label_pos = ((start.0 + end.0) * 0.5, start.1 + 18.0);
+                    (start, end, control1, control2, label_pos)
+                }
+            } else if exit_hubs.contains(&t.to) {
+                // Entering Exit Hub (RETURNED): direct diagonal from right of lane to left of hub
+                let start = (from.x + from.width, from.y + from.height * 0.5);
+                let anchor_y = if from.y < to.y {
+                    to.y + to.height * 0.3
+                } else {
+                    to.y + to.height * 0.7
+                };
+                let end = (to.x, anchor_y);
+                let dx = (end.0 - start.0).max(20.0);
+                let control1 = (start.0 + dx * 0.4, start.1);
+                let control2 = (end.0 - dx * 0.4, end.1);
+                let label_pos = ((start.0 + end.0) * 0.5, (start.1 + end.1) * 0.5 - 14.0);
+                (start, end, control1, control2, label_pos)
+            } else if exit_hubs.contains(&t.from) {
+                // Outgoing repeat/loopback from Exit Hub (RETURNED -> GOING, OPENING, CLOSING)
+                let start = (from.x + from.width * 0.3, from.y);
+                let end = (to.x + to.width * 0.5, to.y);
+                let arc_y = from.y.min(to.y) - 40.0;
+                let control1 = (start.0, arc_y);
+                let control2 = (end.0, arc_y);
+                let label_pos = ((start.0 + end.0) * 0.5, arc_y - 12.0);
+                (start, end, control1, control2, label_pos)
             } else if from.x + from.width <= to.x + 15.0 {
-                // Forward edge (left to right)
+                // Forward intra-lane or inter-lane edge (left to right)
                 let start = (from.x + from.width, from.y + from.height * 0.5);
                 let end = (to.x, to.y + to.height * 0.5);
                 let dx = (end.0 - start.0).max(20.0);
@@ -560,24 +782,14 @@ pub fn compute_state_machine_layout(sm: &AppStateMachine) -> StateMachineLayout 
                 let label_pos = ((start.0 + end.0) * 0.5, (start.1 + end.1) * 0.5 - 14.0);
                 (start, end, control1, control2, label_pos)
             } else if from.x >= to.x + to.width - 15.0 {
-                // Backward loop edge (right to left)
-                if from.y >= to.y {
-                    let start = (from.x + from.width * 0.5, from.y);
-                    let end = (to.x + to.width, to.y + to.height * 0.5);
-                    let arc_y = from.y.min(to.y) - 30.0;
-                    let control1 = (from.x + from.width * 0.5, arc_y);
-                    let control2 = (to.x + to.width + 40.0, arc_y);
-                    let label_pos = ((start.0 + end.0) * 0.5, arc_y - 12.0);
-                    (start, end, control1, control2, label_pos)
-                } else {
-                    let start = (from.x + from.width * 0.5, from.y + from.height);
-                    let end = (to.x + to.width, to.y + to.height * 0.5);
-                    let arc_y = from.y.max(to.y) + 30.0;
-                    let control1 = (from.x + from.width * 0.5, arc_y);
-                    let control2 = (to.x + to.width + 40.0, arc_y);
-                    let label_pos = ((start.0 + end.0) * 0.5, arc_y + 14.0);
-                    (start, end, control1, control2, label_pos)
-                }
+                // Backward loop edge (right to left, e.g. RETURNING -> RECOVERY)
+                let start = (from.x, from.y + from.height * 0.5);
+                let end = (to.x + to.width, to.y + to.height * 0.5);
+                let dy = (end.1 - start.1).abs().max(20.0);
+                let control1 = (start.0 - 40.0, start.1 + dy * 0.3);
+                let control2 = (end.0 + 40.0, end.1 - dy * 0.3);
+                let label_pos = ((start.0 + end.0) * 0.5, (start.1 + end.1) * 0.5);
+                (start, end, control1, control2, label_pos)
             } else {
                 // Overlapping columns
                 if from.y < to.y {
@@ -593,7 +805,7 @@ pub fn compute_state_machine_layout(sm: &AppStateMachine) -> StateMachineLayout 
                     let end = (to.x + to.width * 0.5, to.y + to.height);
                     let dy = (start.1 - end.1).max(20.0);
                     let control1 = (start.0 + 30.0, start.1 - dy * 0.4);
-                    let control2 = (start.0 + 30.0, end.1 + dy * 0.4);
+                    let control2 = (end.0 + 30.0, end.1 + dy * 0.4);
                     let label_pos = (start.0 + 40.0, (start.1 + end.1) * 0.5);
                     (start, end, control1, control2, label_pos)
                 }
@@ -620,7 +832,6 @@ pub fn compute_state_machine_layout(sm: &AppStateMachine) -> StateMachineLayout 
     // 6. Post-layout label collision avoidance pass
     let mut obstacles: Vec<BoundingBox> = Vec::new();
 
-    // Node bounding boxes with safety margin
     for node in nodes_layout.values() {
         obstacles.push(BoundingBox {
             x0: node.x - 6.0,
@@ -630,7 +841,6 @@ pub fn compute_state_machine_layout(sm: &AppStateMachine) -> StateMachineLayout 
         });
     }
 
-    // Lane headers
     for lane in &lanes {
         obstacles.push(BoundingBox {
             x0: lane.x_start - 6.0,
@@ -640,7 +850,6 @@ pub fn compute_state_machine_layout(sm: &AppStateMachine) -> StateMachineLayout 
         });
     }
 
-    // Process each edge's label
     for edge in &mut edges_layout {
         if edge.display_guard.is_empty() {
             continue;
@@ -704,14 +913,49 @@ pub fn compute_state_machine_layout(sm: &AppStateMachine) -> StateMachineLayout 
         obstacles.push(best_box);
     }
 
+    // 7. Compute true encompassing diagram bounding box
+    let mut min_bound_x = left_margin;
+    let mut max_bound_x = max_total_op_x;
+    let mut min_bound_y = top_margin;
+    let mut max_bound_y = fault_y + node_height;
+
+    for node in nodes_layout.values() {
+        min_bound_x = min_bound_x.min(node.x);
+        max_bound_x = max_bound_x.max(node.x + node.width);
+        min_bound_y = min_bound_y.min(node.y);
+        max_bound_y = max_bound_y.max(node.y + node.height);
+    }
+    for lane in &lanes {
+        min_bound_x = min_bound_x.min(lane.x_start);
+        max_bound_x = max_bound_x.max(lane.x_end);
+        min_bound_y = min_bound_y.min(lane.y - 20.0);
+    }
+    for edge in &edges_layout {
+        if !edge.display_guard.is_empty() {
+            let label_w = (edge.display_guard.len() as f64 * 6.5 + 16.0).max(36.0);
+            min_bound_x = min_bound_x.min(edge.label_pos.0 - label_w * 0.5);
+            max_bound_x = max_bound_x.max(edge.label_pos.0 + label_w * 0.5);
+            min_bound_y = min_bound_y.min(edge.label_pos.1 - 10.0);
+            max_bound_y = max_bound_y.max(edge.label_pos.1 + 10.0);
+        }
+        min_bound_x = min_bound_x.min(edge.control1.0.min(edge.control2.0));
+        max_bound_x = max_bound_x.max(edge.control1.0.max(edge.control2.0));
+        min_bound_y = min_bound_y.min(edge.control1.1.min(edge.control2.1));
+        max_bound_y = max_bound_y.max(edge.control1.1.max(edge.control2.1));
+    }
+
+    let total_width = (max_bound_x - min_bound_x.min(0.0) + 120.0).max(1300.0);
+    let total_height = (max_bound_y - min_bound_y.min(0.0) + 100.0).max(850.0);
+
     StateMachineLayout {
         nodes: nodes_layout,
         edges: edges_layout,
         lanes,
-        width: max_x + 120.0,
-        height: max_y + 80.0,
+        width: total_width,
+        height: total_height,
     }
 }
+
 
 #[derive(Debug, Clone)]
 struct HelperFunctionInfo {
@@ -1902,5 +2146,55 @@ mod tests {
                 assert!(!lbox.intersects(&nbox), "label for {} -> {} must not overlap node {}", edge.from, edge.to, node.id);
             }
         }
+    }
+
+    #[test]
+    fn test_hub_anchored_swimlanes_layout() {
+        let fixture_path = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/fixtures/docking_firmware/Core/Src/main.c");
+        let candidates = discover_state_machines_in_file(&fixture_path).expect("failed to discover state machines");
+        let sm = extract_state_machine_transitions(&candidates[0], &fixture_path).expect("failed to extract transitions");
+        let layout = compute_state_machine_layout(&sm);
+
+        // 1. Hub dynamic identification & positioning
+        // IDLE is pinned at left_margin = 110.0
+        let idle = layout.nodes.get("IDLE").expect("IDLE node must exist");
+        assert_eq!(idle.x, 110.0, "IDLE hub must be pinned at left margin 110.0");
+
+        // RETURNED is pinned at lower-right (x >= 1100.0)
+        let ret = layout.nodes.get("RETURNED").expect("RETURNED node must exist");
+        assert!(ret.x >= 1100.0, "RETURNED hub must be pinned on the right (x = {})", ret.x);
+
+        // FAULT is centered at bottom
+        let fault = layout.nodes.get("FAULT").expect("FAULT node must exist");
+        let max_op_x = layout.nodes.values().filter(|n| !n.is_fault).map(|n| n.x + n.width).fold(110.0, f64::max);
+        let center_x = (110.0 + max_op_x) * 0.5;
+        let fault_center_x = fault.x + fault.width * 0.5;
+        assert_eq!(fault_center_x, center_x, "FAULT node center must match graph center");
+
+        // 2. Multi-point connection anchors for IDLE outgoing edges
+        let idle_outgoing: Vec<&EdgeLayout> = layout.edges.iter().filter(|e| e.from == "IDLE" && !e.is_fault).collect();
+        assert!(idle_outgoing.len() >= 3, "IDLE should have multiple outgoing operational edges");
+        let start_ys: HashSet<i64> = idle_outgoing.iter().map(|e| (e.start.1 * 100.0).round() as i64).collect();
+        assert!(
+            start_ys.len() > 1,
+            "IDLE outgoing edges must have multi-point connection anchors along its right edge, found distinct Y count: {}",
+            start_ys.len()
+        );
+
+        // 3. Lane positioning: all lane states start to the right of IDLE
+        for node in layout.nodes.values() {
+            if node.id != "IDLE" && !node.is_fault {
+                assert!(
+                    node.x >= idle.x + idle.width,
+                    "Operational node {} at x={} must start to the right of IDLE (x={})",
+                    node.id, node.x, idle.x + idle.width
+                );
+            }
+        }
+
+        // 4. Diagram dimensions
+        assert!(layout.width >= 1200.0, "diagram width ({}) should encompass hubs and lanes", layout.width);
+        assert!(layout.height >= 700.0, "diagram height ({}) should encompass lanes and fault", layout.height);
     }
 }

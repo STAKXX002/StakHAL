@@ -40,7 +40,7 @@ pub fn draw_state_diagram(
     height: f64,
     state: &Rc<RefCell<AppState>>,
 ) {
-    // 1. Ensure state diagram layout is computed
+    // 1. Ensure state diagram layout is computed and view is fitted if needed
     {
         let mut st = state.borrow_mut();
         if st.state_diagram_layout.is_none() {
@@ -57,7 +57,20 @@ pub fn draw_state_diagram(
                     }
                     st.state_node_positions = pos;
                     st.state_diagram_layout = Some(layout);
+                    st.diagram_needs_fit = true;
                 }
+            }
+        }
+
+        if st.diagram_needs_fit && width > 100.0 && height > 100.0 {
+            if let Some((lw, lh)) = st.state_diagram_layout.as_ref().map(|l| (l.width, l.height)) {
+                let avail_w = (width - 40.0).max(100.0);
+                let avail_h = (height - 40.0).max(100.0);
+                let fit_zoom = (avail_w / lw).min(avail_h / lh).min(1.0).max(0.2);
+                st.diagram_zoom = fit_zoom;
+                st.diagram_pan_x = ((width - lw * fit_zoom) * 0.5).max(20.0);
+                st.diagram_pan_y = ((height - lh * fit_zoom) * 0.5).max(20.0);
+                st.diagram_needs_fit = false;
             }
         }
     }

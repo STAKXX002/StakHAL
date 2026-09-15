@@ -268,6 +268,7 @@ row, listboxrow, actionrow {
         st.selected_state_machine = idx;
         st.selected_state_node = None;
         st.state_diagram_layout = None; // trigger layout recompute for selected machine
+        st.diagram_needs_fit = true;
         if let Some(ref p) = st.loaded_project {
             if idx < p.state_machines.len() {
                 let sm = &p.state_machines[idx];
@@ -473,6 +474,7 @@ fn do_load_project(state: &Rc<RefCell<AppState>>, widgets: &Rc<AppWidgets>) {
                     }
                     st.state_node_positions = pos;
                     st.state_diagram_layout = Some(layout);
+                    st.diagram_needs_fit = true;
                     st.loaded_project = Some(project);
                 }
 

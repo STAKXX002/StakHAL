@@ -155,9 +155,7 @@ pub fn setup_state_diagram_drawing_and_gestures(
     let area_fit = drawing_area.clone();
     btn_fit_to_view.connect_clicked(move |_| {
         let mut st = state_fit.borrow_mut();
-        st.diagram_pan_x = 40.0;
-        st.diagram_pan_y = 40.0;
-        st.diagram_zoom = 0.9;
+        st.diagram_needs_fit = true;
         area_fit.queue_draw();
     });
 }
