@@ -423,28 +423,25 @@ row, listboxrow, actionrow {
             }
 
             if let Some((success, code)) = finished {
-                let mut st = state_timer.borrow_mut();
-                st.build_in_progress = false;
-                widgets_timer.btn_build_flash.set_sensitive(st.has_makefile);
-
                 if success {
                     append_log_text(&widgets_timer.build_log_view, "\n[BUILD SUCCESS] `make` finished successfully.");
                     let res = toolchain::makefile::resolve_build_artifact(&dir_timer);
                     match res {
                         toolchain::makefile::ArtifactResolution::Exact(bin_path) => {
                             append_log_text(&widgets_timer.build_log_view, &format!("[ARTIFACT] Resolved output binary: {}", bin_path.display()));
-                            widgets_timer.lbl_build_status.set_text("BUILD OK");
+                            widgets_timer.lbl_build_status.set_text("PROBING...");
+                            run_probe_detection_and_flash(bin_path, &state_timer, &widgets_timer, dir_timer.clone());
                         }
                         toolchain::makefile::ArtifactResolution::MultipleCandidates(candidates) => {
                             append_log_text(&widgets_timer.build_log_view, &format!("[ARTIFACT] Found {} candidate .bin files in build directory:", candidates.len()));
                             for c in &candidates {
                                 append_log_text(&widgets_timer.build_log_view, &format!("  - {}", c.display()));
                             }
-                            widgets_timer.lbl_build_status.set_text("AMBIGUOUS");
+                            widgets_timer.lbl_build_status.set_text("SELECT ARTIFACT");
 
                             let dialog = adw::MessageDialog::builder()
                                 .heading("Multiple Build Artifacts Found")
-                                .body("Please select which binary to target:")
+                                .body("Please select which binary to flash:")
                                 .transient_for(&widgets_timer.window)
                                 .build();
                             for (idx, c) in candidates.iter().enumerate() {
@@ -452,30 +449,43 @@ row, listboxrow, actionrow {
                                 dialog.add_response(&idx.to_string(), &name);
                             }
                             dialog.add_response("cancel", "Cancel");
-                            let log_view_dlg = widgets_timer.build_log_view.clone();
-                            let status_dlg = widgets_timer.lbl_build_status.clone();
+                            let state_dlg = Rc::clone(&state_timer);
+                            let widgets_dlg = Rc::clone(&widgets_timer);
                             let cand_clone = candidates.clone();
+                            let dir_clone = dir_timer.clone();
                             dialog.connect_response(None, move |_, resp| {
                                 if resp != "cancel" {
                                     if let Ok(idx) = resp.parse::<usize>() {
                                         if let Some(chosen) = cand_clone.get(idx) {
-                                            append_log_text(&log_view_dlg, &format!("[ARTIFACT] Selected candidate: {}", chosen.display()));
-                                            status_dlg.set_text("BUILD OK");
+                                            append_log_text(&widgets_dlg.build_log_view, &format!("[ARTIFACT] Selected candidate: {}", chosen.display()));
+                                            run_probe_detection_and_flash(chosen.clone(), &state_dlg, &widgets_dlg, dir_clone.clone());
+                                            return;
                                         }
                                     }
                                 }
+                                append_log_text(&widgets_dlg.build_log_view, "[ARTIFACT] Operation cancelled by user.");
+                                widgets_dlg.lbl_build_status.set_text("CANCELLED");
+                                let mut st = state_dlg.borrow_mut();
+                                st.build_in_progress = false;
+                                widgets_dlg.btn_build_flash.set_sensitive(st.has_makefile);
                             });
                             dialog.present();
                         }
                         toolchain::makefile::ArtifactResolution::NoneFound(expected) => {
                             append_log_text(&widgets_timer.build_log_view, &format!("[ERROR] Build succeeded but target .bin was not found. Expected: {}", expected.display()));
                             widgets_timer.lbl_build_status.set_text("ARTIFACT MISSING");
+                            let mut st = state_timer.borrow_mut();
+                            st.build_in_progress = false;
+                            widgets_timer.btn_build_flash.set_sensitive(st.has_makefile);
                         }
                     }
                 } else {
                     let code_str = code.map(|c| c.to_string()).unwrap_or_else(|| "unknown".to_string());
                     append_log_text(&widgets_timer.build_log_view, &format!("\n[BUILD FAILED] make exited with error code {}. Flashing halted.", code_str));
                     widgets_timer.lbl_build_status.set_text("BUILD FAILED");
+                    let mut st = state_timer.borrow_mut();
+                    st.build_in_progress = false;
+                    widgets_timer.btn_build_flash.set_sensitive(st.has_makefile);
                 }
 
                 return glib::ControlFlow::Break;
@@ -705,6 +715,149 @@ fn do_load_project(state: &Rc<RefCell<AppState>>, widgets: &Rc<AppWidgets>) {
             widgets.toast_overlay.add_toast(adw::Toast::new(&format!("✗ Load Error: {}", err)));
         }
     }
+}
+
+fn run_probe_detection_and_flash(
+    artifact: PathBuf,
+    state: &Rc<RefCell<AppState>>,
+    widgets: &Rc<AppWidgets>,
+    project_dir: PathBuf,
+) {
+    append_log_text(&widgets.build_log_view, "\n============================================================");
+    append_log_text(&widgets.build_log_view, "[PROBE] Scanning for connected ST-Link programmers (`st-info --probe`)...");
+    append_log_text(&widgets.build_log_view, "============================================================");
+
+    match toolchain::probe::detect_stlink_probes() {
+        Ok(probes) => {
+            if probes.len() == 1 {
+                let p = &probes[0];
+                append_log_text(&widgets.build_log_view, &format!("[PROBE] Detected single target: {}", p.display_label()));
+                run_flash_stage(artifact, Some(p.serial.clone()), state, widgets, project_dir);
+            } else {
+                append_log_text(&widgets.build_log_view, &format!("[PROBE] Detected {} ST-Link programmers:", probes.len()));
+                for p in &probes {
+                    append_log_text(&widgets.build_log_view, &format!("  - {}", p.display_label()));
+                }
+                widgets.lbl_build_status.set_text("SELECT PROBE");
+
+                let dialog = adw::MessageDialog::builder()
+                    .heading("Multiple ST-Link Probes Detected")
+                    .body("Please select which ST-Link probe to flash:")
+                    .transient_for(&widgets.window)
+                    .build();
+
+                for (idx, p) in probes.iter().enumerate() {
+                    dialog.add_response(&idx.to_string(), &p.display_label());
+                }
+                dialog.add_response("cancel", "Cancel");
+
+                let state_dlg = Rc::clone(state);
+                let widgets_dlg = Rc::clone(widgets);
+                let probes_clone = probes.clone();
+                let artifact_clone = artifact.clone();
+                let dir_clone = project_dir.clone();
+
+                dialog.connect_response(None, move |_, resp| {
+                    if resp != "cancel" {
+                        if let Ok(idx) = resp.parse::<usize>() {
+                            if let Some(chosen_probe) = probes_clone.get(idx) {
+                                append_log_text(&widgets_dlg.build_log_view, &format!("[PROBE] Selected target: {}", chosen_probe.display_label()));
+                                run_flash_stage(artifact_clone.clone(), Some(chosen_probe.serial.clone()), &state_dlg, &widgets_dlg, dir_clone.clone());
+                                return;
+                            }
+                        }
+                    }
+                    append_log_text(&widgets_dlg.build_log_view, "[PROBE] Flashing cancelled by user.");
+                    widgets_dlg.lbl_build_status.set_text("CANCELLED");
+                    let mut st = state_dlg.borrow_mut();
+                    st.build_in_progress = false;
+                    widgets_dlg.btn_build_flash.set_sensitive(st.has_makefile);
+                });
+                dialog.present();
+            }
+        }
+        Err(err) => {
+            append_log_text(&widgets.build_log_view, &format!("[ERROR] {}", err));
+            widgets.lbl_build_status.set_text(match err {
+                toolchain::probe::ProbeError::ToolNotFound => "ST-INFO MISSING",
+                toolchain::probe::ProbeError::ZeroProbesFound => "NO PROBE",
+                toolchain::probe::ProbeError::ExecutionFailed(_) => "PROBE ERROR",
+            });
+            widgets.toast_overlay.add_toast(adw::Toast::new(&format!("✗ {}", err)));
+            let mut st = state.borrow_mut();
+            st.build_in_progress = false;
+            widgets.btn_build_flash.set_sensitive(st.has_makefile);
+        }
+    }
+}
+
+fn run_flash_stage(
+    artifact: PathBuf,
+    probe_serial: Option<String>,
+    state: &Rc<RefCell<AppState>>,
+    widgets: &Rc<AppWidgets>,
+    project_dir: PathBuf,
+) {
+    if !toolchain::runner::is_executable_on_path("st-flash") {
+        append_log_text(&widgets.build_log_view, "[ERROR] `st-flash` executable not found on PATH. Please install stlink-tools (e.g. `sudo apt install stlink-tools`).");
+        widgets.lbl_build_status.set_text("ST-FLASH MISSING");
+        widgets.toast_overlay.add_toast(adw::Toast::new("✗ `st-flash` not found on PATH"));
+        let mut st = state.borrow_mut();
+        st.build_in_progress = false;
+        widgets.btn_build_flash.set_sensitive(st.has_makefile);
+        return;
+    }
+
+    let (cmd, args) = toolchain::flasher::build_flash_command(probe_serial.as_deref(), &artifact);
+
+    widgets.lbl_build_status.set_text("FLASHING...");
+    append_log_text(&widgets.build_log_view, "\n============================================================");
+    append_log_text(&widgets.build_log_view, &format!("[FLASH] Running `{} {}`", cmd, args.join(" ")));
+    append_log_text(&widgets.build_log_view, "============================================================");
+
+    let rx = toolchain::runner::spawn_streaming_process(cmd, args, project_dir);
+
+    let state_timer = Rc::clone(state);
+    let widgets_timer = Rc::clone(widgets);
+
+    glib::timeout_add_local(std::time::Duration::from_millis(25), move || {
+        let mut finished = None;
+        while let Ok(evt) = rx.try_recv() {
+            match evt {
+                toolchain::runner::ProcessEvent::Line(line) => {
+                    append_log_text(&widgets_timer.build_log_view, &line);
+                }
+                toolchain::runner::ProcessEvent::Finished(success, code) => {
+                    finished = Some((success, code));
+                }
+                toolchain::runner::ProcessEvent::FailedToStart(err) => {
+                    append_log_text(&widgets_timer.build_log_view, &format!("[ERROR] {}", err));
+                }
+                _ => {}
+            }
+        }
+
+        if let Some((success, code)) = finished {
+            let mut st = state_timer.borrow_mut();
+            st.build_in_progress = false;
+            widgets_timer.btn_build_flash.set_sensitive(st.has_makefile);
+
+            if success {
+                append_log_text(&widgets_timer.build_log_view, "\n[FLASH SUCCESS] Firmware written to 0x08000000 and target MCU reset successfully!");
+                widgets_timer.lbl_build_status.set_text("SUCCESS");
+                widgets_timer.toast_overlay.add_toast(adw::Toast::new("✓ Build & Flash Succeeded!"));
+            } else {
+                let code_str = code.map(|c| c.to_string()).unwrap_or_else(|| "unknown".to_string());
+                append_log_text(&widgets_timer.build_log_view, &format!("\n[FLASH FAILED] st-flash exited with code {}.", code_str));
+                widgets_timer.lbl_build_status.set_text("FLASH FAILED");
+                widgets_timer.toast_overlay.add_toast(adw::Toast::new("✗ Flash failed (see console output)"));
+            }
+
+            return glib::ControlFlow::Break;
+        }
+
+        glib::ControlFlow::Continue
+    });
 }
 
 #[cfg(test)]
