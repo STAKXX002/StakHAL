@@ -10,8 +10,9 @@ pub use hal_rules::{
 };
 pub use layout::{compute_graph_bounds, compute_graph_layout, ChainHeaderLayout};
 pub use state_machine::{
-    discover_state_machines_in_file, EnumDefinition, StateMachineCandidate, TrackedVariable,
-    VariableScope,
+    discover_state_machines_in_file, extract_state_machine_transitions, AmbiguousTransition,
+    AppStateMachine, AppTransition, EnumDefinition, StateMachineCandidate, TrackedVariable,
+    TransitionType, VariableScope,
 };
 pub use user_call_graph::{build_user_call_graph, UserCallEdge, UserFunction};
 
