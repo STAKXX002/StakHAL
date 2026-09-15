@@ -1,11 +1,6 @@
 /target
-stakhal-ui/*.py
 artifacts/
-venv/
-*.venv
-__pycache__/
-*.egg-info
-AA_NS_STM_PORT/
+*.log
 
 
 
