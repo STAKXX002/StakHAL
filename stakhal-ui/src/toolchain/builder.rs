@@ -183,6 +183,11 @@ pub fn resolve_cmake_build_dir(project_dir: &Path) -> PathBuf {
         return project_dir.join("build");
     }
 
+    // If CMakePresets.json exists, standard STM32CubeMX presets place binary in build/Debug
+    if project_dir.join("CMakePresets.json").is_file() {
+        return project_dir.join("build").join("Debug");
+    }
+
     project_dir.join("build")
 }
 
@@ -201,6 +206,27 @@ pub fn get_build_command(
         }
         BuildSystem::CMake { build_dir, .. } => {
             if is_executable_on_path("cmake") {
+                // If the build directory has not been configured yet (e.g. freshly cloned repo),
+                // automatically configure it first using preset or -B.
+                if project_dir.join("CMakeLists.txt").is_file()
+                    && !build_dir.join("build.ninja").is_file()
+                    && !build_dir.join("CMakeCache.txt").is_file()
+                {
+                    if project_dir.join("CMakePresets.json").is_file() {
+                        let _ = Command::new("cmake")
+                            .arg("--preset")
+                            .arg("Debug")
+                            .current_dir(project_dir)
+                            .output();
+                    } else {
+                        let _ = Command::new("cmake")
+                            .arg("-B")
+                            .arg(build_dir)
+                            .current_dir(project_dir)
+                            .output();
+                    }
+                }
+
                 let rel_or_abs = if let Ok(rel) = build_dir.strip_prefix(project_dir) {
                     rel.to_path_buf()
                 } else {
@@ -483,6 +509,33 @@ project(DockingFirmware C ASM)
                 }
                 other => panic!("Expected CMake build system for AA_NS_STM_V1, got {:?}", other),
             }
+        }
+    }
+
+    #[test]
+    fn test_detect_and_build_aa_ns_stm_port_if_present() {
+        let repo_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../AA_NS_STM_PORT");
+        if repo_path.is_dir() {
+            let detected = detect_build_system(&repo_path);
+            assert!(detected.is_some(), "AA_NS_STM_PORT should be detected as a CMake project");
+            let build_sys = detected.unwrap();
+            match &build_sys {
+                BuildSystem::CMake { target, build_dir, .. } => {
+                    assert_eq!(target.as_deref(), Some("AA_NS_STM_V1"));
+                    assert!(build_dir.ends_with("build/Debug") || build_dir.ends_with("build"));
+                }
+                other => panic!("Expected CMake build system for AA_NS_STM_PORT, got {:?}", other),
+            }
+
+            let cmd_res = get_build_command(&build_sys, &repo_path);
+            assert!(cmd_res.is_ok(), "get_build_command should succeed: {:?}", cmd_res.err());
+            let (cmd, args, exec_dir) = cmd_res.unwrap();
+            assert_eq!(cmd, "cmake");
+            assert_eq!(args, vec!["--build", "build/Debug"]);
+            assert_eq!(exec_dir, repo_path);
+
+            // Verify that build/Debug was configured and build.ninja was generated
+            assert!(repo_path.join("build/Debug/build.ninja").is_file());
         }
     }
 }
