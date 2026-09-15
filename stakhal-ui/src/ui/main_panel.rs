@@ -17,10 +17,8 @@ pub struct MainPanelWidgets {
     pub lbl_mcu_name: gtk4::Label,
     pub lbl_periph_header: gtk4::Label,
     pub lbl_region_header: gtk4::Label,
-    pub lbl_pv_header: gtk4::Label,
     pub list_peripherals: gtk4::ListBox,
     pub list_user_regions: gtk4::ListBox,
-    pub list_pv_variables: gtk4::ListBox,
 }
 
 pub fn build_main_panel() -> MainPanelWidgets {
@@ -147,12 +145,6 @@ pub fn build_main_panel() -> MainPanelWidgets {
         .css_classes(vec!["title-4".to_string()])
         .build();
 
-    let lbl_pv_header = gtk4::Label::builder()
-        .label("[ ▸ PV VARIABLES ]")
-        .halign(gtk4::Align::Start)
-        .css_classes(vec!["title-4".to_string()])
-        .build();
-
     let list_peripherals = gtk4::ListBox::builder()
         .selection_mode(gtk4::SelectionMode::None)
         .build();
@@ -161,13 +153,8 @@ pub fn build_main_panel() -> MainPanelWidgets {
         .selection_mode(gtk4::SelectionMode::None)
         .build();
 
-    let list_pv_variables = gtk4::ListBox::builder()
-        .selection_mode(gtk4::SelectionMode::None)
-        .build();
-
     let col_peripherals = create_column_box(&lbl_periph_header, &list_peripherals);
     let col_regions = create_column_box(&lbl_region_header, &list_user_regions);
-    let col_pv = create_column_box(&lbl_pv_header, &list_pv_variables);
 
     let columns_box = gtk4::Box::builder()
         .orientation(gtk4::Orientation::Horizontal)
@@ -180,7 +167,6 @@ pub fn build_main_panel() -> MainPanelWidgets {
         .build();
     columns_box.append(&col_peripherals);
     columns_box.append(&col_regions);
-    columns_box.append(&col_pv);
 
     let overview_box = gtk4::Box::builder()
         .orientation(gtk4::Orientation::Vertical)
@@ -203,10 +189,8 @@ pub fn build_main_panel() -> MainPanelWidgets {
         lbl_mcu_name,
         lbl_periph_header,
         lbl_region_header,
-        lbl_pv_header,
         list_peripherals,
         list_user_regions,
-        list_pv_variables,
     }
 }
 
@@ -275,46 +259,6 @@ pub fn create_region_row(
         row.add_suffix(&badge);
     }
 
-    row
-}
-
-pub fn create_pv_row(
-    name: &str,
-    type_str: &str,
-    initial_value: Option<&str>,
-    line: usize,
-    is_unreferenced: bool,
-) -> adw::ActionRow {
-    let subtitle = match initial_value {
-        Some(val) => format!("{} = {}", type_str, val),
-        None => type_str.to_string(),
-    };
-
-    let row = adw::ActionRow::builder()
-        .title(name)
-        .subtitle(&subtitle)
-        .activatable(true)
-        .css_classes(vec!["clickable-row".to_string()])
-        .build();
-
-    row.set_cursor_from_name(Some("pointer"));
-
-    if is_unreferenced {
-        let badge = gtk4::Label::builder()
-            .label("[unreferenced]")
-            .valign(gtk4::Align::Center)
-            .css_classes(vec!["warning".to_string(), "caption".to_string()])
-            .build();
-        row.add_suffix(&badge);
-    }
-
-    let lbl_line = gtk4::Label::builder()
-        .label(&format!("Line {}", line))
-        .valign(gtk4::Align::Center)
-        .css_classes(vec!["dim-label".to_string(), "caption".to_string()])
-        .build();
-
-    row.add_suffix(&lbl_line);
     row
 }
 

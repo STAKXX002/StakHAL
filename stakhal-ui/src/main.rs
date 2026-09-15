@@ -4,7 +4,6 @@ use std::rc::Rc;
 use gtk4::{gdk, gio, glib};
 use gtk4::prelude::*;
 use libadwaita as adw;
-use libadwaita::prelude::*;
 
 use stakhal_core::graph::builder::EdgeType;
 use stakhal_core::ioc::discovery::discover_project_files;
@@ -25,11 +24,7 @@ use ui::nucleo_pinout::{
 };
 
 use ui::main_panel::{
-    build_main_panel, clear_list_box, create_peripheral_row, create_pv_row, create_region_row, MainPanelWidgets,
-};
-use ui::source_panel::{
-    build_source_panel, cancel_inline_declaration_edit, enter_inline_edit_mode, open_pv_source_view,
-    save_inline_declaration_edit, toggle_all_generated_runs, SourcePanelWidgets,
+    build_main_panel, clear_list_box, create_peripheral_row, create_region_row, MainPanelWidgets,
 };
 
 
@@ -158,34 +153,9 @@ row, listboxrow, actionrow {
         lbl_mcu_name,
         lbl_periph_header,
         lbl_region_header,
-        lbl_pv_header,
         list_peripherals,
         list_user_regions,
-        list_pv_variables,
     } = build_main_panel();
-
-    let SourcePanelWidgets {
-        source_panel_box,
-        btn_source_back,
-        lbl_active_pv,
-        btn_toggle_generated,
-        source_view,
-        source_buffer,
-        tag_declaration,
-        tag_usage,
-        tag_generated,
-        tag_readonly,
-        tag_invisible,
-        inline_edit_bar,
-        lbl_inline_error,
-        btn_inline_save,
-        btn_inline_cancel,
-    } = build_source_panel();
-
-    let context_menu_popover = gtk4::Popover::builder()
-        .autohide(true)
-        .build();
-    context_menu_popover.set_parent(&source_view);
 
     let CallGraphPanelWidgets {
         graph_panel_box,
@@ -208,7 +178,6 @@ row, listboxrow, actionrow {
         .build();
 
     stack.add_named(&overview_box, Some("overview"));
-    stack.add_named(&source_panel_box, Some("source_view"));
     stack.add_named(&graph_panel_box, Some("call_graph"));
     stack.add_named(&pinout_panel_box, Some("nucleo_pinout"));
     stack.set_visible_child_name("overview");
@@ -236,7 +205,7 @@ row, listboxrow, actionrow {
     let state = Rc::new(RefCell::new(AppState::default()));
     let widgets = Rc::new(AppWidgets {
         window: window.clone(),
-        stack: stack.clone(),
+        _stack: stack.clone(),
         toast_overlay,
         lbl_discovered_dir,
         lbl_ioc_path,
@@ -249,38 +218,19 @@ row, listboxrow, actionrow {
         lbl_mcu_name,
         lbl_periph_header,
         lbl_region_header,
-        lbl_pv_header,
         list_peripherals,
         list_user_regions,
-        list_pv_variables,
-        source_view: source_view.clone(),
-        source_buffer: source_buffer.clone(),
-        lbl_active_pv,
-        btn_toggle_generated: btn_toggle_generated.clone(),
-        tag_declaration,
-        tag_usage,
-        tag_generated,
-        tag_readonly,
-        tag_invisible,
-        inline_edit_bar,
-        lbl_inline_error,
         graph_drawing_area,
         btn_fit_to_view: btn_fit_to_view.clone(),
         graph_scrolled: graph_scrolled.clone(),
         pinout_drawing_area,
         _pinout_scrolled: pinout_scrolled,
-        context_menu_popover,
     });
 
     setup_call_graph_drawing_and_gestures(&state, &widgets);
     setup_nucleo_pinout_drawing_and_gestures(&state, &widgets);
 
     // Navigation callbacks
-    let stack_back1 = stack.clone();
-    btn_source_back.connect_clicked(move |_| {
-        stack_back1.set_visible_child_full("overview", gtk4::StackTransitionType::SlideRight);
-    });
-
     let stack_back2 = stack.clone();
     btn_graph_back.connect_clicked(move |_| {
         stack_back2.set_visible_child_full("overview", gtk4::StackTransitionType::SlideRight);
@@ -348,176 +298,6 @@ row, listboxrow, actionrow {
     });
 
 
-    // Toggle generated code callback
-    let state_toggle = Rc::clone(&state);
-    let widgets_toggle = Rc::clone(&widgets);
-    btn_toggle_generated.connect_clicked(move |_| {
-        toggle_all_generated_runs(&state_toggle, &widgets_toggle);
-    });
-
-    // Inline edit callbacks
-    let state_save_btn = Rc::clone(&state);
-    let widgets_save_btn = Rc::clone(&widgets);
-    btn_inline_save.connect_clicked(move |_| {
-        save_inline_declaration_edit(&state_save_btn, &widgets_save_btn, do_load_project);
-    });
-
-    let state_cancel_btn = Rc::clone(&state);
-    let widgets_cancel_btn = Rc::clone(&widgets);
-    btn_inline_cancel.connect_clicked(move |_| {
-        cancel_inline_declaration_edit(&state_cancel_btn, &widgets_cancel_btn);
-    });
-
-    let key_controller = gtk4::EventControllerKey::new();
-    let state_key = Rc::clone(&state);
-    let widgets_key = Rc::clone(&widgets);
-    key_controller.connect_key_pressed(move |_, key, _code, modifier| {
-        let is_editing = state_key.borrow().is_inline_editing;
-        if !is_editing {
-            return glib::Propagation::Proceed;
-        }
-
-        let is_ctrl = modifier.contains(gdk::ModifierType::CONTROL_MASK);
-
-        if key == gdk::Key::Return || key == gdk::Key::KP_Enter || (is_ctrl && (key == gdk::Key::s || key == gdk::Key::S)) {
-            save_inline_declaration_edit(&state_key, &widgets_key, do_load_project);
-            glib::Propagation::Stop
-        } else if key == gdk::Key::Escape {
-            cancel_inline_declaration_edit(&state_key, &widgets_key);
-            glib::Propagation::Stop
-        } else {
-            glib::Propagation::Proceed
-        }
-    });
-
-    widgets.source_view.add_controller(key_controller);
-
-    let gesture = gtk4::GestureClick::new();
-    let state_source_click = Rc::clone(&state);
-    let widgets_source_click = Rc::clone(&widgets);
-    gesture.connect_pressed(move |_g, _n_press, x, y| {
-        let widgets = &widgets_source_click;
-        let st = state_source_click.borrow();
-        let decl = match &st.active_decl {
-            Some(d) => d.clone(),
-            None => return,
-        };
-
-        let (buffer_x, buffer_y) = widgets.source_view.window_to_buffer_coords(
-            gtk4::TextWindowType::Text,
-            x as i32,
-            y as i32,
-        );
-
-        if let Some(iter) = widgets.source_view.iter_at_location(buffer_x, buffer_y) {
-            let clicked_line_1based = (iter.line() + 1) as usize;
-
-            if clicked_line_1based == decl.line {
-                if !st.is_inline_editing {
-                    drop(st);
-                    enter_inline_edit_mode(&state_source_click, &widgets_source_click);
-                }
-            } else if st.active_usage_lines.contains(&clicked_line_1based) {
-                let mut scroll_iter = iter;
-                widgets.source_view.scroll_to_iter(&mut scroll_iter, 0.1, true, 0.0, 0.5);
-            }
-        }
-    });
-    widgets.source_view.add_controller(gesture);
-
-    let right_click_gesture = gtk4::GestureClick::new();
-    right_click_gesture.set_button(3);
-    let state_right_click = Rc::clone(&state);
-    let widgets_right_click = Rc::clone(&widgets);
-
-    right_click_gesture.connect_pressed(move |g, _n_press, x, y| {
-        let widgets = &widgets_right_click;
-        let is_open = widgets.context_menu_popover.is_visible();
-        widgets.context_menu_popover.popdown();
-        g.set_state(gtk4::EventSequenceState::Claimed);
-        let st = state_right_click.borrow();
-
-        let (buffer_x, buffer_y) = widgets.source_view.window_to_buffer_coords(
-            gtk4::TextWindowType::Text,
-            x as i32,
-            y as i32,
-        );
-
-        let is_decl_line = if let Some(iter) = widgets.source_view.iter_at_location(buffer_x, buffer_y) {
-            let clicked_line_1based = (iter.line() + 1) as usize;
-            if let Some(ref decl) = st.active_decl {
-                clicked_line_1based == decl.line
-            } else {
-                false
-            }
-        } else {
-            false
-        };
-        drop(st);
-
-        let widgets_show = Rc::clone(widgets);
-        let state_edit_show = Rc::clone(&state_right_click);
-        let show_menu = move || {
-            widgets_show.context_menu_popover.set_child(None::<&gtk4::Widget>);
-
-            let menu_box = gtk4::Box::builder()
-                .orientation(gtk4::Orientation::Vertical)
-                .spacing(4)
-                .margin_top(4)
-                .margin_bottom(4)
-                .margin_start(4)
-                .margin_end(4)
-                .build();
-
-            let btn_copy = gtk4::Button::builder()
-                .label("Copy")
-                .icon_name("edit-copy-symbolic")
-                .halign(gtk4::Align::Fill)
-                .css_classes(vec!["stakhal-btn".to_string(), "flat".to_string()])
-                .build();
-            btn_copy.set_cursor_from_name(Some("pointer"));
-
-            let popover_clone = widgets_show.context_menu_popover.clone();
-            let widgets_copy = Rc::clone(&widgets_show);
-            btn_copy.connect_clicked(move |_| {
-                let clipboard = widgets_copy.source_view.display().clipboard();
-                widgets_copy.source_buffer.copy_clipboard(&clipboard);
-                popover_clone.popdown();
-            });
-            menu_box.append(&btn_copy);
-
-            if is_decl_line {
-                let btn_edit = gtk4::Button::builder()
-                    .label("Edit Declaration")
-                    .icon_name("document-edit-symbolic")
-                    .halign(gtk4::Align::Fill)
-                    .css_classes(vec!["stakhal-btn".to_string(), "flat".to_string()])
-                    .build();
-                btn_edit.set_cursor_from_name(Some("pointer"));
-
-                let popover_edit_clone = widgets_show.context_menu_popover.clone();
-                let state_edit = Rc::clone(&state_edit_show);
-                let widgets_edit = Rc::clone(&widgets_show);
-                btn_edit.connect_clicked(move |_| {
-                    popover_edit_clone.popdown();
-                    enter_inline_edit_mode(&state_edit, &widgets_edit);
-                });
-                menu_box.append(&btn_edit);
-            }
-
-            widgets_show.context_menu_popover.set_child(Some(&menu_box));
-            let rect = gdk::Rectangle::new(x as i32, y as i32, 1, 1);
-            widgets_show.context_menu_popover.set_pointing_to(Some(&rect));
-            widgets_show.context_menu_popover.popup();
-        };
-
-        if is_open {
-            glib::idle_add_local_once(show_menu);
-        } else {
-            show_menu();
-        }
-    });
-    widgets.source_view.add_controller(right_click_gesture);
 
     // Connect Browse Button
     let state_browse = Rc::clone(&state);
@@ -633,11 +413,8 @@ fn do_load_project(state: &Rc<RefCell<AppState>>, widgets: &Rc<AppWidgets>) {
             }
             widgets.lbl_region_header.set_text(&format!("[ ▸ USER REGIONS ({}) ]", total_regions));
 
-            widgets.lbl_pv_header.set_text(&format!("[ ▸ PV VARIABLES ({}) ]", project.pv_declarations.len()));
-
             clear_list_box(&widgets.list_peripherals);
             clear_list_box(&widgets.list_user_regions);
-            clear_list_box(&widgets.list_pv_variables);
 
             for p in &project.peripherals {
                 let row = create_peripheral_row(&p.name, p.mode.as_deref(), p.parameters.len());
@@ -666,26 +443,6 @@ fn do_load_project(state: &Rc<RefCell<AppState>>, widgets: &Rc<AppWidgets>) {
                     true,
                 );
                 widgets.list_user_regions.append(&row);
-            }
-
-            let pv_targets: Vec<(&str, (usize, usize))> = project
-                .pv_declarations
-                .iter()
-                .map(|pv| (pv.name.as_str(), (0, 0)))
-                .collect();
-            let batch_usages = stakhal_core::source::usage_finder::find_variable_usages_batch(&main_c_path, &pv_targets)
-                .unwrap_or_else(|_| vec![Vec::new(); project.pv_declarations.len()]);
-
-            for (idx, (pv, usages)) in project.pv_declarations.iter().zip(batch_usages.into_iter()).enumerate() {
-                let is_unreferenced = usages.is_empty();
-                let row = create_pv_row(&pv.name, &pv.type_str, pv.initial_value.as_deref(), pv.line, is_unreferenced);
-
-                let state_clone = Rc::clone(state);
-                let widgets_clone = Rc::clone(widgets);
-                row.connect_activated(move |_| {
-                    open_pv_source_view(idx, &state_clone, &widgets_clone);
-                });
-                widgets.list_pv_variables.append(&row);
             }
 
             let is_f446 = project.meta.mcu_name.to_uppercase().contains("F446");
