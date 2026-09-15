@@ -85,6 +85,41 @@ pub struct AppStateMachine {
     pub ambiguous_transitions: Vec<AmbiguousTransition>,
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct StateMachineLayout {
+    pub nodes: HashMap<String, NodeLayout>,
+    pub edges: Vec<EdgeLayout>,
+    pub width: f64,
+    pub height: f64,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct NodeLayout {
+    pub id: String,
+    pub label: String,
+    pub x: f64,
+    pub y: f64,
+    pub width: f64,
+    pub height: f64,
+    pub is_fault: bool,
+    pub is_initial: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct EdgeLayout {
+    pub from: String,
+    pub to: String,
+    pub guard: String,
+    pub display_guard: String,
+    pub is_fault: bool,
+    pub start: (f64, f64),
+    pub end: (f64, f64),
+    pub control1: (f64, f64),
+    pub control2: (f64, f64),
+    pub label_pos: (f64, f64),
+    pub transition_type: TransitionType,
+}
+
 /// Discover all enum definitions and variables declared with that enum type in a C file.
 pub fn discover_state_machines_in_file(path: &Path) -> Result<Vec<StateMachineCandidate>, ScanError> {
     if !path.exists() {
@@ -205,6 +240,204 @@ pub fn extract_state_machine_transitions(
         transitions,
         ambiguous_transitions,
     })
+}
+
+/// Compute layered node-link graph layout for a state machine.
+pub fn compute_state_machine_layout(sm: &AppStateMachine) -> StateMachineLayout {
+    let node_width = 160.0;
+    let node_height = 48.0;
+    let h_gap = 100.0;
+    let v_gap = 48.0;
+
+    let initial_name = sm.var.initial_value.as_deref().unwrap_or("IDLE");
+
+    // Separate fault nodes and normal nodes
+    let mut normal_nodes = Vec::new();
+    let mut fault_nodes = Vec::new();
+
+    for st in &sm.states {
+        if is_fault_state(st) {
+            fault_nodes.push(st.clone());
+        } else {
+            normal_nodes.push(st.clone());
+        }
+    }
+
+    // Build forward adjacency list for normal transitions
+    let mut adj: HashMap<String, Vec<String>> = HashMap::new();
+    for t in &sm.transitions {
+        if t.from != "(any state)" && !is_fault_state(&t.from) && !is_fault_state(&t.to) {
+            adj.entry(t.from.clone()).or_default().push(t.to.clone());
+        }
+    }
+
+    // BFS from initial_name
+    let mut dist: HashMap<String, usize> = HashMap::new();
+    let mut queue = std::collections::VecDeque::new();
+    if normal_nodes.contains(&initial_name.to_string()) {
+        dist.insert(initial_name.to_string(), 0);
+        queue.push_back(initial_name.to_string());
+    }
+
+    while let Some(curr) = queue.pop_front() {
+        let d = dist[&curr];
+        if let Some(neighbors) = adj.get(&curr) {
+            for n in neighbors {
+                if !dist.contains_key(n) {
+                    dist.insert(n.clone(), d + 1);
+                    queue.push_back(n.clone());
+                }
+            }
+        }
+    }
+
+    // Group normal nodes into layers
+    let max_dist = dist.values().copied().max().unwrap_or(0);
+    let mut layers: Vec<Vec<String>> = vec![Vec::new(); max_dist + 2];
+
+    for n in &normal_nodes {
+        if let Some(&d) = dist.get(n) {
+            layers[d].push(n.clone());
+        } else {
+            // Unreached node placed in fallback layer
+            layers[max_dist + 1].push(n.clone());
+        }
+    }
+
+    // Filter out empty layers
+    let active_layers: Vec<Vec<String>> = layers.into_iter().filter(|l| !l.is_empty()).collect();
+
+    let mut nodes_layout = HashMap::new();
+    let left_margin = 60.0;
+    let top_margin = 70.0;
+
+    let mut max_x = left_margin;
+    let mut max_y = top_margin;
+
+    for (layer_idx, layer_nodes) in active_layers.iter().enumerate() {
+        let x = left_margin + layer_idx as f64 * (node_width + h_gap);
+        for (row_idx, node_id) in layer_nodes.iter().enumerate() {
+            let y = top_margin + row_idx as f64 * (node_height + v_gap);
+            let is_initial = node_id == initial_name;
+
+            nodes_layout.insert(
+                node_id.clone(),
+                NodeLayout {
+                    id: node_id.clone(),
+                    label: node_id.clone(),
+                    x,
+                    y,
+                    width: node_width,
+                    height: node_height,
+                    is_fault: false,
+                    is_initial,
+                },
+            );
+
+            if x + node_width > max_x {
+                max_x = x + node_width;
+            }
+            if y + node_height > max_y {
+                max_y = y + node_height;
+            }
+        }
+    }
+
+    // Position fault nodes in bottom area
+    let fault_y = max_y + 80.0;
+    let fault_start_x = left_margin + (max_x - left_margin - fault_nodes.len() as f64 * (node_width + 40.0)).max(0.0) * 0.5;
+
+    for (idx, fault_id) in fault_nodes.iter().enumerate() {
+        let x = fault_start_x + idx as f64 * (node_width + 40.0);
+        nodes_layout.insert(
+            fault_id.clone(),
+            NodeLayout {
+                id: fault_id.clone(),
+                label: fault_id.clone(),
+                x,
+                y: fault_y,
+                width: node_width,
+                height: node_height,
+                is_fault: true,
+                is_initial: false,
+            },
+        );
+        if x + node_width > max_x {
+            max_x = x + node_width;
+        }
+        if fault_y + node_height > max_y {
+            max_y = fault_y + node_height;
+        }
+    }
+
+    // Compute edge layouts
+    let mut edges_layout = Vec::new();
+    for t in &sm.transitions {
+        let from_layout = nodes_layout.get(&t.from);
+        let to_layout = nodes_layout.get(&t.to);
+
+        if let (Some(from), Some(to)) = (from_layout, to_layout) {
+            let display_guard = t.display_guard(35);
+            let (start, end, control1, control2, label_pos) = if to.is_fault {
+                // Route down toward fault
+                let start = (from.x + from.width * 0.5, from.y + from.height);
+                let end = (to.x + to.width * 0.5, to.y);
+                let dy = (end.1 - start.1).max(20.0);
+                let control1 = (start.0, start.1 + dy * 0.4);
+                let control2 = (end.0, end.1 - dy * 0.4);
+                let label_pos = ((start.0 + end.0) * 0.5, (start.1 + end.1) * 0.5);
+                (start, end, control1, control2, label_pos)
+            } else if from.x < to.x {
+                // Forward edge
+                let start = (from.x + from.width, from.y + from.height * 0.5);
+                let end = (to.x, to.y + to.height * 0.5);
+                let dx = (end.0 - start.0).max(20.0);
+                let control1 = (start.0 + dx * 0.4, start.1);
+                let control2 = (end.0 - dx * 0.4, end.1);
+                let label_pos = ((start.0 + end.0) * 0.5, (start.1 + end.1) * 0.5);
+                (start, end, control1, control2, label_pos)
+            } else if from.x == to.x {
+                // Same column (vertical)
+                let start = (from.x + from.width * 0.5, if from.y < to.y { from.y + from.height } else { from.y });
+                let end = (to.x + to.width * 0.5, if from.y < to.y { to.y } else { to.y + to.height });
+                let bend_x = from.x + from.width + 30.0;
+                let control1 = (bend_x, start.1);
+                let control2 = (bend_x, end.1);
+                let label_pos = (bend_x, (start.1 + end.1) * 0.5);
+                (start, end, control1, control2, label_pos)
+            } else {
+                // Backward edge (e.g. loops back to IDLE/RETURNED)
+                let start = (from.x + from.width * 0.5, from.y);
+                let end = (to.x + to.width * 0.5, to.y);
+                let curve_y = (from.y.min(to.y) - 40.0 - (from.x - to.x).abs() * 0.05).max(20.0);
+                let control1 = (from.x + from.width * 0.5, curve_y);
+                let control2 = (to.x + to.width * 0.5, curve_y);
+                let label_pos = ((start.0 + end.0) * 0.5, curve_y);
+                (start, end, control1, control2, label_pos)
+            };
+
+            edges_layout.push(EdgeLayout {
+                from: t.from.clone(),
+                to: t.to.clone(),
+                guard: t.guard.clone(),
+                display_guard,
+                is_fault: t.is_fault,
+                start,
+                end,
+                control1,
+                control2,
+                label_pos,
+                transition_type: t.transition_type.clone(),
+            });
+        }
+    }
+
+    StateMachineLayout {
+        nodes: nodes_layout,
+        edges: edges_layout,
+        width: max_x + 80.0,
+        height: max_y + 80.0,
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -1112,5 +1345,104 @@ mod tests {
 
         // Check ambiguous transition from RST
         assert!(sm.ambiguous_transitions.iter().any(|a| a.target == "IDLE" && a.guard.contains("RST")));
+    }
+
+    #[test]
+    fn test_docking_firmware_state_machine_ground_truth_verification() {
+        let fixture_path = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/fixtures/docking_firmware/Core/Src/main.c");
+        let candidates = discover_state_machines_in_file(&fixture_path).expect("failed to discover state machines");
+        assert_eq!(candidates.len(), 1, "expected exactly 1 state machine candidate");
+
+        let sm = extract_state_machine_transitions(&candidates[0], &fixture_path).expect("failed to extract transitions");
+
+        // 1. Verify 14 states
+        assert_eq!(sm.states.len(), 14, "expected exactly 14 states");
+        let expected_states = [
+            "IDLE", "CALIBRATING", "CAL_STOPPING", "CAL_BACKOFF", "GOING", "HOLD",
+            "RETURNING", "RETURNED", "RECOVERY", "REC_STOPPING", "REC_BACKOFF",
+            "FAULT", "OPENING", "CLOSING"
+        ];
+        for s in &expected_states {
+            assert!(sm.states.contains(&s.to_string()), "missing state: {}", s);
+        }
+
+        // 2. Verify exactly 31 transitions
+        assert_eq!(sm.transitions.len(), 31, "expected 31 transitions, got {}", sm.transitions.len());
+
+        // Check direct transitions
+        let expected_direct = [
+            ("CALIBRATING", "CAL_STOPPING", "z1Hit && z2Hit"),
+            ("CAL_STOPPING", "CAL_BACKOFF", "axes_done()"),
+            ("CAL_BACKOFF", "IDLE", "axes_done()"),
+            ("GOING", "HOLD", "axes_done()"),
+            ("RETURNING", "RECOVERY", "enteringRecovery"),
+            ("RETURNING", "RETURNED", "axes_done()"),
+            ("RECOVERY", "REC_STOPPING", "z1Hit && z2Hit"),
+            ("REC_STOPPING", "REC_BACKOFF", "axes_done()"),
+            ("REC_BACKOFF", "RETURNED", "axes_done()"),
+            ("OPENING", "IDLE", "now - stateStart > OPEN_DURATION_MS"),
+            ("CLOSING", "IDLE", "now - stateStart > CLOSE_DURATION_MS"),
+        ];
+        for (from, to, guard) in expected_direct {
+            let found = sm.transitions.iter().any(|t| t.from == from && t.to == to && t.guard == guard);
+            assert!(found, "missing expected direct transition: {} -> {} [{}]", from, to, guard);
+        }
+
+        // Check helper transitions (fault and startCal)
+        let expected_helpers = [
+            ("CALIBRATING", "FAULT", "now - stateStart > CAL_TIMEOUT [fault: CAL TIMEOUT]"),
+            ("CALIBRATING", "FAULT", "z1Hit && !z2Hit && z2.current_pos == z2.target_pos [fault: Z2 LIMIT NOT FOUND]"),
+            ("CALIBRATING", "FAULT", "z2Hit && !z1Hit && z1.current_pos == z1.target_pos [fault: Z1 LIMIT NOT FOUND]"),
+            ("CAL_STOPPING", "FAULT", "axes_done() && !skewOK() [fault: CAL SKEW]"),
+            ("CAL_BACKOFF", "FAULT", "now - stateStart > CAL_TIMEOUT [fault: CAL BACKOFF TIMEOUT]"),
+            ("GOING", "FAULT", "now - stateStart > MOVE_TIMEOUT [fault: GO TIMEOUT]"),
+            ("RETURNING", "FAULT", "now - stateStart > MOVE_TIMEOUT [fault: RETURN TIMEOUT]"),
+            ("RECOVERY", "FAULT", "now - stateStart > RECOVERY_TIMEOUT [fault: REC TIMEOUT]"),
+            ("RECOVERY", "FAULT", "z1Hit && !z2Hit && z2.current_pos == z2.target_pos [fault: Z2 LIMIT NOT FOUND]"),
+            ("RECOVERY", "FAULT", "z2Hit && !z1Hit && z1.current_pos == z1.target_pos [fault: Z1 LIMIT NOT FOUND]"),
+            ("REC_STOPPING", "FAULT", "axes_done() && !skewOK() [fault: REC SKEW]"),
+            ("REC_BACKOFF", "FAULT", "now - stateStart > RECOVERY_TIMEOUT [fault: REC BACKOFF TIMEOUT]"),
+            ("IDLE", "CALIBRATING", "cmd_ready && strcmp((const char*)rx_buffer, \"CAL\") == 0 [startCal()]"),
+        ];
+        for (from, to, guard) in expected_helpers {
+            let found = sm.transitions.iter().any(|t| t.from == from && t.to == to && t.guard == guard);
+            assert!(found, "missing expected helper transition: {} -> {} [{}]", from, to, guard);
+        }
+
+        // Check event transitions
+        let expected_events = [
+            ("IDLE", "GOING"),
+            ("RETURNED", "GOING"),
+            ("HOLD", "RETURNING"),
+            ("IDLE", "OPENING"),
+            ("RETURNED", "OPENING"),
+            ("IDLE", "CLOSING"),
+            ("RETURNED", "CLOSING"),
+        ];
+        for (from, to) in expected_events {
+            let found = sm.transitions.iter().any(|t| t.from == from && t.to == to && t.guard.contains("cmd_ready"));
+            assert!(found, "missing expected event transition: {} -> {}", from, to);
+        }
+
+        // 3. Verify ambiguous transition
+        assert_eq!(sm.ambiguous_transitions.len(), 1, "expected exactly 1 ambiguous transition");
+        assert_eq!(sm.ambiguous_transitions[0].target, "IDLE");
+        assert!(sm.ambiguous_transitions[0].guard.contains("RST"));
+
+        // 4. Verify layout computation
+        let layout = compute_state_machine_layout(&sm);
+        assert_eq!(layout.nodes.len(), 14);
+        assert_eq!(layout.edges.len(), 31);
+        assert!(layout.width > 500.0);
+        assert!(layout.height > 300.0);
+
+        // Check FAULT node is marked is_fault
+        let fault_node = layout.nodes.get("FAULT").expect("FAULT node layout missing");
+        assert!(fault_node.is_fault);
+
+        // Check IDLE node is marked is_initial
+        let idle_node = layout.nodes.get("IDLE").expect("IDLE node layout missing");
+        assert!(idle_node.is_initial);
     }
 }

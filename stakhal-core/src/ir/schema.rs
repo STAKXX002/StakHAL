@@ -24,6 +24,8 @@ pub struct Project {
     pub loop_body: Option<UserRegion>, // from find_loop_body_gap, may be None
     pub call_graph_edges: Vec<GraphEdge>,
     pub pv_declarations: Vec<PvDeclaration>,
+    #[serde(default)]
+    pub state_machines: Vec<crate::graph::state_machine::AppStateMachine>,
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -48,6 +50,19 @@ pub fn load_project(ioc_path: &Path, main_c_path: &Path) -> Result<Project, Proj
         Err(e) => return Err(ProjectLoadError::PvExtractError(e)),
     };
 
+    let state_machines = match crate::graph::state_machine::discover_state_machines_in_file(main_c_path) {
+        Ok(candidates) => {
+            let mut list = Vec::new();
+            for c in candidates {
+                if let Ok(sm) = crate::graph::state_machine::extract_state_machine_transitions(&c, main_c_path) {
+                    list.push(sm);
+                }
+            }
+            list
+        }
+        Err(_) => vec![],
+    };
+
     let name = ioc_path
         .file_stem()
         .and_then(|s| s.to_str())
@@ -70,6 +85,7 @@ pub fn load_project(ioc_path: &Path, main_c_path: &Path) -> Result<Project, Proj
         loop_body,
         call_graph_edges,
         pv_declarations,
+        state_machines,
     })
 }
 
