@@ -214,9 +214,8 @@ row, listboxrow, actionrow {
     let window = adw::ApplicationWindow::builder()
         .application(app)
         .title("StakHAL — Hardware Abstraction Inspector")
-        .default_width(1200)
-        .default_height(800)
-        .maximized(true)
+        .default_width(1280)
+        .default_height(820)
         .content(&toast_overlay)
         .build();
 
@@ -371,16 +370,6 @@ row, listboxrow, actionrow {
         execute_build_pipeline(&state_bf, &widgets_bf, true);
     });
 
-    let win_map = window.clone();
-    window.connect_map(move |_| {
-        let win = win_map.clone();
-        glib::idle_add_local_once(move || {
-            let width = win.width();
-            let height = win.height();
-            let is_max = win.is_maximized();
-            println!("[WINDOW MAP SIGNAL] Window mapped: width={}, height={}, maximized={}", width, height, is_max);
-        });
-    });
 
     window.present();
 

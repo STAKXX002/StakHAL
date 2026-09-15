@@ -61,7 +61,9 @@ Priority: optional
 Architecture: ${PKG_ARCH}
 Installed-Size: ${INSTALLED_SIZE}
 Maintainer: STAKXX002 <contact@stakhal.dev>
-Depends: libc6 (>= 2.34), libgtk-4-1 (>= 4.12.0), libadwaita-1-0 (>= 1.4.0), stlink-tools, gcc-arm-none-eabi, libnewlib-arm-none-eabi, cmake, ninja-build
+Depends: libc6 (>= 2.34), libgtk-4-1 (>= 4.12.0), libadwaita-1-0 (>= 1.4.0)
+Recommends: stlink-tools, cmake, ninja-build
+Suggests: gcc-arm-none-eabi, libnewlib-arm-none-eabi
 Description: Hardware Abstraction Inspector & Firmware Workbench for STM32
  StakHAL is a native developer workbench for STM32 embedded firmware.
  It inspects STM32CubeMX hardware configurations, visualizes application
