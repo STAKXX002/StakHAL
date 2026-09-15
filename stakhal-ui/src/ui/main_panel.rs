@@ -53,9 +53,10 @@ pub fn build_main_panel() -> MainPanelWidgets {
     btn_load.set_sensitive(false);
 
     let btn_call_graph = gtk4::Button::builder()
-        .label("[ Call Graph ]")
+        .label("[ State Machine Graph ]")
         .css_classes(vec!["stakhal-btn".to_string(), "flat".to_string()])
         .sensitive(false)
+        .tooltip_text("Application State Machine Transition Diagram")
         .build();
     btn_call_graph.set_cursor_from_name(Some("pointer"));
 

@@ -1,4 +1,3 @@
-pub mod call_graph;
 pub mod main_panel;
 pub mod nucleo_pinout;
-
+pub mod state_diagram;

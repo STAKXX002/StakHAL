@@ -5,7 +5,6 @@ use gtk4::{gdk, gio, glib};
 use gtk4::prelude::*;
 use libadwaita as adw;
 
-use stakhal_core::graph::builder::EdgeType;
 use stakhal_core::ioc::discovery::discover_project_files;
 use stakhal_core::ir::schema::load_project;
 
@@ -15,12 +14,11 @@ mod ui;
 
 use config::{load_app_config, save_app_config};
 use state::{AppState, AppWidgets};
-use ui::call_graph::{
-    build_call_graph_panel, compute_graph_bounds, compute_graph_layout, setup_call_graph_drawing_and_gestures,
-    CallGraphPanelWidgets,
-};
 use ui::nucleo_pinout::{
     build_nucleo_pinout_panel, setup_nucleo_pinout_drawing_and_gestures, NucleoPinoutPanelWidgets,
+};
+use ui::state_diagram::{
+    build_state_diagram_panel, setup_state_diagram_drawing_and_gestures, StateDiagramPanelWidgets,
 };
 
 use ui::main_panel::{
@@ -157,13 +155,15 @@ row, listboxrow, actionrow {
         list_user_regions,
     } = build_main_panel();
 
-    let CallGraphPanelWidgets {
-        graph_panel_box,
-        btn_graph_back,
+    let StateDiagramPanelWidgets {
+        diagram_panel_box,
+        btn_diagram_back,
         btn_fit_to_view,
-        graph_drawing_area,
-        graph_scrolled,
-    } = build_call_graph_panel();
+        combo_state_machine,
+        diagram_drawing_area,
+        diagram_scrolled,
+        lbl_selected_info,
+    } = build_state_diagram_panel();
 
     let NucleoPinoutPanelWidgets {
         pinout_panel_box,
@@ -178,7 +178,7 @@ row, listboxrow, actionrow {
         .build();
 
     stack.add_named(&overview_box, Some("overview"));
-    stack.add_named(&graph_panel_box, Some("call_graph"));
+    stack.add_named(&diagram_panel_box, Some("state_diagram"));
     stack.add_named(&pinout_panel_box, Some("nucleo_pinout"));
     stack.set_visible_child_name("overview");
 
@@ -220,19 +220,26 @@ row, listboxrow, actionrow {
         lbl_region_header,
         list_peripherals,
         list_user_regions,
-        graph_drawing_area,
+        diagram_drawing_area: diagram_drawing_area.clone(),
         btn_fit_to_view: btn_fit_to_view.clone(),
-        graph_scrolled: graph_scrolled.clone(),
+        diagram_scrolled: diagram_scrolled.clone(),
+        combo_state_machine: combo_state_machine.clone(),
+        lbl_selected_info: lbl_selected_info.clone(),
         pinout_drawing_area,
         _pinout_scrolled: pinout_scrolled,
     });
 
-    setup_call_graph_drawing_and_gestures(&state, &widgets);
+    setup_state_diagram_drawing_and_gestures(
+        &diagram_drawing_area,
+        &btn_fit_to_view,
+        &lbl_selected_info,
+        Rc::clone(&state),
+    );
     setup_nucleo_pinout_drawing_and_gestures(&state, &widgets);
 
     // Navigation callbacks
     let stack_back2 = stack.clone();
-    btn_graph_back.connect_clicked(move |_| {
+    btn_diagram_back.connect_clicked(move |_| {
         stack_back2.set_visible_child_full("overview", gtk4::StackTransitionType::SlideRight);
     });
 
@@ -241,60 +248,47 @@ row, listboxrow, actionrow {
         stack_back3.set_visible_child_full("overview", gtk4::StackTransitionType::SlideRight);
     });
 
-
-
-    let state_fit = Rc::clone(&state);
-    let widgets_fit = Rc::clone(&widgets);
-    widgets.btn_fit_to_view.connect_clicked(move |_| {
-        let mut st = state_fit.borrow_mut();
-        if st.loaded_project.is_none() || st.graph_node_positions.is_empty() {
-            return;
-        }
-        let (bw, bh) = st.graph_bounds;
-        let vw = widgets_fit
-            .graph_scrolled
-            .hadjustment()
-            .page_size()
-            .max(widgets_fit.graph_scrolled.width() as f64);
-        let vh = widgets_fit
-            .graph_scrolled
-            .vadjustment()
-            .page_size()
-            .max(widgets_fit.graph_scrolled.height() as f64);
-
-        if bw > 0 && bh > 0 && vw > 0.0 && vh > 0.0 {
-            let fit_zoom = (vw / bw as f64).min(vh / bh as f64).clamp(0.25, 2.5);
-            if !fit_zoom.is_nan() && !fit_zoom.is_infinite() {
-                st.graph_zoom = fit_zoom;
-                st.graph_pan_x = 0.0;
-                st.graph_pan_y = 0.0;
-
-                let zoomed_w = (bw as f64 * fit_zoom).ceil() as i32;
-                let zoomed_h = (bh as f64 * fit_zoom).ceil() as i32;
-                drop(st);
-
-
-                widgets_fit.graph_drawing_area.set_content_width(zoomed_w);
-                widgets_fit.graph_drawing_area.set_content_height(zoomed_h);
-
-                widgets_fit.graph_scrolled.hadjustment().set_value(0.0);
-                widgets_fit.graph_scrolled.vadjustment().set_value(0.0);
-
-                widgets_fit.graph_drawing_area.queue_draw();
-            }
-        }
-    });
-
-
-
-    let stack_graph = stack.clone();
+    let stack_diagram = stack.clone();
     btn_call_graph.connect_clicked(move |_| {
-        stack_graph.set_visible_child_full("call_graph", gtk4::StackTransitionType::SlideLeft);
+        stack_diagram.set_visible_child_full("state_diagram", gtk4::StackTransitionType::SlideLeft);
     });
 
     let stack_pinout = stack.clone();
     btn_nucleo_pinout.connect_clicked(move |_| {
         stack_pinout.set_visible_child_full("nucleo_pinout", gtk4::StackTransitionType::SlideLeft);
+    });
+
+    // State machine selector dropdown callback
+    let state_combo = Rc::clone(&state);
+    let area_combo = diagram_drawing_area.clone();
+    let lbl_info_combo = lbl_selected_info.clone();
+    combo_state_machine.connect_selected_notify(move |cb| {
+        let idx = cb.selected() as usize;
+        let mut st = state_combo.borrow_mut();
+        st.selected_state_machine = idx;
+        st.selected_state_node = None;
+        st.state_diagram_layout = None; // trigger layout recompute for selected machine
+        if let Some(ref p) = st.loaded_project {
+            if idx < p.state_machines.len() {
+                let sm = &p.state_machines[idx];
+                if !sm.ambiguous_transitions.is_empty() {
+                    let notes: Vec<_> = sm
+                        .ambiguous_transitions
+                        .iter()
+                        .map(|a| format!("(any state) -> {} [{}]", a.target, a.guard))
+                        .collect();
+                    lbl_info_combo.set_text(&format!(
+                        "NOTE: {} Ambiguous Transition(s): {}",
+                        sm.ambiguous_transitions.len(),
+                        notes.join(", ")
+                    ));
+                } else {
+                    lbl_info_combo.set_text("Select a state node to inspect transitions and guard triggers.");
+                }
+            }
+        }
+        drop(st);
+        area_combo.queue_draw();
     });
 
 
@@ -447,35 +441,84 @@ fn do_load_project(state: &Rc<RefCell<AppState>>, widgets: &Rc<AppWidgets>) {
 
             let is_f446 = project.meta.mcu_name.to_uppercase().contains("F446");
 
-            let mut collapsed = std::collections::HashSet::new();
-            for e in project.call_graph_edges.iter().filter(|e| e.edge_type == EdgeType::IrqEntry) {
-                collapsed.insert(e.from.clone());
-            }
+            // Setup state machines
+            let sm_names: Vec<String> = if project.state_machines.is_empty() {
+                vec!["NO STATE MACHINES DETECTED".to_string()]
+            } else {
+                project
+                    .state_machines
+                    .iter()
+                    .map(|sm| sm.display_name.clone())
+                    .collect()
+            };
+            let sm_str_refs: Vec<&str> = sm_names.iter().map(|s| s.as_str()).collect();
+            let string_list = gtk4::StringList::new(&sm_str_refs);
+            widgets.combo_state_machine.set_model(Some(&string_list));
+            widgets.combo_state_machine.set_selected(0);
 
-            let (init_positions, headers) = compute_graph_layout(&project.call_graph_edges, &collapsed);
-            let (w, h) = compute_graph_bounds(&init_positions, &headers);
-            let colors = crate::ui::call_graph::draw::compute_all_node_status_colors(&project.call_graph_edges, &init_positions);
-            {
-                let mut st = state.borrow_mut();
-                st.collapsed_chains = collapsed;
-                st.graph_node_positions = init_positions;
-                st.node_status_colors = colors;
-                st.chain_headers = headers;
-                st.graph_bounds = (w, h);
-                st.loaded_project = Some(project);
-            }
+            if !project.state_machines.is_empty() {
+                let sm = project.state_machines[0].clone();
+                let layout = stakhal_core::graph::compute_state_machine_layout(&sm);
+                let w = layout.width as i32;
+                let h = layout.height as i32;
 
-            widgets.graph_drawing_area.set_content_width(w);
-            widgets.graph_drawing_area.set_content_height(h);
-            widgets.btn_call_graph.set_sensitive(true);
-            widgets.graph_drawing_area.queue_draw();
+                {
+                    let mut st = state.borrow_mut();
+                    st.selected_state_machine = 0;
+                    st.selected_state_node = None;
+                    st.diagram_bounds = (w, h);
+                    let mut pos = std::collections::HashMap::new();
+                    for (id, n) in &layout.nodes {
+                        pos.insert(id.clone(), (n.x, n.y));
+                    }
+                    st.state_node_positions = pos;
+                    st.state_diagram_layout = Some(layout);
+                    st.loaded_project = Some(project);
+                }
+
+                widgets.diagram_drawing_area.set_content_width(w);
+                widgets.diagram_drawing_area.set_content_height(h);
+                widgets.btn_call_graph.set_sensitive(true);
+
+                if !sm.ambiguous_transitions.is_empty() {
+                    let notes: Vec<_> = sm
+                        .ambiguous_transitions
+                        .iter()
+                        .map(|a| format!("(any state) -> {} [{}]", a.target, a.guard))
+                        .collect();
+                    widgets.lbl_selected_info.set_text(&format!(
+                        "NOTE: {} Ambiguous Transition(s): {}",
+                        sm.ambiguous_transitions.len(),
+                        notes.join(", ")
+                    ));
+                } else {
+                    widgets
+                        .lbl_selected_info
+                        .set_text("Select a state node to inspect transitions and guard triggers.");
+                }
+                widgets.diagram_drawing_area.queue_draw();
+            } else {
+                {
+                    let mut st = state.borrow_mut();
+                    st.state_diagram_layout = None;
+                    st.loaded_project = Some(project);
+                }
+                widgets.btn_call_graph.set_sensitive(false);
+                widgets
+                    .lbl_selected_info
+                    .set_text("No application state machines detected in current project.");
+            }
 
             if is_f446 {
                 widgets.btn_nucleo_pinout.set_sensitive(true);
-                widgets.btn_nucleo_pinout.set_tooltip_text(Some("View Nucleo-F446RE Physical Connector Pinout"));
+                widgets
+                    .btn_nucleo_pinout
+                    .set_tooltip_text(Some("View Nucleo-F446RE Physical Connector Pinout"));
             } else {
                 widgets.btn_nucleo_pinout.set_sensitive(false);
-                widgets.btn_nucleo_pinout.set_tooltip_text(Some("Nucleo Pinout visualizer is F446RE-only for now"));
+                widgets
+                    .btn_nucleo_pinout
+                    .set_tooltip_text(Some("Nucleo Pinout visualizer is F446RE-only for now"));
             }
             widgets.pinout_drawing_area.queue_draw();
 
