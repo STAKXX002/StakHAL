@@ -7,6 +7,7 @@ pub struct MainPanelWidgets {
     pub overview_box: gtk4::Box,
     pub btn_browse: gtk4::Button,
     pub btn_load: gtk4::Button,
+    pub btn_build: gtk4::Button,
     pub btn_build_flash: gtk4::Button,
     pub btn_call_graph: gtk4::Button,
     pub btn_nucleo_pinout: gtk4::Button,
@@ -56,11 +57,19 @@ pub fn build_main_panel() -> MainPanelWidgets {
     let btn_load = create_icon_button("Load Project", "system-run-symbolic", true);
     btn_load.set_sensitive(false);
 
+    let btn_build = gtk4::Button::builder()
+        .label("[ 🔨 Build ]")
+        .css_classes(vec!["stakhal-btn".to_string(), "flat".to_string()])
+        .sensitive(false)
+        .tooltip_text("Compile project without flashing")
+        .build();
+    btn_build.set_cursor_from_name(Some("pointer"));
+
     let btn_build_flash = gtk4::Button::builder()
         .label("[ ⚡ Build & Flash ]")
         .css_classes(vec!["stakhal-btn".to_string(), "suggested-action".to_string()])
         .sensitive(false)
-        .tooltip_text("Build project with make and flash to STM32 target via ST-Link")
+        .tooltip_text("Build project and flash to STM32 target via ST-Link")
         .build();
     btn_build_flash.set_cursor_from_name(Some("pointer"));
 
@@ -107,6 +116,7 @@ pub fn build_main_panel() -> MainPanelWidgets {
     toolbar_box.append(&btn_browse);
     toolbar_box.append(&paths_box);
     toolbar_box.append(&btn_load);
+    toolbar_box.append(&btn_build);
     toolbar_box.append(&btn_build_flash);
     toolbar_box.append(&btn_call_graph);
     toolbar_box.append(&btn_nucleo_pinout);
@@ -129,22 +139,17 @@ pub fn build_main_panel() -> MainPanelWidgets {
         .css_classes(vec!["caption".to_string()])
         .build();
 
-    let div_1 = gtk4::Label::builder().label("|").css_classes(vec!["dim-label".to_string()]).build();
-    let div_2 = gtk4::Label::builder().label("|").css_classes(vec!["dim-label".to_string()]).build();
-
     let status_bar_box = gtk4::Box::builder()
         .orientation(gtk4::Orientation::Horizontal)
-        .spacing(12)
-        .margin_bottom(12)
+        .spacing(24)
+        .margin_top(4)
+        .margin_bottom(8)
         .margin_start(18)
         .margin_end(18)
-        .css_classes(vec!["card".to_string()])
         .build();
 
     status_bar_box.append(&lbl_project_name);
-    status_bar_box.append(&div_1);
     status_bar_box.append(&lbl_mcu_family);
-    status_bar_box.append(&div_2);
     status_bar_box.append(&lbl_mcu_name);
 
     let lbl_periph_header = gtk4::Label::builder()
@@ -225,8 +230,8 @@ pub fn build_main_panel() -> MainPanelWidgets {
     let build_scrolled = gtk4::ScrolledWindow::builder()
         .hscrollbar_policy(gtk4::PolicyType::Automatic)
         .vscrollbar_policy(gtk4::PolicyType::Automatic)
-        .min_content_height(140)
-        .max_content_height(220)
+        .min_content_height(260)
+        .max_content_height(400)
         .vexpand(false)
         .child(&build_log_view)
         .css_classes(vec!["card".to_string()])
@@ -254,6 +259,7 @@ pub fn build_main_panel() -> MainPanelWidgets {
         overview_box,
         btn_browse,
         btn_load,
+        btn_build,
         btn_build_flash,
         btn_call_graph,
         btn_nucleo_pinout,

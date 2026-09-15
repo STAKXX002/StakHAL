@@ -86,6 +86,7 @@ pub struct AppWidgets {
     pub list_user_regions: gtk4::ListBox,
 
     // Build & flash widgets
+    pub btn_build: gtk4::Button,
     pub btn_build_flash: gtk4::Button,
     pub build_log_view: gtk4::TextView,
     pub lbl_build_status: gtk4::Label,
