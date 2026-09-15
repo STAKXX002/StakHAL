@@ -164,14 +164,23 @@ pub fn extract_state_machine_transitions(
     let root = tree.root_node();
 
     let known_variants: HashSet<String> = candidate.enum_def.variants.iter().cloned().collect();
-    let mut direct_transitions = Vec::new();
+    let mut transitions = Vec::new();
     let mut ambiguous_transitions = Vec::new();
 
-    // Walk all function definitions
+    // 1. Identify helper functions that assign to tracked variable
+    let helpers = collect_helper_functions(root, source_bytes, &candidate.var.name, &known_variants);
+
+    // 2. Walk all function definitions (skip helper function bodies for direct assignment tracking)
     let mut fn_nodes = Vec::new();
     collect_functions(root, &mut fn_nodes);
 
     for fn_node in fn_nodes {
+        let fn_name = extract_function_name(fn_node, source_bytes);
+        let is_helper = fn_name.as_ref().map(|n| helpers.contains_key(n)).unwrap_or(false);
+        if is_helper {
+            continue;
+        }
+
         if let Some(body) = fn_node.child_by_field_name("body") {
             let ctx = ASTContext::default();
             walk_statement(
@@ -180,7 +189,8 @@ pub fn extract_state_machine_transitions(
                 source_bytes,
                 &candidate.var.name,
                 &known_variants,
-                &mut direct_transitions,
+                &helpers,
+                &mut transitions,
                 &mut ambiguous_transitions,
             );
         }
@@ -192,9 +202,73 @@ pub fn extract_state_machine_transitions(
         enum_def: candidate.enum_def.clone(),
         var: candidate.var.clone(),
         states: candidate.enum_def.variants.clone(),
-        transitions: direct_transitions,
+        transitions,
         ambiguous_transitions,
     })
+}
+
+#[derive(Debug, Clone)]
+struct HelperFunctionInfo {
+    name: String,
+    target_states: Vec<String>,
+}
+
+fn collect_helper_functions(
+    root: Node,
+    source_bytes: &[u8],
+    var_name: &str,
+    known_variants: &HashSet<String>,
+) -> HashMap<String, HelperFunctionInfo> {
+    let mut helpers = HashMap::new();
+    let mut fn_nodes = Vec::new();
+    collect_functions(root, &mut fn_nodes);
+
+    for fn_node in fn_nodes {
+        if let Some(fn_name) = extract_function_name(fn_node, source_bytes) {
+            if fn_name == "main" {
+                continue;
+            }
+            let mut targets = Vec::new();
+            collect_assignments_to_var(fn_node, source_bytes, var_name, known_variants, &mut targets);
+            if !targets.is_empty() {
+                helpers.insert(
+                    fn_name.clone(),
+                    HelperFunctionInfo {
+                        name: fn_name,
+                        target_states: targets,
+                    },
+                );
+            }
+        }
+    }
+    helpers
+}
+
+fn collect_assignments_to_var(
+    node: Node,
+    source_bytes: &[u8],
+    var_name: &str,
+    known_variants: &HashSet<String>,
+    targets: &mut Vec<String>,
+) {
+    if node.kind() == "assignment_expression" {
+        if let (Some(left), Some(right)) = (
+            node.child_by_field_name("left"),
+            node.child_by_field_name("right"),
+        ) {
+            if extract_target_ident(left, source_bytes).as_deref() == Some(var_name) {
+                if let Some(variant) = extract_variant_ident(right, source_bytes, known_variants) {
+                    if !targets.contains(&variant) {
+                        targets.push(variant);
+                    }
+                }
+            }
+        }
+    }
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        collect_assignments_to_var(child, source_bytes, var_name, known_variants, targets);
+    }
 }
 
 #[derive(Debug, Clone, Default)]
@@ -220,7 +294,8 @@ fn walk_statement(
     source_bytes: &[u8],
     var_name: &str,
     known_variants: &HashSet<String>,
-    direct_transitions: &mut Vec<AppTransition>,
+    helpers: &HashMap<String, HelperFunctionInfo>,
+    transitions: &mut Vec<AppTransition>,
     ambiguous_transitions: &mut Vec<AmbiguousTransition>,
 ) {
     match node.kind() {
@@ -231,7 +306,8 @@ fn walk_statement(
                 source_bytes,
                 var_name,
                 known_variants,
-                direct_transitions,
+                helpers,
+                transitions,
                 ambiguous_transitions,
             );
         }
@@ -242,7 +318,8 @@ fn walk_statement(
                 source_bytes,
                 var_name,
                 known_variants,
-                direct_transitions,
+                helpers,
+                transitions,
                 ambiguous_transitions,
             );
         }
@@ -253,8 +330,17 @@ fn walk_statement(
                 source_bytes,
                 var_name,
                 known_variants,
-                direct_transitions,
+                transitions,
                 ambiguous_transitions,
+            );
+        }
+        "call_expression" => {
+            check_helper_call(
+                node,
+                ctx,
+                source_bytes,
+                helpers,
+                transitions,
             );
         }
         _ => {
@@ -266,12 +352,102 @@ fn walk_statement(
                     source_bytes,
                     var_name,
                     known_variants,
-                    direct_transitions,
+                    helpers,
+                    transitions,
                     ambiguous_transitions,
                 );
             }
         }
     }
+}
+
+fn check_helper_call(
+    node: Node,
+    ctx: &ASTContext,
+    source_bytes: &[u8],
+    helpers: &HashMap<String, HelperFunctionInfo>,
+    transitions: &mut Vec<AppTransition>,
+) {
+    if let Some(fn_child) = node.child_by_field_name("function") {
+        let fn_name = node_text(fn_child, source_bytes);
+        if let Some(helper) = helpers.get(&fn_name) {
+            let line = node.start_position().row + 1;
+            let arg_text = extract_first_argument_text(node, source_bytes);
+
+            let helper_tag = match &arg_text {
+                Some(arg) => format!("{}: {}", helper.name, arg),
+                None => format!("{}()", helper.name),
+            };
+
+            let base_guard = ctx.guards.join(" && ");
+            let full_guard = if base_guard.is_empty() {
+                helper_tag.clone()
+            } else {
+                format!("{} [{}]", base_guard, helper_tag)
+            };
+
+            for target in &helper.target_states {
+                let is_fault = is_fault_state(target);
+                if let Some(ref states) = ctx.active_states {
+                    if states.is_empty() {
+                        transitions.push(AppTransition {
+                            from: "(any state)".to_string(),
+                            to: target.clone(),
+                            guard: full_guard.clone(),
+                            is_fault,
+                            transition_type: TransitionType::IndirectHelper {
+                                helper_name: helper.name.clone(),
+                                argument: arg_text.clone(),
+                            },
+                            line,
+                        });
+                    } else {
+                        for from in states {
+                            transitions.push(AppTransition {
+                                from: from.clone(),
+                                to: target.clone(),
+                                guard: full_guard.clone(),
+                                is_fault,
+                                transition_type: TransitionType::IndirectHelper {
+                                    helper_name: helper.name.clone(),
+                                    argument: arg_text.clone(),
+                                },
+                                line,
+                            });
+                        }
+                    }
+                } else {
+                    transitions.push(AppTransition {
+                        from: "(any state)".to_string(),
+                        to: target.clone(),
+                        guard: full_guard.clone(),
+                        is_fault,
+                        transition_type: TransitionType::IndirectHelper {
+                            helper_name: helper.name.clone(),
+                            argument: arg_text.clone(),
+                        },
+                        line,
+                    });
+                }
+            }
+        }
+    }
+}
+
+fn extract_first_argument_text(call_node: Node, source_bytes: &[u8]) -> Option<String> {
+    if let Some(arg_list) = call_node.child_by_field_name("arguments") {
+        let mut cursor = arg_list.walk();
+        for child in arg_list.children(&mut cursor) {
+            if child.kind() != "(" && child.kind() != ")" && child.kind() != "," && child.kind() != "comment" {
+                let mut text = node_text(child, source_bytes);
+                if text.starts_with('"') && text.ends_with('"') && text.len() >= 2 {
+                    text = text[1..text.len() - 1].to_string();
+                }
+                return Some(text);
+            }
+        }
+    }
+    None
 }
 
 fn walk_if_statement(
@@ -280,7 +456,8 @@ fn walk_if_statement(
     source_bytes: &[u8],
     var_name: &str,
     known_variants: &HashSet<String>,
-    direct_transitions: &mut Vec<AppTransition>,
+    helpers: &HashMap<String, HelperFunctionInfo>,
+    transitions: &mut Vec<AppTransition>,
     ambiguous_transitions: &mut Vec<AmbiguousTransition>,
 ) {
     let cond_node = node.child_by_field_name("condition");
@@ -305,21 +482,22 @@ fn walk_if_statement(
             source_bytes,
             var_name,
             known_variants,
-            direct_transitions,
+            helpers,
+            transitions,
             ambiguous_transitions,
         );
     }
 
     // 2. Alternative branch (else / else if)
     if let Some(alternative) = node.child_by_field_name("alternative") {
-        // If alternative is another statement, walk it with ctx
         walk_statement(
             alternative,
             ctx,
             source_bytes,
             var_name,
             known_variants,
-            direct_transitions,
+            helpers,
+            transitions,
             ambiguous_transitions,
         );
     }
@@ -331,7 +509,8 @@ fn walk_switch_statement(
     source_bytes: &[u8],
     var_name: &str,
     known_variants: &HashSet<String>,
-    direct_transitions: &mut Vec<AppTransition>,
+    helpers: &HashMap<String, HelperFunctionInfo>,
+    transitions: &mut Vec<AppTransition>,
     ambiguous_transitions: &mut Vec<AmbiguousTransition>,
 ) {
     let is_switch_on_var = node
@@ -366,7 +545,8 @@ fn walk_switch_statement(
                     source_bytes,
                     var_name,
                     known_variants,
-                    direct_transitions,
+                    helpers,
+                    transitions,
                     ambiguous_transitions,
                 );
             } else {
@@ -380,7 +560,8 @@ fn walk_switch_statement(
                     source_bytes,
                     var_name,
                     known_variants,
-                    direct_transitions,
+                    helpers,
+                    transitions,
                     ambiguous_transitions,
                 );
             }
@@ -820,7 +1001,7 @@ fn extract_ident_name(mut node: Node, source_bytes: &[u8]) -> Option<String> {
     loop {
         match node.kind() {
             "identifier" => return Some(node_text(node, source_bytes)),
-            "pointer_declarator" | "parenthesized_declarator" => {
+            "function_declarator" | "pointer_declarator" | "parenthesized_declarator" | "array_declarator" => {
                 if let Some(child) = node.child_by_field_name("declarator") {
                     node = child;
                 } else if let Some(child) = node.child(0) {
