@@ -11,9 +11,9 @@ pub use hal_rules::{
 pub use layout::{compute_graph_bounds, compute_graph_layout, ChainHeaderLayout};
 pub use state_machine::{
     compute_state_machine_layout, discover_state_machines_in_file,
-    extract_state_machine_transitions, AmbiguousTransition, AppStateMachine, AppTransition,
-    EdgeLayout, EnumDefinition, NodeLayout, StateMachineCandidate, StateMachineLayout,
-    TrackedVariable, TransitionType, VariableScope,
+    extract_state_machine_transitions, is_fault_state, AmbiguousTransition, AppStateMachine,
+    AppTransition, EdgeLayout, EnumDefinition, NodeLayout, StateMachineCandidate,
+    StateMachineLayout, TrackedVariable, TransitionType, VariableScope,
 };
 pub use user_call_graph::{build_user_call_graph, UserCallEdge, UserFunction};
 
