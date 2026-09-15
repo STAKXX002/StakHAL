@@ -358,15 +358,15 @@ row, listboxrow, actionrow {
     let state_bf = Rc::clone(&state);
     let widgets_bf = Rc::clone(&widgets);
     widgets.btn_build_flash.connect_clicked(move |_| {
-        let (project_dir, has_makefile) = {
+        let (project_dir, detected_build_system) = {
             let st = state_bf.borrow();
-            (st.project_dir.clone(), st.has_makefile)
+            (st.project_dir.clone(), st.detected_build_system.clone())
         };
 
-        let dir = match project_dir {
-            Some(d) if has_makefile => d,
+        let (dir, build_sys) = match (project_dir, detected_build_system) {
+            (Some(d), Some(bs)) => (d, bs),
             _ => {
-                widgets_bf.toast_overlay.add_toast(adw::Toast::new("No project with Makefile loaded"));
+                widgets_bf.toast_overlay.add_toast(adw::Toast::new("No supported build system (Makefile/CMake/Ninja) found"));
                 return;
             }
         };
@@ -382,28 +382,33 @@ row, listboxrow, actionrow {
         widgets_bf.btn_build_flash.set_sensitive(false);
         widgets_bf.lbl_build_status.set_text("BUILDING...");
 
-        let make_jobs = toolchain::runner::get_make_jobs_flag();
-        append_log_text(&widgets_bf.build_log_view, "============================================================");
-        append_log_text(&widgets_bf.build_log_view, &format!("[BUILD] Running `make {}` in {}", make_jobs, dir.display()));
-        append_log_text(&widgets_bf.build_log_view, "============================================================");
+        let build_cmd_res = toolchain::builder::get_build_command(&build_sys, &dir);
+        let (cmd, args, exec_dir) = match build_cmd_res {
+            Ok(tuple) => tuple,
+            Err(err) => {
+                append_log_text(&widgets_bf.build_log_view, &format!("[ERROR] {}", err));
+                widgets_bf.lbl_build_status.set_text("BUILD FAILED");
+                let mut st = state_bf.borrow_mut();
+                st.build_in_progress = false;
+                widgets_bf.btn_build_flash.set_sensitive(st.has_build_system);
+                return;
+            }
+        };
 
-        if !toolchain::runner::is_executable_on_path("make") {
-            append_log_text(&widgets_bf.build_log_view, "[ERROR] 'make' executable not found on PATH. Please install build-essential.");
-            widgets_bf.lbl_build_status.set_text("BUILD FAILED");
-            state_bf.borrow_mut().build_in_progress = false;
-            widgets_bf.btn_build_flash.set_sensitive(true);
-            return;
-        }
+        append_log_text(&widgets_bf.build_log_view, "============================================================");
+        append_log_text(&widgets_bf.build_log_view, &format!("[BUILD] [{}] Running `{} {}` in {}", build_sys.display_name(), cmd, args.join(" "), exec_dir.display()));
+        append_log_text(&widgets_bf.build_log_view, "============================================================");
 
         let rx = toolchain::runner::spawn_streaming_process(
-            "make".to_string(),
-            vec![make_jobs],
-            dir.clone(),
+            cmd.clone(),
+            args,
+            exec_dir,
         );
 
         let state_timer = Rc::clone(&state_bf);
         let widgets_timer = Rc::clone(&widgets_bf);
         let dir_timer = dir.clone();
+        let build_sys_timer = build_sys.clone();
 
         glib::timeout_add_local(std::time::Duration::from_millis(25), move || {
             let mut finished = None;
@@ -424,8 +429,8 @@ row, listboxrow, actionrow {
 
             if let Some((success, code)) = finished {
                 if success {
-                    append_log_text(&widgets_timer.build_log_view, "\n[BUILD SUCCESS] `make` finished successfully.");
-                    let res = toolchain::makefile::resolve_build_artifact(&dir_timer);
+                    append_log_text(&widgets_timer.build_log_view, &format!("\n[BUILD SUCCESS] `{}` finished successfully.", cmd));
+                    let res = toolchain::builder::resolve_artifact_for_build_system(&dir_timer, &build_sys_timer);
                     match res {
                         toolchain::makefile::ArtifactResolution::Exact(bin_path) => {
                             append_log_text(&widgets_timer.build_log_view, &format!("[ARTIFACT] Resolved output binary: {}", bin_path.display()));
@@ -467,7 +472,7 @@ row, listboxrow, actionrow {
                                 widgets_dlg.lbl_build_status.set_text("CANCELLED");
                                 let mut st = state_dlg.borrow_mut();
                                 st.build_in_progress = false;
-                                widgets_dlg.btn_build_flash.set_sensitive(st.has_makefile);
+                                widgets_dlg.btn_build_flash.set_sensitive(st.has_build_system);
                             });
                             dialog.present();
                         }
@@ -476,16 +481,16 @@ row, listboxrow, actionrow {
                             widgets_timer.lbl_build_status.set_text("ARTIFACT MISSING");
                             let mut st = state_timer.borrow_mut();
                             st.build_in_progress = false;
-                            widgets_timer.btn_build_flash.set_sensitive(st.has_makefile);
+                            widgets_timer.btn_build_flash.set_sensitive(st.has_build_system);
                         }
                     }
                 } else {
                     let code_str = code.map(|c| c.to_string()).unwrap_or_else(|| "unknown".to_string());
-                    append_log_text(&widgets_timer.build_log_view, &format!("\n[BUILD FAILED] make exited with error code {}. Flashing halted.", code_str));
+                    append_log_text(&widgets_timer.build_log_view, &format!("\n[BUILD FAILED] {} exited with error code {}. Flashing halted.", cmd, code_str));
                     widgets_timer.lbl_build_status.set_text("BUILD FAILED");
                     let mut st = state_timer.borrow_mut();
                     st.build_in_progress = false;
-                    widgets_timer.btn_build_flash.set_sensitive(st.has_makefile);
+                    widgets_timer.btn_build_flash.set_sensitive(st.has_build_system);
                 }
 
                 return glib::ControlFlow::Break;
@@ -525,9 +530,12 @@ fn try_discover_folder(dir: &Path, state: &Rc<RefCell<AppState>>, widgets: &Rc<A
     st.project_dir = Some(dir.to_path_buf());
     widgets.lbl_discovered_dir.set_text(&dir.display().to_string());
 
-    let has_makefile = dir.join("Makefile").is_file();
-    st.has_makefile = has_makefile;
-    widgets.btn_build_flash.set_sensitive(has_makefile);
+    let build_sys = toolchain::builder::detect_build_system(dir);
+    let has_build_sys = build_sys.is_some();
+    st.has_makefile = dir.join("Makefile").is_file() || dir.join("makefile").is_file();
+    st.has_build_system = has_build_sys;
+    st.detected_build_system = build_sys;
+    widgets.btn_build_flash.set_sensitive(has_build_sys);
 
     match discover_project_files(dir) {
         Ok((ioc_path, main_c_path)) => {
@@ -568,12 +576,15 @@ fn do_load_project(state: &Rc<RefCell<AppState>>, widgets: &Rc<AppWidgets>) {
 
     save_app_config(&dir_path.display().to_string());
 
-    let has_makefile = dir_path.join("Makefile").is_file();
+    let build_sys = toolchain::builder::detect_build_system(&dir_path);
+    let has_build_sys = build_sys.is_some();
     {
         let mut st = state.borrow_mut();
-        st.has_makefile = has_makefile;
+        st.has_makefile = dir_path.join("Makefile").is_file() || dir_path.join("makefile").is_file();
+        st.has_build_system = has_build_sys;
+        st.detected_build_system = build_sys;
     }
-    widgets.btn_build_flash.set_sensitive(has_makefile);
+    widgets.btn_build_flash.set_sensitive(has_build_sys);
 
     match load_project(&ioc_path, &main_c_path) {
         Ok(project) => {
@@ -771,7 +782,7 @@ fn run_probe_detection_and_flash(
                     widgets_dlg.lbl_build_status.set_text("CANCELLED");
                     let mut st = state_dlg.borrow_mut();
                     st.build_in_progress = false;
-                    widgets_dlg.btn_build_flash.set_sensitive(st.has_makefile);
+                    widgets_dlg.btn_build_flash.set_sensitive(st.has_build_system);
                 });
                 dialog.present();
             }
@@ -786,7 +797,7 @@ fn run_probe_detection_and_flash(
             widgets.toast_overlay.add_toast(adw::Toast::new(&format!("✗ {}", err)));
             let mut st = state.borrow_mut();
             st.build_in_progress = false;
-            widgets.btn_build_flash.set_sensitive(st.has_makefile);
+            widgets.btn_build_flash.set_sensitive(st.has_build_system);
         }
     }
 }
@@ -804,7 +815,7 @@ fn run_flash_stage(
         widgets.toast_overlay.add_toast(adw::Toast::new("✗ `st-flash` not found on PATH"));
         let mut st = state.borrow_mut();
         st.build_in_progress = false;
-        widgets.btn_build_flash.set_sensitive(st.has_makefile);
+        widgets.btn_build_flash.set_sensitive(st.has_build_system);
         return;
     }
 
@@ -840,7 +851,7 @@ fn run_flash_stage(
         if let Some((success, code)) = finished {
             let mut st = state_timer.borrow_mut();
             st.build_in_progress = false;
-            widgets_timer.btn_build_flash.set_sensitive(st.has_makefile);
+            widgets_timer.btn_build_flash.set_sensitive(st.has_build_system);
 
             if success {
                 append_log_text(&widgets_timer.build_log_view, "\n[FLASH SUCCESS] Firmware written to 0x08000000 and target MCU reset successfully!");

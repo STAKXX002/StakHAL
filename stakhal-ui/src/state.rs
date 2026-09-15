@@ -31,6 +31,8 @@ pub struct AppState {
     // Build & flash state
     pub build_in_progress: bool,
     pub has_makefile: bool,
+    pub has_build_system: bool,
+    pub detected_build_system: Option<crate::toolchain::builder::BuildSystem>,
     #[allow(dead_code)]
     pub selected_probe: Option<String>,
 }
@@ -58,6 +60,8 @@ impl Default for AppState {
             hovered_pinout_mouse: None,
             build_in_progress: false,
             has_makefile: false,
+            has_build_system: false,
+            detected_build_system: None,
             selected_probe: None,
         }
     }

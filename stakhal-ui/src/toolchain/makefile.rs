@@ -74,6 +74,7 @@ pub fn find_bin_files_in_dir(dir: &Path) -> Vec<PathBuf> {
 /// 1. Try the parsed TARGET.bin.
 /// 2. If missing or TARGET wasn't found, search BUILD_DIR for .bin files.
 /// 3. If exactly 1 candidate, return Exact. If > 1, return MultipleCandidates.
+#[allow(dead_code)]
 pub fn resolve_build_artifact(project_dir: &Path) -> ArtifactResolution {
     let makefile_path = project_dir.join("Makefile");
     let (target, build_dir_name) = if let Ok(content) = std::fs::read_to_string(&makefile_path) {
