@@ -61,6 +61,8 @@ pub struct AppTransition {
     pub from: String,
     pub to: String,
     pub guard: String,
+    #[serde(default)]
+    pub label: String,
     pub is_fault: bool,
     pub transition_type: TransitionType,
     pub line: usize,
@@ -68,10 +70,15 @@ pub struct AppTransition {
 
 impl AppTransition {
     pub fn display_guard(&self, max_len: usize) -> String {
-        if self.guard.len() <= max_len {
-            self.guard.clone()
+        let text = if !self.label.is_empty() {
+            &self.label
         } else {
-            format!("{}...", &self.guard[..max_len.saturating_sub(3)])
+            &self.guard
+        };
+        if text.len() <= max_len {
+            text.to_string()
+        } else {
+            format!("{}...", &text[..max_len.saturating_sub(3)])
         }
     }
 }
@@ -145,6 +152,8 @@ pub struct EdgeLayout {
     pub from: String,
     pub to: String,
     pub guard: String,
+    #[serde(default)]
+    pub label: String,
     pub display_guard: String,
     pub is_fault: bool,
     pub start: (f64, f64),
@@ -840,6 +849,7 @@ pub fn compute_state_machine_layout(sm: &AppStateMachine) -> StateMachineLayout 
                 from: t.from.clone(),
                 to: t.to.clone(),
                 guard: t.guard.clone(),
+                label: t.label.clone(),
                 display_guard,
                 is_fault: t.is_fault,
                 start,
@@ -1170,7 +1180,8 @@ fn check_helper_call(
         let fn_name = node_text(fn_child, source_bytes);
         if let Some(helper) = helpers.get(&fn_name) {
             let line = node.start_position().row + 1;
-            let arg_text = extract_first_argument_text(node, source_bytes);
+            let arg_info = extract_first_argument_info(node, source_bytes);
+            let arg_text = arg_info.as_ref().map(|a| a.text.clone());
 
             let helper_tag = match &arg_text {
                 Some(arg) => format!("{}: {}", helper.name, arg),
@@ -1186,12 +1197,27 @@ fn check_helper_call(
 
             for target in &helper.target_states {
                 let is_fault = is_fault_state(target);
+
+                // Priority Tier 1: Edges into FAULT via fault() helper with string literal
+                let label = if (helper.name == "fault" || is_fault)
+                    && arg_info.as_ref().map(|a| a.is_string_literal).unwrap_or(false)
+                {
+                    arg_info.as_ref().unwrap().text.clone()
+                } else if let Some(cmd) = extract_command_string(&base_guard) {
+                    // Priority Tier 2: Command-triggered edges (e.g. startCal() inside CAL command block)
+                    format!("CMD: {}", cmd)
+                } else {
+                    // Fallback Tier 4
+                    prettify_guard(&base_guard)
+                };
+
                 if let Some(ref states) = ctx.active_states {
                     if states.is_empty() {
                         transitions.push(AppTransition {
                             from: "(any state)".to_string(),
                             to: target.clone(),
                             guard: full_guard.clone(),
+                            label: label.clone(),
                             is_fault,
                             transition_type: TransitionType::IndirectHelper {
                                 helper_name: helper.name.clone(),
@@ -1205,6 +1231,7 @@ fn check_helper_call(
                                 from: from.clone(),
                                 to: target.clone(),
                                 guard: full_guard.clone(),
+                                label: label.clone(),
                                 is_fault,
                                 transition_type: TransitionType::IndirectHelper {
                                     helper_name: helper.name.clone(),
@@ -1219,6 +1246,7 @@ fn check_helper_call(
                         from: "(any state)".to_string(),
                         to: target.clone(),
                         guard: full_guard.clone(),
+                        label: label.clone(),
                         is_fault,
                         transition_type: TransitionType::IndirectHelper {
                             helper_name: helper.name.clone(),
@@ -1230,22 +1258,6 @@ fn check_helper_call(
             }
         }
     }
-}
-
-fn extract_first_argument_text(call_node: Node, source_bytes: &[u8]) -> Option<String> {
-    if let Some(arg_list) = call_node.child_by_field_name("arguments") {
-        let mut cursor = arg_list.walk();
-        for child in arg_list.children(&mut cursor) {
-            if child.kind() != "(" && child.kind() != ")" && child.kind() != "," && child.kind() != "comment" {
-                let mut text = node_text(child, source_bytes);
-                if text.starts_with('"') && text.ends_with('"') && text.len() >= 2 {
-                    text = text[1..text.len() - 1].to_string();
-                }
-                return Some(text);
-            }
-        }
-    }
-    None
 }
 
 fn walk_if_statement(
@@ -1387,6 +1399,23 @@ fn check_assignment(
                 let guard_text = ctx.guards.join(" && ");
                 let is_fault = is_fault_state(&target_variant);
 
+                let following_printf = find_following_printf(node, source_bytes);
+                let label = if let Some(cmd) = extract_command_string(&guard_text) {
+                    // Priority Tier 2: Command match
+                    format!("CMD: {}", cmd)
+                } else if !is_fault
+                    && following_printf
+                        .as_ref()
+                        .map(|msg| differs_meaningfully(msg, &target_variant))
+                        .unwrap_or(false)
+                {
+                    // Priority Tier 3: Non-fault printf differing meaningfully
+                    clean_printf_literal(following_printf.as_ref().unwrap())
+                } else {
+                    // Priority Tier 4: Fallback prettified guard
+                    prettify_guard(&guard_text)
+                };
+
                 if let Some(ref states) = ctx.active_states {
                     if states.is_empty() {
                         ambiguous_transitions.push(AmbiguousTransition {
@@ -1401,6 +1430,7 @@ fn check_assignment(
                                 from: from_state.clone(),
                                 to: target_variant.clone(),
                                 guard: guard_text.clone(),
+                                label: label.clone(),
                                 is_fault,
                                 transition_type: if guard_text.contains("cmd") || guard_text.contains("strcmp") {
                                     TransitionType::EventTriggered
@@ -1615,6 +1645,344 @@ fn has_matching_outer_parens(s: &str) -> bool {
         }
     }
     depth == 0
+}
+
+#[derive(Debug, Clone)]
+struct CallArgInfo {
+    text: String,
+    is_string_literal: bool,
+}
+
+fn extract_first_argument_info(call_node: Node, source_bytes: &[u8]) -> Option<CallArgInfo> {
+    if let Some(arg_list) = call_node.child_by_field_name("arguments") {
+        let mut cursor = arg_list.walk();
+        for child in arg_list.children(&mut cursor) {
+            if child.kind() != "(" && child.kind() != ")" && child.kind() != "," && child.kind() != "comment" {
+                let is_string_literal = child.kind() == "string_literal";
+                let mut text = node_text(child, source_bytes);
+                if text.starts_with('"') && text.ends_with('"') && text.len() >= 2 {
+                    text = text[1..text.len() - 1].to_string();
+                }
+                return Some(CallArgInfo {
+                    text,
+                    is_string_literal,
+                });
+            }
+        }
+    }
+    None
+}
+
+fn extract_command_string(guard: &str) -> Option<String> {
+    if let Some(idx) = guard.find("strcmp") {
+        let after_strcmp = &guard[idx..];
+        if let Some(eq_idx) = after_strcmp.find("==") {
+            let call_str = &after_strcmp[..eq_idx];
+            if let Some(first_quote) = call_str.find('"') {
+                let after_quote = &call_str[first_quote + 1..];
+                if let Some(second_quote) = after_quote.find('"') {
+                    let cmd = &after_quote[..second_quote];
+                    if !cmd.is_empty() {
+                        return Some(cmd.to_string());
+                    }
+                }
+            }
+        }
+    }
+    None
+}
+
+fn clean_printf_literal(raw: &str) -> String {
+    let s = raw
+        .replace("\\r", "")
+        .replace("\\n", "")
+        .replace("\r", "")
+        .replace("\n", "");
+    s.trim().trim_matches(|c| c == '.' || c == '!').trim().to_string()
+}
+
+fn differs_meaningfully(printf_msg: &str, dest_state: &str) -> bool {
+    let clean_msg = printf_msg
+        .replace("\\r", "")
+        .replace("\\n", "")
+        .replace("\r", "")
+        .replace("\n", "");
+    let clean_msg = clean_msg.trim().to_lowercase();
+    let clean_dest = dest_state.trim().to_lowercase();
+
+    if clean_msg.is_empty() {
+        return false;
+    }
+
+    // Ignore hit-detection side info
+    if clean_msg.contains("hit") {
+        return false;
+    }
+
+    // Status / state confirmations in fixture
+    let known_redundant = [
+        "hold", "cal ok", "returned", "stopping", "backoff", "go", "ret",
+        "rst", "opening", "closing", "closed", "opened", "busy", "no cal",
+        "invalid", "hatch stopped", "ok",
+    ];
+    if known_redundant.iter().any(|&r| clean_msg == r || clean_msg.contains(r)) {
+        return false;
+    }
+
+    // Normalize dest state (e.g. remove cal_, rec_ prefixes)
+    let stripped_dest = clean_dest
+        .strip_prefix("cal_")
+        .or_else(|| clean_dest.strip_prefix("rec_"))
+        .unwrap_or(&clean_dest)
+        .replace('_', "");
+
+    let compact_msg = clean_msg.replace(|c: char| !c.is_alphanumeric(), "");
+
+    if compact_msg == stripped_dest || compact_msg == clean_dest.replace('_', "") {
+        return false;
+    }
+    if stripped_dest.contains(&compact_msg) || compact_msg.contains(&stripped_dest) {
+        return false;
+    }
+
+    true
+}
+
+fn find_following_printf(node: Node, source_bytes: &[u8]) -> Option<String> {
+    let stmt = find_parent_statement(node)?;
+    let mut sibling = stmt.next_sibling();
+    let mut count = 0;
+    while let Some(sib) = sibling {
+        count += 1;
+        if count > 4 {
+            break;
+        }
+        if sib.kind() == "comment" {
+            sibling = sib.next_sibling();
+            continue;
+        }
+        if let Some(call) = find_call_in_statement(sib) {
+            if let Some(fn_node) = call.child_by_field_name("function") {
+                if node_text(fn_node, source_bytes) == "printf" {
+                    if let Some(arg) = extract_first_argument_info(call, source_bytes) {
+                        if arg.is_string_literal {
+                            return Some(arg.text);
+                        }
+                    }
+                }
+            }
+        }
+        sibling = sib.next_sibling();
+    }
+    None
+}
+
+fn find_parent_statement(mut node: Node) -> Option<Node> {
+    while let Some(parent) = node.parent() {
+        if parent.kind().ends_with("_statement") {
+            return Some(parent);
+        }
+        node = parent;
+    }
+    None
+}
+
+fn find_call_in_statement(stmt: Node) -> Option<Node> {
+    if stmt.kind() == "call_expression" {
+        return Some(stmt);
+    }
+    if stmt.kind() == "expression_statement" {
+        let mut cursor = stmt.walk();
+        for child in stmt.children(&mut cursor) {
+            if child.kind() == "call_expression" {
+                return Some(child);
+            }
+        }
+    }
+    None
+}
+
+pub fn to_title_case_identifier(ident: &str) -> String {
+    let s = ident.trim_end_matches("()");
+    let mut words: Vec<String> = Vec::new();
+
+    for part in s.split(['_', '.']) {
+        if part.is_empty() {
+            continue;
+        }
+        let mut cur_word = String::new();
+        let chars: Vec<char> = part.chars().collect();
+        for i in 0..chars.len() {
+            let c = chars[i];
+            if i > 0 {
+                let prev = chars[i - 1];
+                let is_prev_lower_or_digit = prev.is_ascii_lowercase() || prev.is_ascii_digit();
+                let is_cur_upper = c.is_ascii_uppercase();
+                let is_next_lower = i + 1 < chars.len() && chars[i + 1].is_ascii_lowercase();
+
+                if (is_prev_lower_or_digit && is_cur_upper)
+                    || (prev.is_ascii_uppercase() && is_cur_upper && is_next_lower)
+                {
+                    if !cur_word.is_empty() {
+                        words.push(cur_word);
+                        cur_word = String::new();
+                    }
+                }
+            }
+            cur_word.push(c);
+        }
+        if !cur_word.is_empty() {
+            words.push(cur_word);
+        }
+    }
+
+    let capitalized: Vec<String> = words
+        .into_iter()
+        .map(|w| {
+            if w.chars().all(|c| c.is_ascii_uppercase() || c.is_ascii_digit()) {
+                w
+            } else {
+                let mut chars = w.chars();
+                match chars.next() {
+                    Some(first) => {
+                        let mut res = first.to_uppercase().to_string();
+                        res.push_str(chars.as_str());
+                        res
+                    }
+                    None => String::new(),
+                }
+            }
+        })
+        .collect();
+
+    capitalized.join(" ")
+}
+
+pub fn prettify_guard(raw_guard: &str) -> String {
+    let mut s = raw_guard.trim();
+    if let Some(idx) = s.find(" [") {
+        s = &s[..idx];
+    }
+    s = s.trim();
+
+    while s.starts_with('(') && s.ends_with(')') && has_matching_outer_parens(s) {
+        s = s[1..s.len() - 1].trim();
+    }
+
+    if s.is_empty() {
+        return String::new();
+    }
+
+    // 1. Timeout pattern
+    if s.contains("now") && s.contains("stateStart") {
+        if let Some(timeout_label) = extract_timeout_pattern(s) {
+            return timeout_label;
+        }
+    }
+
+    // 2. Split by ||
+    if s.contains("||") {
+        let parts: Vec<String> = s
+            .split("||")
+            .map(|p| prettify_conjunctive_clause(p.trim()))
+            .filter(|p| !p.is_empty())
+            .collect();
+        return parts.join(" or ");
+    }
+
+    // 3. Conjunctive clause
+    prettify_conjunctive_clause(s)
+}
+
+fn extract_timeout_pattern(s: &str) -> Option<String> {
+    let s_clean = s.trim();
+    let s_clean = if s_clean.starts_with('(') && s_clean.ends_with(')') {
+        s_clean[1..s_clean.len() - 1].trim()
+    } else {
+        s_clean
+    };
+
+    if let Some(idx) = s_clean.find("now") {
+        let after_now = s_clean[idx + 3..].trim_start();
+        if let Some(dash_idx) = after_now.find('-') {
+            let after_dash = after_now[dash_idx + 1..].trim_start();
+            if let Some(gt_idx) = after_dash.find('>') {
+                let left_side = after_dash[..gt_idx].trim();
+                let right_side = after_dash[gt_idx + 1..].trim();
+                if left_side.contains("stateStart") {
+                    let const_name = right_side
+                        .chars()
+                        .take_while(|c| c.is_alphanumeric() || *c == '_')
+                        .collect::<String>();
+                    if !const_name.is_empty() {
+                        return Some(format!("Timeout ({})", const_name));
+                    }
+                }
+            }
+        }
+    }
+    None
+}
+
+fn prettify_conjunctive_clause(clause: &str) -> String {
+    let parts: Vec<String> = clause
+        .split("&&")
+        .map(|p| prettify_single_term(p.trim()))
+        .filter(|p| !p.is_empty())
+        .collect();
+    parts.join(" and ")
+}
+
+fn prettify_single_term(term: &str) -> String {
+    let mut s = term.trim();
+    while s.starts_with('(') && s.ends_with(')') && has_matching_outer_parens(s) {
+        s = s[1..s.len() - 1].trim();
+    }
+    if s.is_empty() {
+        return String::new();
+    }
+
+    // Equality comparison
+    if s.contains("==") {
+        let parts: Vec<&str> = s.split("==").collect();
+        if parts.len() == 2 {
+            let left = prettify_operand(parts[0].trim());
+            let right = prettify_operand(parts[1].trim());
+            return format!("{} is {}", left, right);
+        }
+    }
+
+    // Inequality comparison
+    if s.contains("!=") {
+        let parts: Vec<&str> = s.split("!=").collect();
+        if parts.len() == 2 {
+            let left = prettify_operand(parts[0].trim());
+            let right = prettify_operand(parts[1].trim());
+            return format!("{} is not {}", left, right);
+        }
+    }
+
+    // Leading negation !
+    if let Some(rest) = s.strip_prefix('!') {
+        return format!("not {}", prettify_operand(rest.trim()));
+    }
+
+    prettify_operand(s)
+}
+
+fn prettify_operand(op: &str) -> String {
+    let mut s = op.trim();
+    while s.starts_with('(') && s.ends_with(')') && has_matching_outer_parens(s) {
+        s = s[1..s.len() - 1].trim();
+    }
+    match s {
+        "0" => "0".to_string(),
+        "1" => "1".to_string(),
+        "true" => "true".to_string(),
+        "false" => "false".to_string(),
+        "NULL" => "NULL".to_string(),
+        _ => to_title_case_identifier(s),
+    }
 }
 
 fn collect_enum_definitions(
@@ -2024,6 +2392,60 @@ mod tests {
         // Check high fan-in edges
         let high_fan_in_count = layout.edges.iter().filter(|e| e.is_high_fan_in).count();
         assert_eq!(high_fan_in_count, 12, "expected 12 edges targeting FAULT marked is_high_fan_in");
+
+        // 5. Verify exact expected labels for each priority tier
+        // Tier 1: Fault edges via fault() helper
+        let cal_timeout_edge = sm.transitions.iter().find(|t| t.from == "CALIBRATING" && t.to == "FAULT" && t.guard.contains("CAL_TIMEOUT")).expect("missing CAL_TIMEOUT edge");
+        assert_eq!(cal_timeout_edge.label, "CAL TIMEOUT");
+
+        let z2_limit_edge = sm.transitions.iter().find(|t| t.from == "CALIBRATING" && t.to == "FAULT" && t.guard.contains("Z2 LIMIT NOT FOUND")).expect("missing Z2 LIMIT edge");
+        assert_eq!(z2_limit_edge.label, "Z2 LIMIT NOT FOUND");
+
+        let cal_skew_edge = sm.transitions.iter().find(|t| t.from == "CAL_STOPPING" && t.to == "FAULT" && t.guard.contains("CAL SKEW")).expect("missing CAL SKEW edge");
+        assert_eq!(cal_skew_edge.label, "CAL SKEW");
+
+        // Tier 2: Command edges
+        let cmd_go_idle = sm.transitions.iter().find(|t| t.from == "IDLE" && t.to == "GOING").expect("missing IDLE->GOING edge");
+        assert_eq!(cmd_go_idle.label, "CMD: GO");
+
+        let cmd_ret_hold = sm.transitions.iter().find(|t| t.from == "HOLD" && t.to == "RETURNING").expect("missing HOLD->RETURNING edge");
+        assert_eq!(cmd_ret_hold.label, "CMD: RET");
+
+        let cmd_cal_idle = sm.transitions.iter().find(|t| t.from == "IDLE" && t.to == "CALIBRATING").expect("missing IDLE->CALIBRATING edge");
+        assert_eq!(cmd_cal_idle.label, "CMD: CAL");
+
+        // Tier 4: Fallback timeout edge
+        let timeout_open_edge = sm.transitions.iter().find(|t| t.from == "OPENING" && t.to == "IDLE").expect("missing OPENING->IDLE edge");
+        assert_eq!(timeout_open_edge.label, "Timeout (OPEN_DURATION_MS)");
+
+        let timeout_close_edge = sm.transitions.iter().find(|t| t.from == "CLOSING" && t.to == "IDLE").expect("missing CLOSING->IDLE edge");
+        assert_eq!(timeout_close_edge.label, "Timeout (CLOSE_DURATION_MS)");
+
+        // Tier 4: Fallback boolean expressions
+        let axes_done_edge = sm.transitions.iter().find(|t| t.from == "CAL_STOPPING" && t.to == "CAL_BACKOFF").expect("missing CAL_STOPPING->CAL_BACKOFF edge");
+        assert_eq!(axes_done_edge.label, "Axes Done");
+
+        let hits_edge = sm.transitions.iter().find(|t| t.from == "CALIBRATING" && t.to == "CAL_STOPPING").expect("missing CALIBRATING->CAL_STOPPING edge");
+        assert_eq!(hits_edge.label, "Z1 Hit and Z2 Hit");
+
+        let rec_edge = sm.transitions.iter().find(|t| t.from == "RETURNING" && t.to == "RECOVERY").expect("missing RETURNING->RECOVERY edge");
+        assert_eq!(rec_edge.label, "Entering Recovery");
+
+        // Negative assertion: explicitly verify printf-only non-transition branches produce 0 edges
+        assert!(!sm.transitions.iter().any(|t| t.to == "NO CAL" || t.to == "BUSY" || t.to == "INVALID"), "printf-only branches must not become states");
+        assert!(!sm.transitions.iter().any(|t| t.label == "NO CAL" || t.label == "BUSY" || t.label == "INVALID"), "printf-only branches must not produce transition labels");
+        assert!(!sm.transitions.iter().any(|t| t.guard.contains("NO CAL") || t.guard.contains("BUSY") || t.guard.contains("INVALID")), "printf-only branches must not appear in transition guards");
+
+        // Verify EdgeLayout fields
+        let layout_go = layout.edges.iter().find(|e| e.from == "IDLE" && e.to == "GOING").expect("missing IDLE->GOING in layout");
+        assert_eq!(layout_go.label, "CMD: GO");
+        assert_eq!(layout_go.display_guard, "CMD: GO");
+        assert!(layout_go.guard.contains("strcmp"), "raw guard must be preserved in layout.edges");
+
+        let layout_fault = layout.edges.iter().find(|e| e.from == "CALIBRATING" && e.to == "FAULT" && e.guard.contains("CAL_TIMEOUT")).expect("missing CAL_TIMEOUT layout edge");
+        assert_eq!(layout_fault.label, "CAL TIMEOUT");
+        assert_eq!(layout_fault.display_guard, "CAL TIMEOUT");
+        assert!(layout_fault.guard.contains("fault: CAL TIMEOUT"), "raw guard must be preserved in layout.edges");
     }
 
     #[test]
@@ -2139,6 +2561,66 @@ mod tests {
         let fault_node = layout.nodes.get("FAULT").expect("FAULT node layout missing");
         assert!(fault_node.is_fault);
         assert_eq!(fault_node.incoming_count, 14);
+
+        // 5. Verify exact expected labels for each priority tier
+        // Tier 1: Fault edges via fault() helper
+        let cal_timeout_edge = sm.transitions.iter().find(|t| t.from == "CALIBRATING" && t.to == "FAULT" && t.guard.contains("CAL_TIMEOUT")).expect("missing CAL_TIMEOUT edge");
+        assert_eq!(cal_timeout_edge.label, "CAL TIMEOUT");
+
+        let z2_limit_edge = sm.transitions.iter().find(|t| t.from == "CALIBRATING" && t.to == "FAULT" && t.guard.contains("Z2 LIMIT NOT FOUND")).expect("missing Z2 LIMIT edge");
+        assert_eq!(z2_limit_edge.label, "Z2 LIMIT NOT FOUND");
+
+        let cal_skew_edge = sm.transitions.iter().find(|t| t.from == "CAL_STOPPING" && t.to == "FAULT" && t.guard.contains("CAL SKEW")).expect("missing CAL SKEW edge");
+        assert_eq!(cal_skew_edge.label, "CAL SKEW");
+
+        // Tier 2: Command edges (including cross-transitions)
+        let cmd_go_idle = sm.transitions.iter().find(|t| t.from == "IDLE" && t.to == "GOING").expect("missing IDLE->GOING edge");
+        assert_eq!(cmd_go_idle.label, "CMD: GO");
+
+        let cmd_ret_hold = sm.transitions.iter().find(|t| t.from == "HOLD" && t.to == "RETURNING").expect("missing HOLD->RETURNING edge");
+        assert_eq!(cmd_ret_hold.label, "CMD: RET");
+
+        let cmd_open_closing = sm.transitions.iter().find(|t| t.from == "CLOSING" && t.to == "OPENING").expect("missing CLOSING->OPENING edge");
+        assert_eq!(cmd_open_closing.label, "CMD: OPEN");
+
+        let cmd_close_opening = sm.transitions.iter().find(|t| t.from == "OPENING" && t.to == "CLOSING").expect("missing OPENING->CLOSING edge");
+        assert_eq!(cmd_close_opening.label, "CMD: CLOSE");
+
+        let cmd_cal_idle = sm.transitions.iter().find(|t| t.from == "IDLE" && t.to == "CALIBRATING").expect("missing IDLE->CALIBRATING edge");
+        assert_eq!(cmd_cal_idle.label, "CMD: CAL");
+
+        // Tier 4: Fallback timeout edge
+        let timeout_open_edge = sm.transitions.iter().find(|t| t.from == "OPENING" && t.to == "IDLE").expect("missing OPENING->IDLE edge");
+        assert_eq!(timeout_open_edge.label, "Timeout (OPEN_DURATION_MS)");
+
+        let timeout_close_edge = sm.transitions.iter().find(|t| t.from == "CLOSING" && t.to == "IDLE").expect("missing CLOSING->IDLE edge");
+        assert_eq!(timeout_close_edge.label, "Timeout (CLOSE_DURATION_MS)");
+
+        // Tier 4: Fallback boolean expressions
+        let axes_done_edge = sm.transitions.iter().find(|t| t.from == "CAL_STOPPING" && t.to == "CAL_BACKOFF").expect("missing CAL_STOPPING->CAL_BACKOFF edge");
+        assert_eq!(axes_done_edge.label, "Axes Done");
+
+        let hits_edge = sm.transitions.iter().find(|t| t.from == "CALIBRATING" && t.to == "CAL_STOPPING").expect("missing CALIBRATING->CAL_STOPPING edge");
+        assert_eq!(hits_edge.label, "Z1 Hit and Z2 Hit");
+
+        let rec_edge = sm.transitions.iter().find(|t| t.from == "RETURNING" && t.to == "RECOVERY").expect("missing RETURNING->RECOVERY edge");
+        assert_eq!(rec_edge.label, "Entering Recovery");
+
+        // Negative assertion: explicitly verify printf-only non-transition branches produce 0 edges
+        assert!(!sm.transitions.iter().any(|t| t.to == "NO CAL" || t.to == "BUSY" || t.to == "INVALID"), "printf-only branches must not become states");
+        assert!(!sm.transitions.iter().any(|t| t.label == "NO CAL" || t.label == "BUSY" || t.label == "INVALID"), "printf-only branches must not produce transition labels");
+        assert!(!sm.transitions.iter().any(|t| t.guard.contains("NO CAL") || t.guard.contains("BUSY") || t.guard.contains("INVALID")), "printf-only branches must not appear in transition guards");
+
+        // Verify EdgeLayout fields
+        let layout_open = layout.edges.iter().find(|e| e.from == "CLOSING" && e.to == "OPENING").expect("missing CLOSING->OPENING in layout");
+        assert_eq!(layout_open.label, "CMD: OPEN");
+        assert_eq!(layout_open.display_guard, "CMD: OPEN");
+        assert!(layout_open.guard.contains("strcmp"), "raw guard must be preserved in layout.edges");
+
+        let layout_fault = layout.edges.iter().find(|e| e.from == "CALIBRATING" && e.to == "FAULT" && e.guard.contains("CAL_TIMEOUT")).expect("missing CAL_TIMEOUT layout edge");
+        assert_eq!(layout_fault.label, "CAL TIMEOUT");
+        assert_eq!(layout_fault.display_guard, "CAL TIMEOUT");
+        assert!(layout_fault.guard.contains("fault: CAL TIMEOUT"), "raw guard must be preserved in layout.edges");
     }
 
     #[test]

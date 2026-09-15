@@ -63,7 +63,16 @@ pub fn setup_state_diagram_drawing_and_gestures(
 
                     let mut info = format!("STATE: {} | Incoming: {} | Outgoing: {}", sel, incoming.len(), outgoing.len());
                     if !outgoing.is_empty() {
-                        let out_summary: Vec<_> = outgoing.iter().map(|t| format!("-> {} [{}]", t.to, t.display_guard(25))).collect();
+                        let out_summary: Vec<_> = outgoing
+                            .iter()
+                            .map(|t| {
+                                if !t.label.is_empty() && !t.guard.is_empty() && t.label != t.guard {
+                                    format!("-> {} [{} (raw: {})]", t.to, t.label, t.guard)
+                                } else {
+                                    format!("-> {} [{}]", t.to, t.display_guard(25))
+                                }
+                            })
+                            .collect();
                         info.push_str(&format!(" | Exits: {}", out_summary.join(", ")));
                     }
                     info_click.set_text(&info);
