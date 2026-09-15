@@ -98,6 +98,26 @@ pub fn draw_state_diagram(
     // Draw technical dot grid
     draw_dot_grid(cr, layout.width.max(1600.0), layout.height.max(1200.0));
 
+    // Draw Lane Header Banners
+    for lane in &layout.lanes {
+        if lane.name != "INITIAL" {
+            cr.select_font_face("monospace", cairo::FontSlant::Normal, cairo::FontWeight::Bold);
+            cr.set_font_size(8.5);
+            if selected_node.is_some() {
+                cr.set_source_rgba(0.4, 0.4, 0.4, 0.35);
+            } else {
+                cr.set_source_rgba(0.5, 0.5, 0.5, 0.65);
+            }
+            let banner_text = if lane.name == "FAULT" {
+                "// GLOBAL FAULT HANDLER".to_string()
+            } else {
+                format!("// FLOW LANE: {}", lane.name)
+            };
+            let _ = cr.move_to(lane.x_start, lane.y - 12.0);
+            let _ = cr.show_text(&banner_text);
+        }
+    }
+
     // 2. Draw Edges
     for edge in &layout.edges {
         let is_connected_to_selection = match selected_node {
@@ -252,20 +272,6 @@ pub fn draw_state_diagram(
             }
             let _ = cr.move_to(node.x + 8.0, node.y + 12.0);
             let _ = cr.show_text("▲ FAULT");
-        }
-
-        // Top-right cluster tag
-        if !node.cluster.is_empty() && node.cluster != "INITIAL" && node.cluster != "FAULT" {
-            cr.set_font_size(7.0);
-            if is_dimmed_node {
-                cr.set_source_rgba(0.35, 0.35, 0.35, 0.25);
-            } else {
-                cr.set_source_rgba(0.5, 0.5, 0.5, 0.5);
-            }
-            if let Ok(c_ext) = cr.text_extents(&node.cluster) {
-                let _ = cr.move_to(node.x + node.width - c_ext.width() - 8.0, node.y + 12.0);
-                let _ = cr.show_text(&node.cluster);
-            }
         }
 
         // Footer badges:
@@ -554,6 +560,9 @@ mod tests {
         let layout = state.borrow().state_diagram_layout.clone().unwrap();
         assert_eq!(layout.nodes.len(), 14);
         assert_eq!(layout.edges.len(), 31);
+        assert!(!layout.lanes.is_empty());
+        assert!(layout.lanes.iter().any(|l| l.name == "CALIBRATION"));
+        assert!(layout.lanes.iter().any(|l| l.name == "FAULT"));
 
         // 2. Select GOING node (expand outgoing edges including to FAULT)
         state.borrow_mut().selected_state_node = Some("GOING".to_string());

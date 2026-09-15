@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::fs;
 use std::path::Path;
 
@@ -86,9 +86,19 @@ pub struct AppStateMachine {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct LaneLayout {
+    pub name: String,
+    pub y: f64,
+    pub x_start: f64,
+    pub x_end: f64,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct StateMachineLayout {
     pub nodes: HashMap<String, NodeLayout>,
     pub edges: Vec<EdgeLayout>,
+    #[serde(default)]
+    pub lanes: Vec<LaneLayout>,
     pub width: f64,
     pub height: f64,
 }
@@ -300,23 +310,73 @@ fn detect_state_clusters(
         }
     }
 
-    // Sort states topologically within each cluster
+    // Sort states topologically within each cluster using Kahn's algorithm
     let topo_sort_cluster = |cluster_nodes: &mut Vec<String>| {
+        if cluster_nodes.len() <= 1 {
+            return;
+        }
         let node_set: HashSet<String> = cluster_nodes.iter().cloned().collect();
+        let mut adj: HashMap<String, Vec<String>> = HashMap::new();
         let mut in_deg: HashMap<String, usize> = HashMap::new();
-        for s in &node_set {
+
+        for s in cluster_nodes.iter() {
+            adj.insert(s.clone(), Vec::new());
             in_deg.insert(s.clone(), 0);
         }
+
         for t in transitions {
             if node_set.contains(&t.from) && node_set.contains(&t.to) && t.from != t.to {
+                adj.entry(t.from.clone()).or_default().push(t.to.clone());
                 *in_deg.entry(t.to.clone()).or_default() += 1;
             }
         }
-        cluster_nodes.sort_by(|a, b| {
-            let deg_a = in_deg.get(a).copied().unwrap_or(0);
-            let deg_b = in_deg.get(b).copied().unwrap_or(0);
-            deg_a.cmp(&deg_b).then_with(|| a.cmp(b))
-        });
+
+        // Kahn's algorithm: start with zero in-degree nodes
+        let mut queue: VecDeque<String> = VecDeque::new();
+        for s in cluster_nodes.iter() {
+            if in_deg.get(s).copied().unwrap_or(0) == 0 {
+                queue.push_back(s.clone());
+            }
+        }
+
+        // If no zero in-degree nodes (cycle), start with the node having minimum in-degree
+        if queue.is_empty() {
+            if let Some(min_s) = cluster_nodes.iter().min_by_key(|s| in_deg.get(*s).copied().unwrap_or(0)) {
+                queue.push_back(min_s.clone());
+            }
+        }
+
+        let mut sorted = Vec::new();
+        let mut visited: HashSet<String> = HashSet::new();
+
+        while let Some(u) = queue.pop_front() {
+            if !visited.insert(u.clone()) {
+                continue;
+            }
+            sorted.push(u.clone());
+            if let Some(neighbors) = adj.get(&u) {
+                let mut sorted_neighbors = neighbors.clone();
+                sorted_neighbors.sort_by_key(|n| cluster_nodes.iter().position(|x| x == n).unwrap_or(999));
+                for v in sorted_neighbors {
+                    if let Some(deg) = in_deg.get_mut(&v) {
+                        *deg = deg.saturating_sub(1);
+                        if *deg == 0 && !visited.contains(&v) {
+                            queue.push_back(v);
+                        }
+                    }
+                }
+            }
+
+            if queue.is_empty() && sorted.len() < cluster_nodes.len() {
+                let mut candidates: Vec<&String> = cluster_nodes.iter().filter(|s| !visited.contains(*s)).collect();
+                candidates.sort_by_key(|s| in_deg.get(*s).copied().unwrap_or(0));
+                if let Some(&next_s) = candidates.first() {
+                    queue.push_back(next_s.clone());
+                }
+            }
+        }
+
+        *cluster_nodes = sorted;
     };
 
     if !cal_states.is_empty() {
@@ -354,12 +414,26 @@ fn detect_state_clusters(
     clusters
 }
 
+#[derive(Debug, Clone, Copy)]
+struct BoundingBox {
+    x0: f64,
+    y0: f64,
+    x1: f64,
+    y1: f64,
+}
+
+impl BoundingBox {
+    fn intersects(&self, other: &BoundingBox) -> bool {
+        self.x0 < other.x1 && self.x1 > other.x0 && self.y0 < other.y1 && self.y1 > other.y0
+    }
+}
+
 /// Compute layered node-link graph layout for a state machine.
 pub fn compute_state_machine_layout(sm: &AppStateMachine) -> StateMachineLayout {
     let node_width = 175.0;
     let node_height = 54.0;
     let h_gap = 220.0;
-    let lane_gap = 135.0;
+    let lane_gap = 140.0;
 
     let initial_name = sm.var.initial_value.as_deref().unwrap_or("IDLE");
 
@@ -400,31 +474,39 @@ pub fn compute_state_machine_layout(sm: &AppStateMachine) -> StateMachineLayout 
     let clusters = detect_state_clusters(&sm.states, &sm.transitions, initial_name);
 
     let mut nodes_layout = HashMap::new();
-    let left_margin = 80.0;
+    let left_margin = 110.0;
     let top_margin = 80.0;
 
     let mut max_x = left_margin;
     let mut current_y = top_margin;
+    let mut lanes = Vec::new();
+    let mut cluster_indices: HashMap<String, usize> = HashMap::new();
 
-    for (cluster_name, cluster_nodes) in &clusters {
-        let is_fault_lane = cluster_name == "FAULT";
-        let is_initial_lane = cluster_name == "INITIAL";
+    let mut operational_clusters = Vec::new();
+    let mut fault_cluster = None;
 
-        // Extra vertical breathing room before fault lane
-        if is_fault_lane {
-            current_y += 50.0;
+    for c in clusters {
+        if c.0 == "FAULT" {
+            fault_cluster = Some(c);
+        } else {
+            operational_clusters.push(c);
         }
+    }
+
+    // Layout operational lanes
+    for (lane_idx, (cluster_name, cluster_nodes)) in operational_clusters.iter().enumerate() {
+        cluster_indices.insert(cluster_name.clone(), lane_idx);
+        let lane_y = current_y;
+        let mut lane_min_x = f64::MAX;
+        let mut lane_max_x = f64::MIN;
 
         for (col_idx, node_id) in cluster_nodes.iter().enumerate() {
-            let x = if is_fault_lane {
-                // Center fault node with generous margin
-                left_margin + 200.0 + col_idx as f64 * (node_width + 80.0)
-            } else if is_initial_lane {
+            let x = if cluster_name == "INITIAL" {
                 left_margin
             } else {
                 left_margin + col_idx as f64 * (node_width + h_gap)
             };
-            let y = current_y;
+            let y = lane_y;
 
             let is_initial = node_id == initial_name;
             let is_fault = is_fault_state(node_id);
@@ -450,17 +532,90 @@ pub fn compute_state_machine_layout(sm: &AppStateMachine) -> StateMachineLayout 
                 },
             );
 
+            lane_min_x = lane_min_x.min(x);
+            lane_max_x = lane_max_x.max(x + node_width);
             if x + node_width > max_x {
                 max_x = x + node_width;
             }
         }
 
+        lanes.push(LaneLayout {
+            name: cluster_name.clone(),
+            y: lane_y,
+            x_start: lane_min_x,
+            x_end: lane_max_x,
+        });
+
         current_y += lane_gap;
+    }
+
+    // Layout FAULT cluster (Fix #4: centered horizontally at visual center, 80px below operational lanes)
+    if let Some((fault_name, fault_nodes)) = fault_cluster {
+        let fault_lane_idx = operational_clusters.len();
+        cluster_indices.insert(fault_name.clone(), fault_lane_idx);
+
+        let max_operational_y = nodes_layout
+            .values()
+            .map(|n| n.y + n.height)
+            .fold(top_margin, f64::max);
+        let fault_y = max_operational_y + 80.0;
+
+        let center_x = (left_margin + max_x) * 0.5;
+        let fault_count = fault_nodes.len();
+        let total_fault_w = fault_count as f64 * node_width + fault_count.saturating_sub(1) as f64 * 40.0;
+        let fault_start_x = center_x - total_fault_w * 0.5;
+
+        let mut lane_min_x = f64::MAX;
+        let mut lane_max_x = f64::MIN;
+
+        for (col_idx, node_id) in fault_nodes.iter().enumerate() {
+            let x = fault_start_x + col_idx as f64 * (node_width + 40.0);
+            let y = fault_y;
+
+            let is_initial = node_id == initial_name;
+            let is_fault = true;
+            let in_count = in_degrees.get(node_id).copied().unwrap_or(0);
+            let out_count = out_degrees.get(node_id).copied().unwrap_or(0);
+            let collapsed_badges = collapsed_out_map.get(node_id).cloned().unwrap_or_default();
+
+            nodes_layout.insert(
+                node_id.clone(),
+                NodeLayout {
+                    id: node_id.clone(),
+                    label: node_id.clone(),
+                    x,
+                    y,
+                    width: node_width,
+                    height: node_height,
+                    is_fault,
+                    is_initial,
+                    cluster: fault_name.clone(),
+                    collapsed_out_badges: collapsed_badges,
+                    incoming_count: in_count,
+                    outgoing_count: out_count,
+                },
+            );
+
+            lane_min_x = lane_min_x.min(x);
+            lane_max_x = lane_max_x.max(x + node_width);
+            if x + node_width > max_x {
+                max_x = x + node_width;
+            }
+        }
+
+        lanes.push(LaneLayout {
+            name: fault_name,
+            y: fault_y,
+            x_start: lane_min_x,
+            x_end: lane_max_x,
+        });
+
+        current_y = fault_y + node_height + 40.0;
     }
 
     let max_y = current_y;
 
-    // 4. Compute edge layouts
+    // 4. Compute edge layouts with corridor routing for cross-cluster edges (Fix #1 & #3)
     let mut edges_layout = Vec::new();
     for t in &sm.transitions {
         let from_layout = nodes_layout.get(&t.from);
@@ -472,17 +627,17 @@ pub fn compute_state_machine_layout(sm: &AppStateMachine) -> StateMachineLayout 
             let is_inter_cluster = from.cluster != to.cluster;
 
             let (start, end, control1, control2, label_pos) = if to.is_fault {
-                // Route down toward fault
+                // Route down toward centered fault
                 let start = (from.x + from.width * 0.5, from.y + from.height);
                 let end = (to.x + to.width * 0.5, to.y);
                 let dy = (end.1 - start.1).max(30.0);
                 let control1 = (start.0, start.1 + dy * 0.45);
                 let control2 = (end.0, end.1 - dy * 0.45);
-                let label_pos = ((start.0 + end.0) * 0.5, (start.1 + end.1) * 0.5);
+                let label_pos = (from.x + from.width * 0.5, from.y + from.height + 24.0);
                 (start, end, control1, control2, label_pos)
-            } else if (from.y - to.y).abs() < 10.0 {
+            } else if from.cluster == to.cluster {
+                // Intra-cluster edge (Fix #1: strictly forward left-to-right)
                 if from.x < to.x {
-                    // Intra-lane forward edge
                     let start = (from.x + from.width, from.y + from.height * 0.5);
                     let end = (to.x, to.y + to.height * 0.5);
                     let dx = (end.0 - start.0).max(20.0);
@@ -491,7 +646,7 @@ pub fn compute_state_machine_layout(sm: &AppStateMachine) -> StateMachineLayout 
                     let label_pos = ((start.0 + end.0) * 0.5, start.1 - 14.0);
                     (start, end, control1, control2, label_pos)
                 } else {
-                    // Intra-lane loopback (e.g. RETURNED -> GOING)
+                    // Intra-lane loopback (e.g. RETURNED -> GOING in MOTION cycle)
                     let start = (from.x + from.width * 0.5, from.y);
                     let end = (to.x + to.width * 0.5, to.y);
                     let arc_y = (from.y - 48.0).max(20.0);
@@ -500,24 +655,59 @@ pub fn compute_state_machine_layout(sm: &AppStateMachine) -> StateMachineLayout 
                     let label_pos = ((start.0 + end.0) * 0.5, arc_y - 12.0);
                     (start, end, control1, control2, label_pos)
                 }
-            } else if from.y < to.y {
-                // Downward inter-lane edge (e.g. IDLE -> GOING, RETURNING -> RECOVERY)
-                let start = (from.x + from.width * 0.5, from.y + from.height);
-                let end = (to.x + to.width * 0.5, to.y);
-                let dy = (end.1 - start.1).max(30.0);
-                let control1 = (start.0, start.1 + dy * 0.45);
-                let control2 = (end.0, end.1 - dy * 0.45);
-                let label_pos = ((start.0 + end.0) * 0.5, (start.1 + end.1) * 0.5);
-                (start, end, control1, control2, label_pos)
             } else {
-                // Upward inter-lane edge (e.g. CAL_BACKOFF -> IDLE, OPENING -> IDLE)
-                let start = (from.x + from.width * 0.5, from.y);
-                let end = (to.x + to.width, to.y + to.height * 0.5);
-                let mid_x = from.x.max(to.x) + from.width + 40.0;
-                let control1 = (mid_x, from.y - 20.0);
-                let control2 = (mid_x, to.y + to.height * 0.5);
-                let label_pos = (mid_x + 10.0, (from.y + to.y) * 0.5);
-                (start, end, control1, control2, label_pos)
+                // Inter-cluster edge (Fix #3: obstacle-avoiding corridor routing)
+                let from_lane = cluster_indices.get(&from.cluster).copied().unwrap_or(0);
+                let to_lane = cluster_indices.get(&to.cluster).copied().unwrap_or(0);
+                let lane_diff = to_lane as i32 - from_lane as i32;
+
+                if lane_diff == 1 {
+                    // Downward adjacent lanes (no intervening cluster)
+                    let start = (from.x + from.width * 0.5, from.y + from.height);
+                    let end = (to.x + to.width * 0.5, to.y);
+                    let dy = (end.1 - start.1).max(25.0);
+                    let control1 = (start.0, start.1 + dy * 0.5);
+                    let control2 = (end.0, end.1 - dy * 0.5);
+                    let label_pos = ((start.0 + end.0) * 0.5, from.y + from.height + 24.0);
+                    (start, end, control1, control2, label_pos)
+                } else if lane_diff == -1 && (from.x - to.x).abs() < 60.0 {
+                    // Upward adjacent lanes in same column (e.g. CLOSING -> HOLD)
+                    let start = (from.x + from.width * 0.5, from.y);
+                    let end = (to.x + to.width * 0.5, to.y + to.height);
+                    let dy = (start.1 - end.1).max(25.0);
+                    let control1 = (start.0, start.1 - dy * 0.5);
+                    let control2 = (end.0, end.1 + dy * 0.5);
+                    let label_pos = ((start.0 + end.0) * 0.5, from.y - 24.0);
+                    (start, end, control1, control2, label_pos)
+                } else if lane_diff > 1 {
+                    // Downward spanning intervening clusters: route around cluster boundaries via left corridor
+                    let channel = to_lane.min(4);
+                    let corridor_x = left_margin - 32.0 - (channel as f64 * 14.0);
+                    let start = (from.x, from.y + from.height * 0.5);
+                    let end = (to.x, to.y + to.height * 0.5);
+                    let control1 = (corridor_x, from.y + from.height * 0.5);
+                    let control2 = (corridor_x, to.y + to.height * 0.5);
+                    let label_pos = (from.x + 40.0, from.y + from.height + 24.0);
+                    (start, end, control1, control2, label_pos)
+                } else if from.x <= to.x + 50.0 && lane_diff < -1 {
+                    // Upward spanning in left column (e.g. OPENING -> IDLE): route via left corridor
+                    let corridor_x = left_margin - 22.0;
+                    let start = (from.x, from.y + from.height * 0.5);
+                    let end = (to.x, to.y + to.height * 0.5);
+                    let control1 = (corridor_x, from.y + from.height * 0.5);
+                    let control2 = (corridor_x, to.y + to.height * 0.5);
+                    let label_pos = (from.x + 40.0, from.y - 24.0);
+                    (start, end, control1, control2, label_pos)
+                } else {
+                    // Upward return loop from right side (e.g. CAL_BACKOFF -> IDLE, RETURNED -> IDLE, REC_BACKOFF -> IDLE)
+                    let start = (from.x + from.width * 0.5, from.y);
+                    let end = (to.x + to.width, to.y + to.height * 0.5);
+                    let mid_x = from.x.max(to.x + to.width) + 36.0;
+                    let control1 = (mid_x, from.y - 25.0);
+                    let control2 = (to.x + to.width + 45.0, to.y + to.height * 0.5);
+                    let label_pos = (mid_x + 8.0, from.y - 24.0);
+                    (start, end, control1, control2, label_pos)
+                }
             };
 
             edges_layout.push(EdgeLayout {
@@ -538,9 +728,97 @@ pub fn compute_state_machine_layout(sm: &AppStateMachine) -> StateMachineLayout 
         }
     }
 
+    // 5. Post-layout label collision avoidance pass (Fix #2)
+    let mut obstacles: Vec<BoundingBox> = Vec::new();
+
+    // Node bounding boxes with safety margin
+    for node in nodes_layout.values() {
+        obstacles.push(BoundingBox {
+            x0: node.x - 6.0,
+            y0: node.y - 6.0,
+            x1: node.x + node.width + 6.0,
+            y1: node.y + node.height + 6.0,
+        });
+    }
+
+    // Lane headers
+    for lane in &lanes {
+        obstacles.push(BoundingBox {
+            x0: lane.x_start - 6.0,
+            y0: lane.y - 22.0,
+            x1: lane.x_start + 220.0,
+            y1: lane.y + 2.0,
+        });
+    }
+
+    // Process each edge's label
+    for edge in &mut edges_layout {
+        if edge.display_guard.is_empty() {
+            continue;
+        }
+        let label_w = (edge.display_guard.len() as f64 * 6.5 + 16.0).max(36.0);
+        let label_h = 20.0;
+
+        let box_at = |cx: f64, cy: f64| BoundingBox {
+            x0: cx - label_w * 0.5 - 3.0,
+            y0: cy - label_h * 0.5 - 3.0,
+            x1: cx + label_w * 0.5 + 3.0,
+            y1: cy + label_h * 0.5 + 3.0,
+        };
+
+        let (mut cx, mut cy) = edge.label_pos;
+        let mut best_box = box_at(cx, cy);
+
+        if obstacles.iter().any(|obs| best_box.intersects(obs)) {
+            let mut resolved = false;
+            let mut candidate_offsets = Vec::new();
+
+            for dy in [0.0, 24.0, -24.0, 48.0, -48.0] {
+                for dx in [0.0, 50.0, -50.0, 100.0, -100.0, 160.0, -160.0, 230.0, -230.0, 310.0, -310.0, 400.0, -400.0] {
+                    if dx == 0.0 && dy == 0.0 {
+                        continue;
+                    }
+                    candidate_offsets.push((dx, dy));
+                }
+            }
+
+            for dy in [70.0, -70.0, 140.0, -140.0] {
+                for dx in [0.0, 60.0, -60.0, 120.0, -120.0, 180.0, -180.0, 260.0, -260.0] {
+                    candidate_offsets.push((dx, dy));
+                }
+            }
+
+            for (dx, dy) in candidate_offsets {
+                let cand_box = box_at(cx + dx, cy + dy);
+                if !obstacles.iter().any(|obs| cand_box.intersects(obs)) {
+                    cx += dx;
+                    cy += dy;
+                    best_box = cand_box;
+                    resolved = true;
+                    break;
+                }
+            }
+
+            if !resolved {
+                for step in 1..=20 {
+                    let cand_box = box_at(cx + 80.0 * step as f64, cy);
+                    if !obstacles.iter().any(|obs| cand_box.intersects(obs)) {
+                        cx += 80.0 * step as f64;
+                        best_box = cand_box;
+                        break;
+                    }
+                }
+            }
+            edge.label_pos = (cx, cy);
+        }
+
+        obstacles.push(best_box);
+    }
+
     StateMachineLayout {
         nodes: nodes_layout,
         edges: edges_layout,
+        lanes,
         width: max_x + 120.0,
         height: max_y + 80.0,
     }
@@ -1565,5 +1843,104 @@ mod tests {
         // Check high fan-in edges
         let high_fan_in_count = layout.edges.iter().filter(|e| e.is_high_fan_in).count();
         assert_eq!(high_fan_in_count, 12, "expected 12 edges targeting FAULT marked is_high_fan_in");
+    }
+
+    #[test]
+    fn test_docking_firmware_layout_fixes_round2() {
+        let fixture_path = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/fixtures/docking_firmware/Core/Src/main.c");
+        let candidates = discover_state_machines_in_file(&fixture_path).expect("failed to discover state machines");
+        let sm = extract_state_machine_transitions(&candidates[0], &fixture_path).expect("failed to extract transitions");
+        let layout = compute_state_machine_layout(&sm);
+
+        // Fix #1: Within-cluster ordering bug
+        // CALIBRATION cluster must render as CALIBRATING -> CAL_STOPPING -> CAL_BACKOFF
+        let cal = layout.nodes.get("CALIBRATING").unwrap();
+        let cal_stop = layout.nodes.get("CAL_STOPPING").unwrap();
+        let cal_back = layout.nodes.get("CAL_BACKOFF").unwrap();
+        assert!(cal.x < cal_stop.x, "CALIBRATING.x ({}) must be < CAL_STOPPING.x ({})", cal.x, cal_stop.x);
+        assert!(cal_stop.x < cal_back.x, "CAL_STOPPING.x ({}) must be < CAL_BACKOFF.x ({})", cal_stop.x, cal_back.x);
+
+        // RECOVERY cluster must render as RECOVERY -> REC_STOPPING -> REC_BACKOFF
+        let rec = layout.nodes.get("RECOVERY").unwrap();
+        let rec_stop = layout.nodes.get("REC_STOPPING").unwrap();
+        let rec_back = layout.nodes.get("REC_BACKOFF").unwrap();
+        assert!(rec.x < rec_stop.x, "RECOVERY.x ({}) must be < REC_STOPPING.x ({})", rec.x, rec_stop.x);
+        assert!(rec_stop.x < rec_back.x, "REC_STOPPING.x ({}) must be < REC_BACKOFF.x ({})", rec_stop.x, rec_back.x);
+
+        // Fix #2: Label collision avoidance
+        // No two edge labels may overlap, and no edge label may overlap any node
+        let labels_with_boxes: Vec<BoundingBox> = layout
+            .edges
+            .iter()
+            .filter(|e| !e.display_guard.is_empty())
+            .map(|e| {
+                let w = (e.display_guard.len() as f64 * 6.5 + 16.0).max(36.0);
+                let h = 20.0;
+                BoundingBox {
+                    x0: e.label_pos.0 - w * 0.5,
+                    y0: e.label_pos.1 - h * 0.5,
+                    x1: e.label_pos.0 + w * 0.5,
+                    y1: e.label_pos.1 + h * 0.5,
+                }
+            })
+            .collect();
+
+        // Check against nodes
+        for (idx, (edge, lbox)) in layout.edges.iter().filter(|e| !e.display_guard.is_empty()).zip(labels_with_boxes.iter()).enumerate() {
+            for node in layout.nodes.values() {
+                let node_box = BoundingBox {
+                    x0: node.x,
+                    y0: node.y,
+                    x1: node.x + node.width,
+                    y1: node.y + node.height,
+                };
+                assert!(
+                    !lbox.intersects(&node_box),
+                    "Label {} ({} -> {} '{}') at ({}, {}) intersects node {} at ({}, {})",
+                    idx, edge.from, edge.to, edge.display_guard, lbox.x0, lbox.y0, node.id, node_box.x0, node_box.y0
+                );
+            }
+        }
+
+        // Check against other labels
+        for i in 0..labels_with_boxes.len() {
+            for j in (i + 1)..labels_with_boxes.len() {
+                assert!(
+                    !labels_with_boxes[i].intersects(&labels_with_boxes[j]),
+                    "Label {} and Label {} overlap",
+                    i, j
+                );
+            }
+        }
+
+        // Fix #3: Cross-cluster edge routing
+        // Edges spanning intervening clusters must route via corridor outside cluster boundaries
+        let idle_to_going = layout.edges.iter().find(|e| e.from == "IDLE" && e.to == "GOING").unwrap();
+        assert!(
+            idle_to_going.control1.0 < 110.0,
+            "IDLE -> GOING must route via left corridor (control1.x = {} < 110.0)",
+            idle_to_going.control1.0
+        );
+
+        // Fix #4: FAULT node placement
+        // Centered horizontally under the operational graph, 80px below lowest operational lane
+        let fault_node = layout.nodes.get("FAULT").unwrap();
+        let max_op_x = layout.nodes.values().filter(|n| !n.is_fault).map(|n| n.x + n.width).fold(110.0, f64::max);
+        let center_x = (110.0 + max_op_x) * 0.5;
+        let fault_center_x = fault_node.x + fault_node.width * 0.5;
+        assert!(
+            (fault_center_x - center_x).abs() < 10.0,
+            "FAULT node center ({}) should match graph center ({})",
+            fault_center_x, center_x
+        );
+
+        let max_op_y = layout.nodes.values().filter(|n| !n.is_fault).map(|n| n.y + n.height).fold(80.0, f64::max);
+        let fault_gap = fault_node.y - max_op_y;
+        assert!(
+            (fault_gap - 80.0).abs() < 5.0,
+            "FAULT vertical gap ({}) should be ~80px below lowest operational lane",
+            fault_gap
+        );
     }
 }
