@@ -4,8 +4,37 @@ use gtk4::cairo;
 use stakhal_core::graph::compute_state_machine_layout;
 use crate::state::AppState;
 
+// Strict Monochrome Theme & Reserved Fault Color Tokens
+const COLOR_CANVAS_BG: (f64, f64, f64) = (10.0 / 255.0, 10.0 / 255.0, 10.0 / 255.0); // #0a0a0a
+const COLOR_DOT_GRID: (f64, f64, f64, f64) = (0.22, 0.22, 0.22, 0.35);
+
+// Fault tokens (strictly reserved for FAULT state and fault transitions)
+const COLOR_FAULT_RED: (f64, f64, f64) = (239.0 / 255.0, 68.0 / 255.0, 68.0 / 255.0); // #ef4444
+const COLOR_FAULT_FILL: (f64, f64, f64, f64) = (38.0 / 255.0, 12.0 / 255.0, 12.0 / 255.0, 0.95);
+
+// Monochrome Node Fills (#171717 base)
+const COLOR_NODE_FILL_DEFAULT: (f64, f64, f64, f64) = (23.0 / 255.0, 23.0 / 255.0, 23.0 / 255.0, 0.95);
+const COLOR_NODE_FILL_INITIAL: (f64, f64, f64, f64) = (30.0 / 255.0, 30.0 / 255.0, 30.0 / 255.0, 0.95);
+const COLOR_NODE_FILL_HOVER: (f64, f64, f64, f64) = (38.0 / 255.0, 38.0 / 255.0, 38.0 / 255.0, 0.95);
+const COLOR_NODE_FILL_SELECTED: (f64, f64, f64, f64) = (48.0 / 255.0, 48.0 / 255.0, 48.0 / 255.0, 0.95);
+
+// Monochrome Node Borders (#404040 base)
+const COLOR_BORDER_DEFAULT: (f64, f64, f64) = (64.0 / 255.0, 64.0 / 255.0, 64.0 / 255.0); // #404040
+const COLOR_BORDER_INITIAL: (f64, f64, f64) = (115.0 / 255.0, 115.0 / 255.0, 115.0 / 255.0); // #737373
+const COLOR_BORDER_HOVER: (f64, f64, f64) = (163.0 / 255.0, 163.0 / 255.0, 163.0 / 255.0); // #a3a3a3
+const COLOR_BORDER_SELECTED: (f64, f64, f64) = (245.0 / 255.0, 245.0 / 255.0, 245.0 / 255.0); // #f5f5f5
+
 pub fn draw_state_diagram_canvas(
     _area: &gtk4::DrawingArea,
+    cr: &cairo::Context,
+    width: f64,
+    height: f64,
+    state: &Rc<RefCell<AppState>>,
+) {
+    draw_state_diagram(cr, width, height, state);
+}
+
+pub fn draw_state_diagram(
     cr: &cairo::Context,
     width: f64,
     height: f64,
@@ -38,13 +67,13 @@ pub fn draw_state_diagram_canvas(
         Some(l) => l,
         None => {
             // Draw empty placeholder message
-            cr.set_source_rgb(0.04, 0.04, 0.04);
+            cr.set_source_rgb(COLOR_CANVAS_BG.0, COLOR_CANVAS_BG.1, COLOR_CANVAS_BG.2);
             cr.rectangle(0.0, 0.0, width, height);
             let _ = cr.fill();
 
             cr.select_font_face("monospace", cairo::FontSlant::Normal, cairo::FontWeight::Bold);
             cr.set_font_size(14.0);
-            cr.set_source_rgb(0.4, 0.4, 0.4);
+            cr.set_source_rgb(0.45, 0.45, 0.45);
             let _ = cr.move_to(width * 0.35, height * 0.5);
             let _ = cr.show_text("No state machines detected in current project.");
             return;
@@ -58,7 +87,7 @@ pub fn draw_state_diagram_canvas(
     let hovered_node = st.hovered_state_node.as_deref();
 
     // Fill canvas background
-    cr.set_source_rgb(0.04, 0.04, 0.04);
+    cr.set_source_rgb(COLOR_CANVAS_BG.0, COLOR_CANVAS_BG.1, COLOR_CANVAS_BG.2);
     cr.rectangle(0.0, 0.0, width.max(4000.0), height.max(4000.0));
     let _ = cr.fill();
 
@@ -91,13 +120,13 @@ pub fn draw_state_diagram_canvas(
 
         if edge.is_fault {
             if is_dimmed {
-                cr.set_source_rgba(0.94, 0.27, 0.27, 0.25);
+                cr.set_source_rgba(COLOR_FAULT_RED.0, COLOR_FAULT_RED.1, COLOR_FAULT_RED.2, 0.25);
                 cr.set_line_width(1.0);
             } else if is_connected_to_selection {
-                cr.set_source_rgba(0.94, 0.27, 0.27, 1.0);
+                cr.set_source_rgba(COLOR_FAULT_RED.0, COLOR_FAULT_RED.1, COLOR_FAULT_RED.2, 1.0);
                 cr.set_line_width(2.5);
             } else {
-                cr.set_source_rgba(0.94, 0.27, 0.27, 0.85);
+                cr.set_source_rgba(COLOR_FAULT_RED.0, COLOR_FAULT_RED.1, COLOR_FAULT_RED.2, 0.85);
                 cr.set_line_width(1.8);
             }
         } else if is_connected_to_selection {
@@ -149,7 +178,7 @@ pub fn draw_state_diagram_canvas(
         cr.set_font_size(12.0);
 
         if node.is_fault {
-            cr.set_source_rgb(0.94, 0.27, 0.27);
+            cr.set_source_rgb(COLOR_FAULT_RED.0, COLOR_FAULT_RED.1, COLOR_FAULT_RED.2);
         } else if is_selected {
             cr.set_source_rgb(1.0, 1.0, 1.0);
         } else {
@@ -168,12 +197,12 @@ pub fn draw_state_diagram_canvas(
         // Small tag badge (INITIAL or FAULT)
         if node.is_initial {
             cr.set_font_size(8.0);
-            cr.set_source_rgb(0.2, 0.7, 0.35);
+            cr.set_source_rgb(0.65, 0.65, 0.65);
             let _ = cr.move_to(node.x + 8.0, node.y + 12.0);
             let _ = cr.show_text("● INIT");
         } else if node.is_fault {
             cr.set_font_size(8.0);
-            cr.set_source_rgb(0.94, 0.27, 0.27);
+            cr.set_source_rgb(COLOR_FAULT_RED.0, COLOR_FAULT_RED.1, COLOR_FAULT_RED.2);
             let _ = cr.move_to(node.x + 8.0, node.y + 12.0);
             let _ = cr.show_text("▲ FAULT");
         }
@@ -181,7 +210,7 @@ pub fn draw_state_diagram_canvas(
 }
 
 fn draw_dot_grid(cr: &cairo::Context, max_w: f64, max_h: f64) {
-    cr.set_source_rgba(0.18, 0.18, 0.18, 0.4);
+    cr.set_source_rgba(COLOR_DOT_GRID.0, COLOR_DOT_GRID.1, COLOR_DOT_GRID.2, COLOR_DOT_GRID.3);
     let step = 32.0;
     let mut x = 20.0;
     while x < max_w {
@@ -216,31 +245,33 @@ fn draw_rounded_node(
 
     // Node fill
     if is_fault {
-        cr.set_source_rgba(0.16, 0.05, 0.05, 0.95);
-    } else if is_initial {
-        cr.set_source_rgba(0.06, 0.12, 0.06, 0.95);
+        cr.set_source_rgba(COLOR_FAULT_FILL.0, COLOR_FAULT_FILL.1, COLOR_FAULT_FILL.2, COLOR_FAULT_FILL.3);
     } else if is_selected {
-        cr.set_source_rgba(0.14, 0.14, 0.14, 0.95);
+        cr.set_source_rgba(COLOR_NODE_FILL_SELECTED.0, COLOR_NODE_FILL_SELECTED.1, COLOR_NODE_FILL_SELECTED.2, COLOR_NODE_FILL_SELECTED.3);
+    } else if is_hovered {
+        cr.set_source_rgba(COLOR_NODE_FILL_HOVER.0, COLOR_NODE_FILL_HOVER.1, COLOR_NODE_FILL_HOVER.2, COLOR_NODE_FILL_HOVER.3);
+    } else if is_initial {
+        cr.set_source_rgba(COLOR_NODE_FILL_INITIAL.0, COLOR_NODE_FILL_INITIAL.1, COLOR_NODE_FILL_INITIAL.2, COLOR_NODE_FILL_INITIAL.3);
     } else {
-        cr.set_source_rgba(0.09, 0.09, 0.09, 0.92);
+        cr.set_source_rgba(COLOR_NODE_FILL_DEFAULT.0, COLOR_NODE_FILL_DEFAULT.1, COLOR_NODE_FILL_DEFAULT.2, COLOR_NODE_FILL_DEFAULT.3);
     }
     let _ = cr.fill_preserve();
 
     // Node stroke
     if is_fault {
-        cr.set_source_rgb(0.94, 0.27, 0.27);
+        cr.set_source_rgb(COLOR_FAULT_RED.0, COLOR_FAULT_RED.1, COLOR_FAULT_RED.2);
         cr.set_line_width(if is_selected { 2.5 } else { 1.8 });
     } else if is_selected {
-        cr.set_source_rgb(1.0, 1.0, 1.0);
+        cr.set_source_rgb(COLOR_BORDER_SELECTED.0, COLOR_BORDER_SELECTED.1, COLOR_BORDER_SELECTED.2);
         cr.set_line_width(2.2);
     } else if is_hovered {
-        cr.set_source_rgb(0.65, 0.65, 0.65);
+        cr.set_source_rgb(COLOR_BORDER_HOVER.0, COLOR_BORDER_HOVER.1, COLOR_BORDER_HOVER.2);
         cr.set_line_width(1.6);
     } else if is_initial {
-        cr.set_source_rgb(0.18, 0.65, 0.32);
+        cr.set_source_rgb(COLOR_BORDER_INITIAL.0, COLOR_BORDER_INITIAL.1, COLOR_BORDER_INITIAL.2);
         cr.set_line_width(1.6);
     } else {
-        cr.set_source_rgb(0.24, 0.24, 0.26);
+        cr.set_source_rgb(COLOR_BORDER_DEFAULT.0, COLOR_BORDER_DEFAULT.1, COLOR_BORDER_DEFAULT.2);
         cr.set_line_width(1.2);
     }
     let _ = cr.stroke();
@@ -289,9 +320,9 @@ fn draw_guard_badge(
     // Badge stroke
     if is_fault {
         if is_dimmed {
-            cr.set_source_rgba(0.94, 0.27, 0.27, 0.3);
+            cr.set_source_rgba(COLOR_FAULT_RED.0, COLOR_FAULT_RED.1, COLOR_FAULT_RED.2, 0.3);
         } else {
-            cr.set_source_rgba(0.94, 0.27, 0.27, 0.8);
+            cr.set_source_rgba(COLOR_FAULT_RED.0, COLOR_FAULT_RED.1, COLOR_FAULT_RED.2, 0.85);
         }
     } else if is_dimmed {
         cr.set_source_rgba(0.2, 0.2, 0.2, 0.3);
@@ -304,9 +335,9 @@ fn draw_guard_badge(
     // Badge text
     if is_fault {
         if is_dimmed {
-            cr.set_source_rgba(0.94, 0.27, 0.27, 0.3);
+            cr.set_source_rgba(COLOR_FAULT_RED.0, COLOR_FAULT_RED.1, COLOR_FAULT_RED.2, 0.3);
         } else {
-            cr.set_source_rgb(0.94, 0.27, 0.27);
+            cr.set_source_rgb(COLOR_FAULT_RED.0, COLOR_FAULT_RED.1, COLOR_FAULT_RED.2);
         }
     } else if is_dimmed {
         cr.set_source_rgba(0.6, 0.6, 0.6, 0.3);
@@ -324,30 +355,20 @@ mod tests {
 
     #[test]
     fn test_draw_empty_state_diagram_canvas() {
-        if let Err(err) = gtk4::init() {
-            eprintln!("GTK display not available, skipping render test: {}", err);
-            return;
-        }
         let surface = cairo::ImageSurface::create(cairo::Format::ARgb32, 1200, 800)
             .expect("Failed to create surface");
         let cr = cairo::Context::new(&surface).expect("Failed to create context");
-        let area = gtk4::DrawingArea::new();
         let state = Rc::new(RefCell::new(AppState::default()));
 
-        draw_state_diagram_canvas(&area, &cr, 1200.0, 800.0, &state);
+        draw_state_diagram(&cr, 1200.0, 800.0, &state);
         surface.flush();
     }
 
     #[test]
     fn test_draw_docking_firmware_state_diagram_canvas() {
-        if let Err(err) = gtk4::init() {
-            eprintln!("GTK display not available, skipping render test: {}", err);
-            return;
-        }
         let surface = cairo::ImageSurface::create(cairo::Format::ARgb32, 1200, 800)
             .expect("Failed to create surface");
         let cr = cairo::Context::new(&surface).expect("Failed to create context");
-        let area = gtk4::DrawingArea::new();
         let state = Rc::new(RefCell::new(AppState::default()));
 
         let fixture_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -362,7 +383,7 @@ mod tests {
         state.borrow_mut().loaded_project = Some(project);
 
         // 1. Initial draw
-        draw_state_diagram_canvas(&area, &cr, 1200.0, 800.0, &state);
+        draw_state_diagram(&cr, 1200.0, 800.0, &state);
         surface.flush();
 
         // Verify layout was computed
@@ -371,12 +392,12 @@ mod tests {
 
         // 2. Select FAULT node
         state.borrow_mut().selected_state_node = Some("FAULT".to_string());
-        draw_state_diagram_canvas(&area, &cr, 1200.0, 800.0, &state);
+        draw_state_diagram(&cr, 1200.0, 800.0, &state);
         surface.flush();
 
         // 3. Hover CALIBRATING node
         state.borrow_mut().hovered_state_node = Some("CALIBRATING".to_string());
-        draw_state_diagram_canvas(&area, &cr, 1200.0, 800.0, &state);
+        draw_state_diagram(&cr, 1200.0, 800.0, &state);
         surface.flush();
     }
 }
