@@ -58,7 +58,7 @@ pub fn build_main_panel() -> MainPanelWidgets {
     btn_load.set_sensitive(false);
 
     let btn_build = gtk4::Button::builder()
-        .label("[ 🔨 Build ]")
+        .label("[ Build ]")
         .css_classes(vec!["stakhal-btn".to_string(), "flat".to_string()])
         .sensitive(false)
         .tooltip_text("Compile project without flashing")
@@ -66,7 +66,7 @@ pub fn build_main_panel() -> MainPanelWidgets {
     btn_build.set_cursor_from_name(Some("pointer"));
 
     let btn_build_flash = gtk4::Button::builder()
-        .label("[ ⚡ Build & Flash ]")
+        .label("[ Build & Flash ]")
         .css_classes(vec!["stakhal-btn".to_string(), "suggested-action".to_string()])
         .sensitive(false)
         .tooltip_text("Build project and flash to STM32 target via ST-Link")
