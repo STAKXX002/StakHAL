@@ -5,7 +5,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
 PKG_NAME="stakhal"
-PKG_VERSION="0.1.0"
+PKG_VERSION="${1:-$(grep -m 1 '^version =' "${REPO_ROOT}/stakhal-ui/Cargo.toml" | cut -d '"' -f 2 || echo '0.1.0')}"
+# Remove leading 'v' if present (e.g. v0.1.0 -> 0.1.0)
+PKG_VERSION="${PKG_VERSION#v}"
 PKG_ARCH="amd64"
 DEB_NAME="${PKG_NAME}_${PKG_VERSION}_${PKG_ARCH}"
 

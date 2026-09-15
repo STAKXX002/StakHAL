@@ -37,10 +37,11 @@
 
 The easiest way to install StakHAL on **Ubuntu 24.04 LTS** or **Windows 11 (via WSL2 / WSLg)**. The package automatically installs the desktop application, system icons, and all required embedded toolchain dependencies (`stlink-tools`, `gcc-arm-none-eabi`, `cmake`, `ninja-build`, `libadwaita-1`).
 
-#### 1. Install the Package
+#### 1. Download & Install the Package
+Download the latest `stakhal_*.deb` from [GitHub Releases](https://github.com/STAKXX002/StakHAL/releases), then install with:
 ```bash
 sudo apt update
-sudo apt install -y ./dist/stakhal_0.1.0_amd64.deb
+sudo apt install -y ./stakhal_*_amd64.deb
 ```
 
 > **Windows 11 with WSLg**: When installed inside your Ubuntu WSL2 instance, WSLg automatically publishes StakHAL into the **Windows 11 Start Menu** under `StakHAL (Ubuntu 24.04)`. You can launch it directly from the Windows taskbar with native Wayland graphics acceleration!
