@@ -407,14 +407,38 @@ pub fn compute_state_machine_layout(sm: &AppStateMachine) -> StateMachineLayout 
         }
     }
 
-    // Identify hub nodes by degree threshold: operational degree >= 4
+    // Identify hub nodes:
+    // 1. Initial state (e.g. IDLE) is always the entry hub.
+    // 2. An exit hub must be an architectural junction bridging multiple distinct functional clusters
+    //    (i.e. connects across >= 2 foreign clusters, excluding FAULT and INITIAL).
+    //    States with high internal connectivity within a single lane (e.g. OPENING <-> CLOSING)
+    //    belong in their functional swimlane, not as global hubs.
     let mut hub_nodes = HashSet::new();
+    hub_nodes.insert(initial_name.to_string());
+
     for st in &sm.states {
-        if !is_fault_state(st) {
-            let op_deg = op_in_degrees.get(st).copied().unwrap_or(0) + op_out_degrees.get(st).copied().unwrap_or(0);
-            if op_deg >= 4 {
-                hub_nodes.insert(st.clone());
+        if is_fault_state(st) || st == initial_name {
+            continue;
+        }
+        let my_cluster = infer_cluster_name(st, initial_name);
+        let mut foreign_clusters = HashSet::new();
+        for t in &sm.transitions {
+            if t.from == *st && t.to != *st && !is_fault_state(&t.to) && t.to != initial_name {
+                let other_cluster = infer_cluster_name(&t.to, initial_name);
+                if other_cluster != my_cluster {
+                    foreign_clusters.insert(other_cluster);
+                }
             }
+            if t.to == *st && t.from != *st && !is_fault_state(&t.from) && t.from != initial_name && t.from != "(any state)" {
+                let other_cluster = infer_cluster_name(&t.from, initial_name);
+                if other_cluster != my_cluster {
+                    foreign_clusters.insert(other_cluster);
+                }
+            }
+        }
+        let op_deg = op_in_degrees.get(st).copied().unwrap_or(0) + op_out_degrees.get(st).copied().unwrap_or(0);
+        if foreign_clusters.len() >= 2 && op_deg >= 4 {
+            hub_nodes.insert(st.clone());
         }
     }
 
@@ -593,8 +617,9 @@ pub fn compute_state_machine_layout(sm: &AppStateMachine) -> StateMachineLayout 
 
     // 4c. Position Exit Hub(s) (RETURNED) pinned on lower-right
     let exit_x = max_lane_x + hub_to_lane_gap;
-    let exit_y = lowest_lane_y - lane_gap * 0.5; // centered between MOTION and RECOVERY
-    for exit_hub in &exit_hubs {
+    let base_exit_y = lowest_lane_y - lane_gap * 0.5; // centered between MOTION and RECOVERY
+    for (idx, exit_hub) in exit_hubs.iter().enumerate() {
+        let exit_y = base_exit_y + idx as f64 * lane_gap;
         let in_count = total_in_degrees.get(exit_hub).copied().unwrap_or(0);
         let out_count = total_out_degrees.get(exit_hub).copied().unwrap_or(0);
         let collapsed_badges = collapsed_out_map.get(exit_hub).cloned().unwrap_or_default();
@@ -946,6 +971,29 @@ pub fn compute_state_machine_layout(sm: &AppStateMachine) -> StateMachineLayout 
 
     let total_width = (max_bound_x - min_bound_x.min(0.0) + 120.0).max(1300.0);
     let total_height = (max_bound_y - min_bound_y.min(0.0) + 100.0).max(850.0);
+
+    // Strict validation: Ensure analyzer/layout node count matches declared enum variant count
+    assert_eq!(
+        nodes_layout.len(),
+        sm.states.len(),
+        "Analyzer node count mismatch: layout generated {} nodes but enum has {} states (missing: {:?})",
+        nodes_layout.len(),
+        sm.states.len(),
+        sm.states.iter().filter(|s| !nodes_layout.contains_key(*s)).collect::<Vec<_>>()
+    );
+
+    // Strict validation: Ensure zero coordinate collisions among distinct nodes
+    let mut occupied_positions: HashMap<(i64, i64), String> = HashMap::new();
+    for (id, node) in &nodes_layout {
+        let key = ((node.x * 10.0).round() as i64, (node.y * 10.0).round() as i64);
+        if let Some(existing) = occupied_positions.get(&key) {
+            panic!(
+                "Fatal layout collision: node '{}' and node '{}' share identical coordinates ({:.1}, {:.1})",
+                id, existing, node.x, node.y
+            );
+        }
+        occupied_positions.insert(key, id.clone());
+    }
 
     StateMachineLayout {
         nodes: nodes_layout,
@@ -1976,6 +2024,121 @@ mod tests {
         // Check high fan-in edges
         let high_fan_in_count = layout.edges.iter().filter(|e| e.is_high_fan_in).count();
         assert_eq!(high_fan_in_count, 12, "expected 12 edges targeting FAULT marked is_high_fan_in");
+    }
+
+    #[test]
+    fn test_docking_firmware_v2_state_machine_ground_truth_verification() {
+        let fixture_path = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/fixtures/docking_firmware_v2/Core/Src/main.c");
+        let candidates = discover_state_machines_in_file(&fixture_path).expect("failed to discover state machines");
+        assert_eq!(candidates.len(), 1, "expected exactly 1 state machine candidate");
+
+        let sm = extract_state_machine_transitions(&candidates[0], &fixture_path).expect("failed to extract transitions");
+
+        // 1. Verify 14 states (fail loudly if count differs from enum declared variants)
+        assert_eq!(sm.states.len(), 14, "expected exactly 14 states");
+        assert_eq!(sm.states.len(), candidates[0].enum_def.variants.len());
+        let expected_states = [
+            "IDLE", "CALIBRATING", "CAL_STOPPING", "CAL_BACKOFF", "GOING", "HOLD",
+            "RETURNING", "RETURNED", "RECOVERY", "REC_STOPPING", "REC_BACKOFF",
+            "FAULT", "OPENING", "CLOSING"
+        ];
+        for s in &expected_states {
+            assert!(sm.states.contains(&s.to_string()), "missing state: {}", s);
+        }
+
+        // 2. Verify exactly 35 transitions
+        assert_eq!(sm.transitions.len(), 35, "expected 35 transitions, got {}", sm.transitions.len());
+
+        // Check direct loop transitions (11)
+        let expected_direct = [
+            ("CALIBRATING", "CAL_STOPPING", "z1Hit && z2Hit"),
+            ("CAL_STOPPING", "CAL_BACKOFF", "axes_done()"),
+            ("CAL_BACKOFF", "IDLE", "axes_done()"),
+            ("GOING", "HOLD", "axes_done()"),
+            ("RETURNING", "RECOVERY", "enteringRecovery"),
+            ("RETURNING", "RETURNED", "axes_done()"),
+            ("RECOVERY", "REC_STOPPING", "z1Hit && z2Hit"),
+            ("REC_STOPPING", "REC_BACKOFF", "axes_done()"),
+            ("REC_BACKOFF", "RETURNED", "axes_done()"),
+            ("OPENING", "IDLE", "now - stateStart > OPEN_DURATION_MS"),
+            ("CLOSING", "IDLE", "now - stateStart > CLOSE_DURATION_MS"),
+        ];
+        for (from, to, guard) in expected_direct {
+            let found = sm.transitions.iter().any(|t| t.from == from && t.to == to && t.guard == guard);
+            assert!(found, "missing expected direct transition: {} -> {} [{}]", from, to, guard);
+        }
+
+        // Check helper transitions (14 fault timeouts/errors + 1 startCal)
+        let expected_helpers = [
+            ("CALIBRATING", "FAULT", "now - stateStart > CAL_TIMEOUT [fault: CAL TIMEOUT]"),
+            ("CALIBRATING", "FAULT", "z1Hit && !z2Hit && z2.current_pos == z2.target_pos [fault: Z2 LIMIT NOT FOUND]"),
+            ("CALIBRATING", "FAULT", "z2Hit && !z1Hit && z1.current_pos == z1.target_pos [fault: Z1 LIMIT NOT FOUND]"),
+            ("CAL_STOPPING", "FAULT", "now - stateStart > CAL_TIMEOUT [fault: CAL STOP TIMEOUT]"),
+            ("CAL_STOPPING", "FAULT", "axes_done() && !skewOK() [fault: CAL SKEW]"),
+            ("CAL_BACKOFF", "FAULT", "now - stateStart > CAL_TIMEOUT [fault: CAL BACKOFF TIMEOUT]"),
+            ("GOING", "FAULT", "now - stateStart > MOVE_TIMEOUT [fault: GO TIMEOUT]"),
+            ("RETURNING", "FAULT", "now - stateStart > MOVE_TIMEOUT [fault: RETURN TIMEOUT]"),
+            ("RECOVERY", "FAULT", "now - stateStart > RECOVERY_TIMEOUT [fault: REC TIMEOUT]"),
+            ("RECOVERY", "FAULT", "z1Hit && !z2Hit && z2.current_pos == z2.target_pos [fault: Z2 LIMIT NOT FOUND]"),
+            ("RECOVERY", "FAULT", "z2Hit && !z1Hit && z1.current_pos == z1.target_pos [fault: Z1 LIMIT NOT FOUND]"),
+            ("REC_STOPPING", "FAULT", "now - stateStart > RECOVERY_TIMEOUT [fault: REC STOP TIMEOUT]"),
+            ("REC_STOPPING", "FAULT", "axes_done() && !skewOK() [fault: REC SKEW]"),
+            ("REC_BACKOFF", "FAULT", "now - stateStart > RECOVERY_TIMEOUT [fault: REC BACKOFF TIMEOUT]"),
+            ("IDLE", "CALIBRATING", "cmd_ready && strcmp((const char*)rx_buffer, \"CAL\") == 0 [startCal()]"),
+        ];
+        for (from, to, guard) in expected_helpers {
+            let found = sm.transitions.iter().any(|t| t.from == from && t.to == to && t.guard == guard);
+            assert!(found, "missing expected helper transition: {} -> {} [{}]", from, to, guard);
+        }
+
+        // Check event transitions (including cross-transitions CLOSING -> OPENING and OPENING -> CLOSING)
+        let expected_events = [
+            ("IDLE", "GOING"),
+            ("RETURNED", "GOING"),
+            ("HOLD", "RETURNING"),
+            ("IDLE", "OPENING"),
+            ("RETURNED", "OPENING"),
+            ("CLOSING", "OPENING"),
+            ("IDLE", "CLOSING"),
+            ("RETURNED", "CLOSING"),
+            ("OPENING", "CLOSING"),
+        ];
+        for (from, to) in expected_events {
+            let found = sm.transitions.iter().any(|t| t.from == from && t.to == to && t.guard.contains("cmd_ready"));
+            assert!(found, "missing expected event transition: {} -> {}", from, to);
+        }
+
+        // 3. Verify ambiguous transitions (RST and STOP)
+        assert_eq!(sm.ambiguous_transitions.len(), 2, "expected exactly 2 ambiguous transitions");
+        assert!(sm.ambiguous_transitions.iter().any(|a| a.target == "IDLE" && a.guard.contains("RST")));
+        assert!(sm.ambiguous_transitions.iter().any(|a| a.target == "IDLE" && a.guard.contains("STOP")));
+
+        // 4. Verify layout computation
+        let layout = compute_state_machine_layout(&sm);
+        assert_eq!(layout.nodes.len(), 14);
+        assert_eq!(layout.edges.len(), 35);
+
+        // Verify MECHANISM lane exists and contains OPENING and CLOSING
+        let opening = layout.nodes.get("OPENING").expect("OPENING node layout missing");
+        let closing = layout.nodes.get("CLOSING").expect("CLOSING node layout missing");
+        let returned = layout.nodes.get("RETURNED").expect("RETURNED node layout missing");
+
+        assert_eq!(opening.cluster, "MECHANISM");
+        assert_eq!(closing.cluster, "MECHANISM");
+
+        // Verify OPENING and CLOSING are NOT stacked on RETURNED
+        assert_ne!((opening.x, opening.y), (returned.x, returned.y), "OPENING must not be stacked on RETURNED");
+        assert_ne!((closing.x, closing.y), (returned.x, returned.y), "CLOSING must not be stacked on RETURNED");
+        assert_ne!((opening.x, opening.y), (closing.x, closing.y), "OPENING must not be stacked on CLOSING");
+
+        let lane_mechanism = layout.lanes.iter().find(|l| l.name == "MECHANISM");
+        assert!(lane_mechanism.is_some(), "MECHANISM flow lane must exist in layout");
+
+        // Check FAULT node
+        let fault_node = layout.nodes.get("FAULT").expect("FAULT node layout missing");
+        assert!(fault_node.is_fault);
+        assert_eq!(fault_node.incoming_count, 14);
     }
 
     #[test]

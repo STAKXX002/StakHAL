@@ -1,4 +1,4 @@
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 pub const STM32_FLASH_BASE_ADDR: &str = "0x08000000";
 
@@ -24,6 +24,7 @@ pub fn build_flash_command(
 }
 
 /// Construct the standalone reset command in case a separate reset pulse is needed.
+#[allow(dead_code)]
 pub fn build_reset_command(probe_serial: Option<&str>) -> (String, Vec<String>) {
     let mut args = Vec::new();
     if let Some(serial) = probe_serial {
@@ -39,6 +40,7 @@ pub fn build_reset_command(probe_serial: Option<&str>) -> (String, Vec<String>) 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::PathBuf;
 
     #[test]
     fn test_build_flash_command_without_serial() {
