@@ -1,4 +1,4 @@
-# StakHAL — Hardware Abstraction Inspector & Toolchain
+# StakHAL - Hardware Abstraction Inspector & Toolchain
 
 **StakHAL** is a modern, high-performance developer workbench for STM32 embedded firmware engineers. Built natively in **Rust**, **GTK4**, and **Libadwaita**, StakHAL inspects STM32CubeMX projects, visualizes application state machines and physical board pinouts, and provides an integrated, non-blocking **Build & Flash** toolchain.
 
@@ -33,7 +33,7 @@
 
 ## Installation & Setup
 
-### Method 1: Debian Package (`.deb`) — Recommended
+### Method 1: Debian Package (`.deb`) - Recommended
 
 The easiest way to install StakHAL on **Ubuntu 24.04 LTS** or **Windows 11 (via WSL2 / WSLg)**. The package automatically installs the desktop application, system icons, and all required embedded toolchain dependencies (`stlink-tools`, `gcc-arm-none-eabi`, `cmake`, `ninja-build`, `libadwaita-1`).
 
@@ -172,6 +172,6 @@ StakHAL/
 
 ## License
 
-This project is licensed under the MIT License — see the [LICENSE](LICENSE) file for details.
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
 
