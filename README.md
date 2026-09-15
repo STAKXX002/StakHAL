@@ -31,12 +31,34 @@
 
 ---
 
-## Prerequisites & Installation
+## Installation & Setup
 
-### Ubuntu 24.04 LTS (Recommended)
+### Method 1: Debian Package (`.deb`) — Recommended
 
-#### 1. Install System & GUI Dependencies
-StakHAL UI requires GTK4 and Libadwaita development headers:
+The easiest way to install StakHAL on **Ubuntu 24.04 LTS** or **Windows 11 (via WSL2 / WSLg)**. The package automatically installs the desktop application, system icons, and all required embedded toolchain dependencies (`stlink-tools`, `gcc-arm-none-eabi`, `cmake`, `ninja-build`, `libadwaita-1`).
+
+#### 1. Install the Package
+```bash
+sudo apt update
+sudo apt install -y ./dist/stakhal_0.1.0_amd64.deb
+```
+
+> **Windows 11 with WSLg**: When installed inside your Ubuntu WSL2 instance, WSLg automatically publishes StakHAL into the **Windows 11 Start Menu** under `StakHAL (Ubuntu 24.04)`. You can launch it directly from the Windows taskbar with native Wayland graphics acceleration!
+
+#### 2. Building the `.deb` Package from Source
+To create your own standalone Debian package:
+```bash
+./packaging/build_deb.sh
+```
+The output `.deb` package will be generated under `dist/stakhal_<version>_amd64.deb`.
+
+---
+
+### Method 2: Building from Source (Developer Setup)
+
+#### Ubuntu 24.04 LTS
+
+##### 1. System & GUI Dependencies
 ```bash
 sudo apt update
 sudo apt install -y \
@@ -45,8 +67,7 @@ sudo apt install -y \
     libadwaita-1-dev
 ```
 
-#### 2. Install Embedded Toolchain & Flashing Tools
-To build STM32 firmware and flash targets via ST-Link:
+##### 2. Embedded Toolchain & Flashing Tools
 ```bash
 sudo apt install -y \
     cmake \
@@ -58,7 +79,7 @@ sudo apt install -y \
 
 > **Note on USB permissions**: If flashing without `sudo`, ensure your user has access to ST-Link USB devices by installing udev rules (included with `stlink-tools` or under `/etc/udev/rules.d/49-stlinkv*.rules`).
 
-#### 3. Install Rust Toolchain
+##### 3. Install Rust Toolchain
 Install the official Rust toolchain (MSRV: Rust 1.75+):
 ```bash
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
@@ -67,15 +88,20 @@ source "$HOME/.cargo/env"
 
 ---
 
-### Windows 11
+### Windows 11 Setup
 
-There are two primary ways to run StakHAL on Windows 11:
-
-#### Option A: WSL2 with WSLg (Easiest & Native Performance)
-Windows 11 supports GUI Linux applications out of the box via **WSLg** (Wayland/X11 hardware acceleration):
-1. In Windows PowerShell: `wsl --install -d Ubuntu-24.04`
-2. Open Ubuntu in WSL2 and run the Ubuntu 24.04 installation steps above.
-3. To enable ST-Link USB access inside WSL2, install [usbipd-win](https://github.com/dorssel/usbipd-win):
+#### Option A: WSL2 with WSLg (Recommended)
+Windows 11 natively runs GUI Linux applications with hardware acceleration via **WSLg**:
+1. In Windows PowerShell:
+   ```powershell
+   wsl --install -d Ubuntu-24.04
+   ```
+2. Inside Ubuntu WSL2, install the Debian package:
+   ```bash
+   sudo apt install -y ./dist/stakhal_0.1.0_amd64.deb
+   ```
+3. StakHAL will now appear in your **Windows 11 Start Menu** and can be launched directly from Windows.
+4. To enable ST-Link USB hardware access inside WSL2, install [usbipd-win](https://github.com/dorssel/usbipd-win):
    ```powershell
    usbipd list
    usbipd bind --busid <bus-id>
@@ -84,7 +110,7 @@ Windows 11 supports GUI Linux applications out of the box via **WSLg** (Wayland/
 
 #### Option B: Native Windows (MSYS2 / MinGW-w64)
 1. Install [MSYS2](https://www.msys2.org/).
-2. Open the **UCRT64** or **CLANG64** terminal and install GTK4, Libadwaita, and the ARM toolchain:
+2. Open the **UCRT64** terminal and install dependencies:
    ```bash
    pacman -S mingw-w64-ucrt-x86_64-gtk4 \
              mingw-w64-ucrt-x86_64-libadwaita \
@@ -93,7 +119,7 @@ Windows 11 supports GUI Linux applications out of the box via **WSLg** (Wayland/
              mingw-w64-ucrt-x86_64-cmake \
              mingw-w64-ucrt-x86_64-ninja
    ```
-3. Install [ST-Link Tools for Windows](https://github.com/stlink-org/stlink/releases) or OpenOCD and ensure `st-flash.exe` and `st-info.exe` are on `PATH`.
+3. Install [ST-Link Tools for Windows](https://github.com/stlink-org/stlink/releases) and ensure `st-flash.exe` and `st-info.exe` are on `PATH`.
 
 ---
 

@@ -1,0 +1,12 @@
+[Desktop Entry]
+Name=StakHAL
+GenericName=STM32 Hardware Abstraction Inspector
+Comment=Inspect CubeMX projects, visualize state machines & pinout, and build/flash STM32 firmware
+Exec=stakhal
+Icon=stakhal
+Terminal=false
+Type=Application
+Categories=Development;Electronics;Engineering;IDE;
+Keywords=STM32;CubeMX;HAL;Firmware;Embedded;ST-Link;ARM;Microcontroller;
+StartupNotify=true
+StartupWMClass=stakhal-ui

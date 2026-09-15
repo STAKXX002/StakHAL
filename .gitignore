@@ -1,6 +1,5 @@
 /target
 artifacts/
 *.log
-
-
-
+dist/
+/target/deb_staging/
