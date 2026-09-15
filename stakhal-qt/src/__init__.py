@@ -1,1 +1,0 @@
-# stakhal-qt package
