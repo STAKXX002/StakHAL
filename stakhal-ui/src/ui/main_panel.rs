@@ -7,7 +7,7 @@ pub struct MainPanelWidgets {
     pub overview_box: gtk4::Box,
     pub btn_browse: gtk4::Button,
     pub btn_load: gtk4::Button,
-    pub btn_call_graph: gtk4::Button,
+    pub btn_state_diagram: gtk4::Button,
     pub btn_nucleo_pinout: gtk4::Button,
     pub lbl_discovered_dir: gtk4::Label,
     pub lbl_ioc_path: gtk4::Label,
@@ -52,12 +52,12 @@ pub fn build_main_panel() -> MainPanelWidgets {
     let btn_load = create_icon_button("Load Project", "system-run-symbolic", true);
     btn_load.set_sensitive(false);
 
-    let btn_call_graph = gtk4::Button::builder()
-        .label("[ Call Graph ]")
+    let btn_state_diagram = gtk4::Button::builder()
+        .label("[ State Transitions ]")
         .css_classes(vec!["stakhal-btn".to_string(), "flat".to_string()])
         .sensitive(false)
         .build();
-    btn_call_graph.set_cursor_from_name(Some("pointer"));
+    btn_state_diagram.set_cursor_from_name(Some("pointer"));
 
     let btn_nucleo_pinout = gtk4::Button::builder()
         .label("[ Nucleo Pinout ]")
@@ -94,7 +94,7 @@ pub fn build_main_panel() -> MainPanelWidgets {
     toolbar_box.append(&btn_browse);
     toolbar_box.append(&paths_box);
     toolbar_box.append(&btn_load);
-    toolbar_box.append(&btn_call_graph);
+    toolbar_box.append(&btn_state_diagram);
     toolbar_box.append(&btn_nucleo_pinout);
 
     let lbl_project_name = gtk4::Label::builder()
@@ -179,7 +179,7 @@ pub fn build_main_panel() -> MainPanelWidgets {
         overview_box,
         btn_browse,
         btn_load,
-        btn_call_graph,
+        btn_state_diagram,
         btn_nucleo_pinout,
         lbl_discovered_dir,
         lbl_ioc_path,

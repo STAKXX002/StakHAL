@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 use gtk4::prelude::*;
 use libadwaita as adw;
-use stakhal_core::graph::ChainHeaderLayout;
+use stakhal_core::graph::state_transition::ProjectStateModel;
 use stakhal_core::ir::schema::Project;
 
 pub struct AppState {
@@ -9,18 +9,19 @@ pub struct AppState {
     pub discovered_ioc: Option<PathBuf>,
     pub discovered_main_c: Option<PathBuf>,
     pub loaded_project: Option<Project>,
-    pub selected_graph_node: Option<String>,
-    pub graph_node_positions: std::collections::HashMap<String, (f64, f64)>,
-    pub node_status_colors: std::collections::HashMap<String, (f64, f64, f64)>,
-    pub collapsed_chains: std::collections::HashSet<String>,
-    pub chain_headers: Vec<ChainHeaderLayout>,
-    pub graph_bounds: (i32, i32),
-    pub graph_zoom: f64,
-    pub graph_pan_x: f64,
-    pub graph_pan_y: f64,
-    pub last_mouse_pos: (f64, f64),
-    pub dragged_graph_node: Option<String>,
-    pub hovered_graph_node: Option<String>,
+
+    // State transition diagram state
+    pub state_model: Option<ProjectStateModel>,
+    pub selected_peripheral: Option<String>,
+    pub state_node_positions: std::collections::HashMap<String, (f64, f64)>,
+    pub selected_state_node: Option<String>,
+    pub hovered_state_node: Option<String>,
+    pub dragged_state_node: Option<String>,
+    pub diagram_bounds: (i32, i32),
+    pub diagram_zoom: f64,
+    pub diagram_pan_x: f64,
+    pub diagram_pan_y: f64,
+    pub _last_mouse_pos: (f64, f64),
 
     pub drag_start_node_pos: (f64, f64),
     pub drag_start_click_pos: (f64, f64),
@@ -38,18 +39,17 @@ impl Default for AppState {
             discovered_ioc: None,
             discovered_main_c: None,
             loaded_project: None,
-            selected_graph_node: None,
-            graph_node_positions: std::collections::HashMap::new(),
-            node_status_colors: std::collections::HashMap::new(),
-            collapsed_chains: std::collections::HashSet::new(),
-            chain_headers: Vec::new(),
-            graph_bounds: (800, 600),
-            graph_zoom: 1.0,
-            graph_pan_x: 0.0,
-            graph_pan_y: 0.0,
-            last_mouse_pos: (400.0, 300.0),
-            dragged_graph_node: None,
-            hovered_graph_node: None,
+            state_model: None,
+            selected_peripheral: None,
+            state_node_positions: std::collections::HashMap::new(),
+            selected_state_node: None,
+            hovered_state_node: None,
+            dragged_state_node: None,
+            diagram_bounds: (800, 600),
+            diagram_zoom: 1.0,
+            diagram_pan_x: 0.0,
+            diagram_pan_y: 0.0,
+            _last_mouse_pos: (400.0, 300.0),
             drag_start_node_pos: (0.0, 0.0),
             drag_start_click_pos: (0.0, 0.0),
             drag_start_pan_pos: (0.0, 0.0),
@@ -70,7 +70,7 @@ pub struct AppWidgets {
     pub lbl_ioc_path: gtk4::Label,
     pub lbl_main_c_path: gtk4::Label,
     pub btn_load: gtk4::Button,
-    pub btn_call_graph: gtk4::Button,
+    pub btn_state_diagram: gtk4::Button,
     pub btn_nucleo_pinout: gtk4::Button,
     pub lbl_project_name: gtk4::Label,
     pub lbl_mcu_family: gtk4::Label,
@@ -80,10 +80,12 @@ pub struct AppWidgets {
     pub list_peripherals: gtk4::ListBox,
     pub list_user_regions: gtk4::ListBox,
 
-    // Call graph widgets
-    pub graph_drawing_area: gtk4::DrawingArea,
+    // State transition diagram widgets
+    pub diagram_drawing_area: gtk4::DrawingArea,
     pub btn_fit_to_view: gtk4::Button,
-    pub graph_scrolled: gtk4::ScrolledWindow,
+    pub diagram_scrolled: gtk4::ScrolledWindow,
+    pub combo_peripheral: gtk4::DropDown,
+    pub lbl_selected_info: gtk4::Label,
 
     // Nucleo Pinout widgets
     pub pinout_drawing_area: gtk4::DrawingArea,

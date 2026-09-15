@@ -5,7 +5,7 @@ use gtk4::{gdk, gio, glib};
 use gtk4::prelude::*;
 use libadwaita as adw;
 
-use stakhal_core::graph::builder::EdgeType;
+use stakhal_core::graph::state_transition::{build_project_state_model, compute_project_state_layout};
 use stakhal_core::ioc::discovery::discover_project_files;
 use stakhal_core::ir::schema::load_project;
 
@@ -15,12 +15,11 @@ mod ui;
 
 use config::{load_app_config, save_app_config};
 use state::{AppState, AppWidgets};
-use ui::call_graph::{
-    build_call_graph_panel, compute_graph_bounds, compute_graph_layout, setup_call_graph_drawing_and_gestures,
-    CallGraphPanelWidgets,
-};
 use ui::nucleo_pinout::{
     build_nucleo_pinout_panel, setup_nucleo_pinout_drawing_and_gestures, NucleoPinoutPanelWidgets,
+};
+use ui::state_diagram::{
+    build_state_diagram_panel, setup_state_diagram_drawing_and_gestures, StateDiagramPanelWidgets,
 };
 
 use ui::main_panel::{
@@ -143,7 +142,7 @@ row, listboxrow, actionrow {
         overview_box,
         btn_browse,
         btn_load,
-        btn_call_graph,
+        btn_state_diagram,
         btn_nucleo_pinout,
         lbl_discovered_dir,
         lbl_ioc_path,
@@ -157,13 +156,15 @@ row, listboxrow, actionrow {
         list_user_regions,
     } = build_main_panel();
 
-    let CallGraphPanelWidgets {
-        graph_panel_box,
-        btn_graph_back,
+    let StateDiagramPanelWidgets {
+        diagram_panel_box,
+        btn_diagram_back,
         btn_fit_to_view,
-        graph_drawing_area,
-        graph_scrolled,
-    } = build_call_graph_panel();
+        combo_peripheral,
+        diagram_drawing_area,
+        diagram_scrolled,
+        lbl_selected_info,
+    } = build_state_diagram_panel();
 
     let NucleoPinoutPanelWidgets {
         pinout_panel_box,
@@ -178,7 +179,7 @@ row, listboxrow, actionrow {
         .build();
 
     stack.add_named(&overview_box, Some("overview"));
-    stack.add_named(&graph_panel_box, Some("call_graph"));
+    stack.add_named(&diagram_panel_box, Some("state_diagram"));
     stack.add_named(&pinout_panel_box, Some("nucleo_pinout"));
     stack.set_visible_child_name("overview");
 
@@ -211,7 +212,7 @@ row, listboxrow, actionrow {
         lbl_ioc_path,
         lbl_main_c_path,
         btn_load,
-        btn_call_graph: btn_call_graph.clone(),
+        btn_state_diagram: btn_state_diagram.clone(),
         btn_nucleo_pinout: btn_nucleo_pinout.clone(),
         lbl_project_name,
         lbl_mcu_family,
@@ -220,19 +221,21 @@ row, listboxrow, actionrow {
         lbl_region_header,
         list_peripherals,
         list_user_regions,
-        graph_drawing_area,
+        diagram_drawing_area,
         btn_fit_to_view: btn_fit_to_view.clone(),
-        graph_scrolled: graph_scrolled.clone(),
+        diagram_scrolled: diagram_scrolled.clone(),
+        combo_peripheral,
+        lbl_selected_info,
         pinout_drawing_area,
         _pinout_scrolled: pinout_scrolled,
     });
 
-    setup_call_graph_drawing_and_gestures(&state, &widgets);
+    setup_state_diagram_drawing_and_gestures(&state, &widgets);
     setup_nucleo_pinout_drawing_and_gestures(&state, &widgets);
 
     // Navigation callbacks
     let stack_back2 = stack.clone();
-    btn_graph_back.connect_clicked(move |_| {
+    btn_diagram_back.connect_clicked(move |_| {
         stack_back2.set_visible_child_full("overview", gtk4::StackTransitionType::SlideRight);
     });
 
@@ -241,55 +244,9 @@ row, listboxrow, actionrow {
         stack_back3.set_visible_child_full("overview", gtk4::StackTransitionType::SlideRight);
     });
 
-
-
-    let state_fit = Rc::clone(&state);
-    let widgets_fit = Rc::clone(&widgets);
-    widgets.btn_fit_to_view.connect_clicked(move |_| {
-        let mut st = state_fit.borrow_mut();
-        if st.loaded_project.is_none() || st.graph_node_positions.is_empty() {
-            return;
-        }
-        let (bw, bh) = st.graph_bounds;
-        let vw = widgets_fit
-            .graph_scrolled
-            .hadjustment()
-            .page_size()
-            .max(widgets_fit.graph_scrolled.width() as f64);
-        let vh = widgets_fit
-            .graph_scrolled
-            .vadjustment()
-            .page_size()
-            .max(widgets_fit.graph_scrolled.height() as f64);
-
-        if bw > 0 && bh > 0 && vw > 0.0 && vh > 0.0 {
-            let fit_zoom = (vw / bw as f64).min(vh / bh as f64).clamp(0.25, 2.5);
-            if !fit_zoom.is_nan() && !fit_zoom.is_infinite() {
-                st.graph_zoom = fit_zoom;
-                st.graph_pan_x = 0.0;
-                st.graph_pan_y = 0.0;
-
-                let zoomed_w = (bw as f64 * fit_zoom).ceil() as i32;
-                let zoomed_h = (bh as f64 * fit_zoom).ceil() as i32;
-                drop(st);
-
-
-                widgets_fit.graph_drawing_area.set_content_width(zoomed_w);
-                widgets_fit.graph_drawing_area.set_content_height(zoomed_h);
-
-                widgets_fit.graph_scrolled.hadjustment().set_value(0.0);
-                widgets_fit.graph_scrolled.vadjustment().set_value(0.0);
-
-                widgets_fit.graph_drawing_area.queue_draw();
-            }
-        }
-    });
-
-
-
-    let stack_graph = stack.clone();
-    btn_call_graph.connect_clicked(move |_| {
-        stack_graph.set_visible_child_full("call_graph", gtk4::StackTransitionType::SlideLeft);
+    let stack_diagram = stack.clone();
+    btn_state_diagram.connect_clicked(move |_| {
+        stack_diagram.set_visible_child_full("state_diagram", gtk4::StackTransitionType::SlideLeft);
     });
 
     let stack_pinout = stack.clone();
@@ -447,28 +404,34 @@ fn do_load_project(state: &Rc<RefCell<AppState>>, widgets: &Rc<AppWidgets>) {
 
             let is_f446 = project.meta.mcu_name.to_uppercase().contains("F446");
 
-            let mut collapsed = std::collections::HashSet::new();
-            for e in project.call_graph_edges.iter().filter(|e| e.edge_type == EdgeType::IrqEntry) {
-                collapsed.insert(e.from.clone());
-            }
+            let state_model = build_project_state_model(&project);
+            let (init_positions, bounds) = compute_project_state_layout(&state_model, None);
 
-            let (init_positions, headers) = compute_graph_layout(&project.call_graph_edges, &collapsed);
-            let (w, h) = compute_graph_bounds(&init_positions, &headers);
-            let colors = crate::ui::call_graph::draw::compute_all_node_status_colors(&project.call_graph_edges, &init_positions);
+            // Populate combo_peripheral items
+            let mut combo_items = vec!["ALL PERIPHERALS".to_string()];
+            for m in &state_model.machines {
+                if !combo_items.contains(&m.peripheral) {
+                    combo_items.push(m.peripheral.clone());
+                }
+            }
+            let item_strs: Vec<&str> = combo_items.iter().map(|s| s.as_str()).collect();
+            widgets.combo_peripheral.set_model(Some(&gtk4::StringList::new(&item_strs)));
+            widgets.combo_peripheral.set_selected(0);
+
             {
                 let mut st = state.borrow_mut();
-                st.collapsed_chains = collapsed;
-                st.graph_node_positions = init_positions;
-                st.node_status_colors = colors;
-                st.chain_headers = headers;
-                st.graph_bounds = (w, h);
+                st.state_node_positions = init_positions;
+                st.diagram_bounds = bounds;
+                st.state_model = Some(state_model);
+                st.selected_peripheral = None;
+                st.selected_state_node = None;
                 st.loaded_project = Some(project);
             }
 
-            widgets.graph_drawing_area.set_content_width(w);
-            widgets.graph_drawing_area.set_content_height(h);
-            widgets.btn_call_graph.set_sensitive(true);
-            widgets.graph_drawing_area.queue_draw();
+            widgets.diagram_drawing_area.set_content_width(bounds.0);
+            widgets.diagram_drawing_area.set_content_height(bounds.1);
+            widgets.btn_state_diagram.set_sensitive(true);
+            widgets.diagram_drawing_area.queue_draw();
 
             if is_f446 {
                 widgets.btn_nucleo_pinout.set_sensitive(true);
@@ -540,7 +503,21 @@ mod tests {
         assert_eq!(pin_loc.arduino, Some(("CN5", 6, "D13")));
     }
 
+    #[test]
+    fn test_project_state_diagram_loading() {
+        let fixture_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../stakhal-core/tests/fixtures/stm32_03_timers");
+        let ioc_path = fixture_dir.join("03_timers.ioc");
+        let main_c_path = fixture_dir.join("Core/Src/main.c");
 
+        let project = load_project(&ioc_path, &main_c_path).expect("Failed to load timers fixture");
+        let model = build_project_state_model(&project);
+        assert!(!model.machines.is_empty());
+        let (positions, bounds) = compute_project_state_layout(&model, None);
+        assert!(!positions.is_empty());
+        assert!(bounds.0 >= 800);
+        assert!(bounds.1 >= 600);
+    }
 }
 
 
