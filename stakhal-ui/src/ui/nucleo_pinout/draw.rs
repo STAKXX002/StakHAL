@@ -301,6 +301,15 @@ pub fn draw_nucleo_pinout_canvas(
     height: f64,
     state: &Rc<RefCell<AppState>>,
 ) {
+    draw_nucleo_pinout(cr, width, height, state);
+}
+
+pub fn draw_nucleo_pinout(
+    cr: &cairo::Context,
+    width: f64,
+    height: f64,
+    state: &Rc<RefCell<AppState>>,
+) {
     let st = state.borrow();
     let highlights = get_active_pin_highlights(&st);
     let hovered_pin = st.hovered_pinout_pin.as_ref();
@@ -989,13 +998,8 @@ mod tests {
 
     #[test]
     fn test_draw_nucleo_pinout_canvas_rendering() {
-        if let Err(err) = gtk4::init() {
-            eprintln!("GTK display not available, skipping render test: {}", err);
-            return;
-        }
         let surface = cairo::ImageSurface::create(cairo::Format::ARgb32, 1200, 750).expect("Failed to create surface");
         let cr = cairo::Context::new(&surface).expect("Failed to create context");
-        let area = gtk4::DrawingArea::new();
         let state = Rc::new(RefCell::new(AppState::default()));
 
         let fixture_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -1006,7 +1010,7 @@ mod tests {
             state.borrow_mut().loaded_project = Some(project);
         }
 
-        draw_nucleo_pinout_canvas(&area, &cr, 1200.0, 750.0, &state);
+        draw_nucleo_pinout(&cr, 1200.0, 750.0, &state);
         surface.flush();
 
         let existing_project = state.borrow().loaded_project.clone();
@@ -1022,7 +1026,7 @@ mod tests {
             st.hovered_pinout_mouse = Some((100.0, 200.0));
         }
 
-        draw_nucleo_pinout_canvas(&area, &cr, 1200.0, 750.0, &state);
+        draw_nucleo_pinout(&cr, 1200.0, 750.0, &state);
         surface.flush();
     }
 }
