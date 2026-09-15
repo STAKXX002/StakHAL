@@ -56,8 +56,7 @@ pub fn setup_state_diagram_drawing_and_gestures(
         // Update selected info label
         if let Some(ref sel) = current_sel {
             if let Some(ref p) = st.loaded_project {
-                if !p.state_machines.is_empty() {
-                    let sm = &p.state_machines[st.selected_state_machine];
+                if let Some(sm) = p.state_machines.get(st.selected_state_machine) {
                     let outgoing: Vec<_> = sm.transitions.iter().filter(|t| &t.from == sel).collect();
                     let incoming: Vec<_> = sm.transitions.iter().filter(|t| &t.to == sel).collect();
 
@@ -79,7 +78,7 @@ pub fn setup_state_diagram_drawing_and_gestures(
                 }
             }
         } else {
-            info_click.set_text("Click a node to inspect full transition paths • Click background to collapse high-fan-in edges");
+            info_click.set_text("Click a node to inspect full transition paths | Click background to collapse high-fan-in edges");
         }
 
         area_click.queue_draw();
@@ -133,11 +132,15 @@ pub fn setup_state_diagram_drawing_and_gestures(
     let state_drag_update = Rc::clone(&state);
     let area_drag = drawing_area.clone();
     drag_gesture.connect_drag_update(move |_, offset_x, offset_y| {
-        let mut st = state_drag_update.borrow_mut();
-        st.diagram_pan_x = st.drag_start_pan_pos.0 + offset_x;
-        st.diagram_pan_y = st.drag_start_pan_pos.1 + offset_y;
-        area_drag.queue_draw();
+        if offset_x.abs() > 2.0 || offset_y.abs() > 2.0 {
+            let mut st = state_drag_update.borrow_mut();
+            st.diagram_pan_x = st.drag_start_pan_pos.0 + offset_x;
+            st.diagram_pan_y = st.drag_start_pan_pos.1 + offset_y;
+            area_drag.queue_draw();
+        }
     });
+
+    drag_gesture.connect_drag_end(move |_, _, _| {});
 
     drawing_area.add_controller(drag_gesture);
 

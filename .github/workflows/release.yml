@@ -3,20 +3,21 @@ name: Release
 on:
   push:
     tags:
-      - 'v*'
+      - "v*"
   workflow_dispatch:
     inputs:
       version:
-        description: 'Release version (e.g. v0.1.0)'
+        description: "Release version (e.g. v0.1.0)"
         required: false
-        default: ''
+        default: ""
+        type: string
 
 permissions:
   contents: write
 
 jobs:
   build-and-release:
-    name: Build & Publish Debian Package
+    name: "Build and Publish Debian Package"
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout repository
@@ -39,8 +40,8 @@ jobs:
       - name: Determine Version
         id: version
         run: |
-          if [ -n "${{ github.event.inputs.version }}" ]; then
-            TAG_VER="${{ github.event.inputs.version }}"
+          if [ -n "${{ inputs.version }}" ]; then
+            TAG_VER="${{ inputs.version }}"
           elif [[ "${{ github.ref }}" == refs/tags/* ]]; then
             TAG_VER="${GITHUB_REF#refs/tags/}"
           else
@@ -58,9 +59,8 @@ jobs:
 
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
+          token: ${{ secrets.GITHUB_TOKEN }}
           tag_name: ${{ steps.version.outputs.tag }}
           name: StakHAL ${{ steps.version.outputs.tag }}
           files: dist/*.deb

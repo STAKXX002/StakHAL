@@ -275,7 +275,7 @@ pub fn draw_state_diagram(
                 cr.set_source_rgb(0.65, 0.65, 0.65);
             }
             let _ = cr.move_to(node.x + 8.0, node.y + 12.0);
-            let _ = cr.show_text("● INIT");
+            let _ = cr.show_text("[INIT]");
         } else if node.is_fault {
             cr.set_font_size(8.0);
             if is_dimmed_node {
@@ -284,7 +284,7 @@ pub fn draw_state_diagram(
                 cr.set_source_rgb(COLOR_FAULT_RED.0, COLOR_FAULT_RED.1, COLOR_FAULT_RED.2);
             }
             let _ = cr.move_to(node.x + 8.0, node.y + 12.0);
-            let _ = cr.show_text("▲ FAULT");
+            let _ = cr.show_text("[FAULT]");
         }
 
         // Footer badges:
@@ -305,7 +305,7 @@ pub fn draw_state_diagram(
         if !node.is_fault {
             for (idx, target) in node.collapsed_out_badges.iter().enumerate() {
                 let is_fault_target = is_fault_state(target);
-                let badge_label = if is_fault_target { "▲ FAULT" } else { target.as_str() };
+                let badge_label = if is_fault_target { "[FAULT]" } else { target.as_str() };
                 let bx = node.x + node.width - 56.0 - idx as f64 * 58.0;
                 let by = node.y + node.height - 15.0;
                 draw_node_badge(cr, bx, by, badge_label, is_fault_target, is_dimmed_node);
@@ -318,15 +318,16 @@ fn draw_dot_grid(cr: &cairo::Context, max_w: f64, max_h: f64) {
     cr.set_source_rgba(COLOR_DOT_GRID.0, COLOR_DOT_GRID.1, COLOR_DOT_GRID.2, COLOR_DOT_GRID.3);
     let step = 32.0;
     let mut x = 20.0;
+    cr.new_path();
     while x < max_w {
         let mut y = 20.0;
         while y < max_h {
-            cr.arc(x, y, 1.0, 0.0, std::f64::consts::PI * 2.0);
-            let _ = cr.fill();
+            cr.rectangle(x, y, 1.5, 1.5);
             y += step;
         }
         x += step;
     }
+    let _ = cr.fill();
 }
 
 fn draw_rounded_node(

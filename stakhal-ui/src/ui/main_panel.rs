@@ -43,13 +43,13 @@ pub fn build_main_panel() -> MainPanelWidgets {
         .build();
 
     let lbl_ioc_path = gtk4::Label::builder()
-        .label("IOC Path: —")
+        .label("IOC Path: -")
         .halign(gtk4::Align::Start)
         .css_classes(vec!["dim-label".to_string(), "caption".to_string()])
         .build();
 
     let lbl_main_c_path = gtk4::Label::builder()
-        .label("Main C Path: —")
+        .label("Main C Path: -")
         .halign(gtk4::Align::Start)
         .css_classes(vec!["dim-label".to_string(), "caption".to_string()])
         .build();
@@ -122,19 +122,19 @@ pub fn build_main_panel() -> MainPanelWidgets {
     toolbar_box.append(&btn_nucleo_pinout);
 
     let lbl_project_name = gtk4::Label::builder()
-        .label("NAME: —")
+        .label("NAME: -")
         .halign(gtk4::Align::Start)
         .css_classes(vec!["caption".to_string()])
         .build();
 
     let lbl_mcu_family = gtk4::Label::builder()
-        .label("FAMILY: —")
+        .label("FAMILY: -")
         .halign(gtk4::Align::Start)
         .css_classes(vec!["caption".to_string()])
         .build();
 
     let lbl_mcu_name = gtk4::Label::builder()
-        .label("MCU: —")
+        .label("MCU: -")
         .halign(gtk4::Align::Start)
         .css_classes(vec!["caption".to_string()])
         .build();
@@ -153,13 +153,13 @@ pub fn build_main_panel() -> MainPanelWidgets {
     status_bar_box.append(&lbl_mcu_name);
 
     let lbl_periph_header = gtk4::Label::builder()
-        .label("[ ▸ PERIPHERALS ]")
+        .label("[ PERIPHERALS ]")
         .halign(gtk4::Align::Start)
         .css_classes(vec!["title-4".to_string()])
         .build();
 
     let lbl_region_header = gtk4::Label::builder()
-        .label("[ ▸ USER REGIONS ]")
+        .label("[ USER REGIONS ]")
         .halign(gtk4::Align::Start)
         .css_classes(vec!["title-4".to_string()])
         .build();
@@ -189,7 +189,7 @@ pub fn build_main_panel() -> MainPanelWidgets {
 
     // Build & Flash Console Panel
     let lbl_console_header = gtk4::Label::builder()
-        .label("[ ▸ BUILD & FLASH CONSOLE ]")
+        .label("[ BUILD & FLASH CONSOLE ]")
         .halign(gtk4::Align::Start)
         .css_classes(vec!["title-4".to_string()])
         .build();
@@ -308,7 +308,7 @@ pub fn clear_list_box(list_box: &gtk4::ListBox) {
 pub fn create_peripheral_row(name: &str, mode: Option<&str>, param_count: usize) -> adw::ActionRow {
     let row = adw::ActionRow::builder()
         .title(name)
-        .subtitle(mode.unwrap_or("—"))
+        .subtitle(mode.unwrap_or("-"))
         .build();
 
     let badge = gtk4::Label::builder()

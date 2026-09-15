@@ -42,6 +42,11 @@ use ui::main_panel::{
 const APP_ID: &str = "com.stakhal.ui";
 
 fn main() {
+    // Default to OpenGL renderer for robust, lag-free hardware acceleration on WSLg & Wayland
+    if std::env::var_os("GSK_RENDERER").is_none() {
+        std::env::set_var("GSK_RENDERER", "gl");
+    }
+
     let app = adw::Application::builder()
         .application_id(APP_ID)
         .flags(gio::ApplicationFlags::NON_UNIQUE)
@@ -473,7 +478,7 @@ fn execute_build_pipeline(
                             run_probe_detection_and_flash(bin_path, &state_timer, &widgets_timer, dir_timer.clone());
                         } else {
                             widgets_timer.lbl_build_status.set_text("SUCCESS");
-                            widgets_timer.toast_overlay.add_toast(adw::Toast::new("✓ Build succeeded"));
+                            widgets_timer.toast_overlay.add_toast(adw::Toast::new("[OK] Build succeeded"));
                             let mut st = state_timer.borrow_mut();
                             st.build_in_progress = false;
                             widgets_timer.btn_build.set_sensitive(st.has_build_system);
@@ -522,7 +527,7 @@ fn execute_build_pipeline(
                             dialog.present();
                         } else {
                             widgets_timer.lbl_build_status.set_text("SUCCESS");
-                            widgets_timer.toast_overlay.add_toast(adw::Toast::new("✓ Build succeeded"));
+                            widgets_timer.toast_overlay.add_toast(adw::Toast::new("[OK] Build succeeded"));
                             let mut st = state_timer.borrow_mut();
                             st.build_in_progress = false;
                             widgets_timer.btn_build.set_sensitive(st.has_build_system);
@@ -600,7 +605,7 @@ fn do_load_project(state: &Rc<RefCell<AppState>>, widgets: &Rc<AppWidgets>) {
         match (&st.discovered_ioc, &st.discovered_main_c, &st.project_dir) {
             (Some(i), Some(m), Some(d)) => (i.clone(), m.clone(), d.clone()),
             _ => {
-                widgets.toast_overlay.add_toast(adw::Toast::new("✗ Project files not selected"));
+                widgets.toast_overlay.add_toast(adw::Toast::new("[ERROR] Project files not selected"));
                 return;
             }
         }
@@ -625,13 +630,13 @@ fn do_load_project(state: &Rc<RefCell<AppState>>, widgets: &Rc<AppWidgets>) {
             widgets.lbl_mcu_family.set_text(&format!("FAMILY: {}", project.meta.mcu_family));
             widgets.lbl_mcu_name.set_text(&format!("MCU: {}", project.meta.mcu_name));
 
-            widgets.lbl_periph_header.set_text(&format!("[ ▸ PERIPHERALS ({}) ]", project.peripherals.len()));
+            widgets.lbl_periph_header.set_text(&format!("[ PERIPHERALS ({}) ]", project.peripherals.len()));
 
             let mut total_regions = project.user_regions.len();
             if project.loop_body.is_some() {
                 total_regions += 1;
             }
-            widgets.lbl_region_header.set_text(&format!("[ ▸ USER REGIONS ({}) ]", total_regions));
+            widgets.lbl_region_header.set_text(&format!("[ USER REGIONS ({}) ]", total_regions));
 
             clear_list_box(&widgets.list_peripherals);
             clear_list_box(&widgets.list_user_regions);
@@ -749,14 +754,14 @@ fn do_load_project(state: &Rc<RefCell<AppState>>, widgets: &Rc<AppWidgets>) {
             }
             widgets.pinout_drawing_area.queue_draw();
 
-            widgets.toast_overlay.add_toast(adw::Toast::new("✓ Project loaded successfully"));
+            widgets.toast_overlay.add_toast(adw::Toast::new("[OK] Project loaded successfully"));
         }
 
 
         Err(err) => {
             widgets.btn_nucleo_pinout.set_sensitive(false);
             widgets.btn_nucleo_pinout.set_tooltip_text(Some("Nucleo Pinout visualizer is F446RE-only for now"));
-            widgets.toast_overlay.add_toast(adw::Toast::new(&format!("✗ Load Error: {}", err)));
+            widgets.toast_overlay.add_toast(adw::Toast::new(&format!("[ERROR] Load Error: {}", err)));
         }
     }
 }
@@ -828,7 +833,7 @@ fn run_probe_detection_and_flash(
                 toolchain::probe::ProbeError::ZeroProbesFound => "NO PROBE",
                 toolchain::probe::ProbeError::ExecutionFailed(_) => "PROBE ERROR",
             });
-            widgets.toast_overlay.add_toast(adw::Toast::new(&format!("✗ {}", err)));
+            widgets.toast_overlay.add_toast(adw::Toast::new(&format!("[ERROR] {}", err)));
             let mut st = state.borrow_mut();
             st.build_in_progress = false;
             widgets.btn_build.set_sensitive(st.has_build_system);
@@ -847,7 +852,7 @@ fn run_flash_stage(
     if !toolchain::runner::is_executable_on_path("st-flash") {
         append_log_text(&widgets.build_log_view, "[ERROR] `st-flash` executable not found on PATH. Please install stlink-tools (e.g. `sudo apt install stlink-tools`).");
         widgets.lbl_build_status.set_text("ST-FLASH MISSING");
-        widgets.toast_overlay.add_toast(adw::Toast::new("✗ `st-flash` not found on PATH"));
+        widgets.toast_overlay.add_toast(adw::Toast::new("[ERROR] `st-flash` not found on PATH"));
         let mut st = state.borrow_mut();
         st.build_in_progress = false;
         widgets.btn_build.set_sensitive(st.has_build_system);
@@ -893,12 +898,12 @@ fn run_flash_stage(
             if success {
                 append_log_text(&widgets_timer.build_log_view, "\n[FLASH SUCCESS] Firmware written to 0x08000000 and target MCU reset successfully!");
                 widgets_timer.lbl_build_status.set_text("SUCCESS");
-                widgets_timer.toast_overlay.add_toast(adw::Toast::new("✓ Build & Flash Succeeded!"));
+                widgets_timer.toast_overlay.add_toast(adw::Toast::new("[OK] Build and Flash Succeeded!"));
             } else {
                 let code_str = code.map(|c| c.to_string()).unwrap_or_else(|| "unknown".to_string());
                 append_log_text(&widgets_timer.build_log_view, &format!("\n[FLASH FAILED] st-flash exited with code {}.", code_str));
                 widgets_timer.lbl_build_status.set_text("FLASH FAILED");
-                widgets_timer.toast_overlay.add_toast(adw::Toast::new("✗ Flash failed (see console output)"));
+                widgets_timer.toast_overlay.add_toast(adw::Toast::new("[ERROR] Flash failed (see console output)"));
             }
 
             return glib::ControlFlow::Break;
