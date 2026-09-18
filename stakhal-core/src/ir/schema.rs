@@ -50,11 +50,12 @@ pub fn load_project(ioc_path: &Path, main_c_path: &Path) -> Result<Project, Proj
         Err(e) => return Err(ProjectLoadError::PvExtractError(e)),
     };
 
-    let state_machines = match crate::graph::state_machine::discover_state_machines_in_file(main_c_path) {
+    let state_machines = match crate::graph::state_machine::discover_state_machines_in_project(main_c_path) {
         Ok(candidates) => {
             let mut list = Vec::new();
             for c in candidates {
-                if let Ok(sm) = crate::graph::state_machine::extract_state_machine_transitions(&c, main_c_path) {
+                let file_path = Path::new(&c.var.file_path);
+                if let Ok(sm) = crate::graph::state_machine::extract_state_machine_transitions(&c, file_path) {
                     list.push(sm);
                 }
             }
@@ -172,5 +173,32 @@ mod tests {
         assert_eq!(roundtrip.user_regions.len(), orig.user_regions.len());
         assert_eq!(roundtrip.call_graph_edges.len(), orig.call_graph_edges.len());
         assert_eq!(roundtrip.pv_declarations.len(), orig.pv_declarations.len());
+    }
+
+    #[test]
+    fn test_load_project_docking_firmware_v2() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/fixtures/docking_firmware_v2");
+        let ioc = root.join("docking_firmware_v2.ioc");
+        let main_c = root.join("Core/Src/main.c");
+        let project = load_project(&ioc, &main_c).expect("failed to load docking_firmware_v2");
+
+        assert_eq!(project.state_machines.len(), 1);
+        assert_eq!(project.state_machines[0].enum_def.name, "SystemState");
+        assert_eq!(project.state_machines[0].states.len(), 14);
+    }
+
+    #[test]
+    fn test_load_project_aa_ns_stm_port() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/fixtures/aa_ns_stm_port");
+        let ioc = root.join("aa_ns_stm_port.ioc");
+        let main_c = root.join("Core/Src/main.c");
+        let project = load_project(&ioc, &main_c).expect("failed to load aa_ns_stm_port");
+
+        assert_eq!(project.state_machines.len(), 2);
+        let names: Vec<&str> = project.state_machines.iter().map(|sm| sm.enum_def.name.as_str()).collect();
+        assert!(names.contains(&"AlignState"));
+        assert!(names.contains(&"HatchState"));
     }
 }

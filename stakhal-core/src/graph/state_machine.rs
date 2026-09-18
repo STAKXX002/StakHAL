@@ -224,6 +224,122 @@ pub fn discover_state_machines_in_file(path: &Path) -> Result<Vec<StateMachineCa
     Ok(candidates)
 }
 
+/// Discover all enum definitions and variables across all C source files in the project (e.g. Core/Src/*.c or Src/*.c).
+pub fn discover_state_machines_in_project(main_c_path: &Path) -> Result<Vec<StateMachineCandidate>, ScanError> {
+    if !main_c_path.exists() {
+        return Err(ScanError::FileNotFound(main_c_path.to_path_buf()));
+    }
+
+    let src_dir = main_c_path.parent().unwrap_or_else(|| Path::new("."));
+
+    let mut c_files = Vec::new();
+    if let Ok(entries) = fs::read_dir(src_dir) {
+        for entry in entries.flatten() {
+            let p = entry.path();
+            if p.is_file() && p.extension().map_or(false, |ext| ext == "c") {
+                c_files.push(p);
+            }
+        }
+    }
+    if !c_files.contains(&main_c_path.to_path_buf()) {
+        c_files.push(main_c_path.to_path_buf());
+    }
+    c_files.sort();
+
+    let mut inc_dirs = Vec::new();
+    if let Some(parent) = src_dir.parent() {
+        let inc = parent.join("Inc");
+        if inc.is_dir() {
+            inc_dirs.push(inc);
+        }
+        let inc_lower = parent.join("inc");
+        if inc_lower.is_dir() && !inc_dirs.contains(&inc_lower) {
+            inc_dirs.push(inc_lower);
+        }
+    }
+    if !inc_dirs.contains(&src_dir.to_path_buf()) {
+        inc_dirs.push(src_dir.to_path_buf());
+    }
+
+    let mut h_files = Vec::new();
+    for dir in inc_dirs {
+        if let Ok(entries) = fs::read_dir(&dir) {
+            for entry in entries.flatten() {
+                let p = entry.path();
+                if p.is_file() && p.extension().map_or(false, |ext| ext == "h") {
+                    h_files.push(p);
+                }
+            }
+        }
+    }
+    h_files.sort();
+
+    let mut parser = Parser::new();
+    parser
+        .set_language(&tree_sitter_c::language())
+        .map_err(|e| ScanError::ParseError(e.to_string()))?;
+
+    let mut enums = Vec::new();
+
+    for h_path in &h_files {
+        if let Ok(source) = fs::read_to_string(h_path) {
+            if let Some(tree) = parser.parse(&source, None) {
+                let path_str = h_path.to_string_lossy().to_string();
+                collect_enum_definitions(tree.root_node(), source.as_bytes(), &path_str, &mut enums);
+            }
+        }
+    }
+
+    for c_path in &c_files {
+        if let Ok(source) = fs::read_to_string(c_path) {
+            if let Some(tree) = parser.parse(&source, None) {
+                let path_str = c_path.to_string_lossy().to_string();
+                collect_enum_definitions(tree.root_node(), source.as_bytes(), &path_str, &mut enums);
+            }
+        }
+    }
+
+    if enums.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let enum_map: HashMap<String, EnumDefinition> = enums
+        .into_iter()
+        .map(|e| (e.name.clone(), e))
+        .collect();
+
+    let mut variables = Vec::new();
+    for c_path in &c_files {
+        if let Ok(source) = fs::read_to_string(c_path) {
+            if let Some(tree) = parser.parse(&source, None) {
+                let path_str = c_path.to_string_lossy().to_string();
+                collect_variables(tree.root_node(), source.as_bytes(), &path_str, None, &enum_map, &mut variables);
+            }
+        }
+    }
+
+    let mut candidates = Vec::new();
+    let mut seen = HashSet::new();
+    for var in variables {
+        if let Some(enum_def) = enum_map.get(&var.enum_type) {
+            let key = (enum_def.name.clone(), var.name.clone(), var.file_path.clone());
+            if seen.insert(key) {
+                let id = format!("{}_{}", var.enum_type, var.name);
+                let display_name = format!("{} ({})", var.enum_type, var.name);
+                candidates.push(StateMachineCandidate {
+                    id,
+                    display_name,
+                    enum_def: enum_def.clone(),
+                    var,
+                });
+            }
+        }
+    }
+
+    candidates.sort_by(|a, b| a.display_name.cmp(&b.display_name));
+    Ok(candidates)
+}
+
 /// Extract all transitions (direct and event-triggered) and ambiguous assignments for a state machine candidate.
 pub fn extract_state_machine_transitions(
     candidate: &StateMachineCandidate,
@@ -2841,5 +2957,27 @@ mod tests {
         // 4. Diagram dimensions
         assert!(layout.width >= 1200.0, "diagram width ({}) should encompass hubs and lanes", layout.width);
         assert!(layout.height >= 700.0, "diagram height ({}) should encompass lanes and fault", layout.height);
+    }
+
+    #[test]
+    fn test_discover_state_machines_in_project_aa_ns_stm_port() {
+        let fixture_main_c = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/fixtures/aa_ns_stm_port/Core/Src/main.c");
+        let candidates = discover_state_machines_in_project(&fixture_main_c)
+            .expect("discovery across project files should succeed");
+
+        assert_eq!(candidates.len(), 2, "Expected exactly 2 state machines (AlignState and HatchState)");
+
+        let align_cand = candidates.iter().find(|c| c.enum_def.name == "AlignState")
+            .expect("AlignState candidate must be found");
+        assert_eq!(align_cand.var.name, "state");
+        assert!(align_cand.var.file_path.ends_with("alignment.c"));
+        assert_eq!(align_cand.enum_def.variants.len(), 11);
+
+        let hatch_cand = candidates.iter().find(|c| c.enum_def.name == "HatchState")
+            .expect("HatchState candidate must be found");
+        assert_eq!(hatch_cand.var.name, "hatchState");
+        assert!(hatch_cand.var.file_path.ends_with("hatch.c"));
+        assert_eq!(hatch_cand.enum_def.variants.len(), 3);
     }
 }
