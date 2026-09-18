@@ -1,4 +1,4 @@
-# AA_NS_STM_PORT State Machine — Ground Truth
+# AA_NS_STM_PORT State Machine • Ground Truth
 
 ## 1. Discovered State Machines
 

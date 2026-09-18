@@ -381,7 +381,8 @@ pub fn extract_state_machine_transitions(
         }
 
         if let Some(body) = fn_node.child_by_field_name("body") {
-            let ctx = ASTContext::default();
+            let mut ctx = ASTContext::default();
+            ctx.has_local_fault = candidate.enum_def.variants.iter().any(|v| is_fault_state(v));
             walk_statement(
                 body,
                 &ctx,
@@ -395,12 +396,17 @@ pub fn extract_state_machine_transitions(
         }
     }
 
+    let mut states = candidate.enum_def.variants.clone();
+    if transitions.iter().any(|t| t.to == "SYSTEM FAULT") && !states.contains(&"SYSTEM FAULT".to_string()) {
+        states.push("SYSTEM FAULT".to_string());
+    }
+
     Ok(AppStateMachine {
         id: candidate.id.clone(),
         display_name: candidate.display_name.clone(),
         enum_def: candidate.enum_def.clone(),
         var: candidate.var.clone(),
-        states: candidate.enum_def.variants.clone(),
+        states,
         transitions,
         ambiguous_transitions,
     })
@@ -1149,7 +1155,7 @@ fn collect_helper_functions(
 
     for fn_node in fn_nodes {
         if let Some(fn_name) = extract_function_name(fn_node, source_bytes) {
-            if fn_name == "main" {
+            if fn_name == "main" || has_switch_on_var(fn_node, source_bytes, var_name) {
                 continue;
             }
             let mut targets = Vec::new();
@@ -1166,6 +1172,24 @@ fn collect_helper_functions(
         }
     }
     helpers
+}
+
+fn has_switch_on_var(node: Node, source_bytes: &[u8], var_name: &str) -> bool {
+    if node.kind() == "switch_statement" {
+        if let Some(c) = node.child_by_field_name("condition") {
+            let t = clean_guard_text(&node_text(c, source_bytes));
+            if t == var_name {
+                return true;
+            }
+        }
+    }
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        if has_switch_on_var(child, source_bytes, var_name) {
+            return true;
+        }
+    }
+    false
 }
 
 fn collect_assignments_to_var(
@@ -1199,6 +1223,7 @@ fn collect_assignments_to_var(
 struct ASTContext {
     active_states: Option<Vec<String>>,
     guards: Vec<String>,
+    has_local_fault: bool,
 }
 
 fn collect_functions<'a>(node: Node<'a>, out: &mut Vec<Node<'a>>) {
@@ -1372,8 +1397,88 @@ fn check_helper_call(
                     });
                 }
             }
+        } else if !ctx.has_local_fault
+            && is_fault_coordinator_name(&fn_name)
+            && ctx.active_states.as_ref().map_or(false, |st| !st.is_empty())
+        {
+            let line = node.start_position().row + 1;
+            let arg_info = extract_first_argument_info(node, source_bytes);
+            let arg_text = arg_info.as_ref().map(|a| a.text.clone());
+
+            let label = if let Some(ref arg) = arg_info {
+                arg.text.clone()
+            } else {
+                prettify_guard(&ctx.guards.join(" && "))
+            };
+
+            let helper_tag = match &arg_text {
+                Some(arg) => format!("{}: {}", fn_name, arg),
+                None => format!("{}()", fn_name),
+            };
+
+            let base_guard = ctx.guards.join(" && ");
+            let full_guard = if base_guard.is_empty() {
+                helper_tag
+            } else {
+                format!("{} [{}]", base_guard, helper_tag)
+            };
+
+            let target = "SYSTEM FAULT".to_string();
+
+            if let Some(ref states) = ctx.active_states {
+                if states.is_empty() {
+                    transitions.push(AppTransition {
+                        from: "(any state)".to_string(),
+                        to: target,
+                        guard: full_guard,
+                        label,
+                        is_fault: true,
+                        transition_type: TransitionType::IndirectHelper {
+                            helper_name: fn_name.clone(),
+                            argument: arg_text,
+                        },
+                        line,
+                    });
+                } else {
+                    for from in states {
+                        transitions.push(AppTransition {
+                            from: from.clone(),
+                            to: target.clone(),
+                            guard: full_guard.clone(),
+                            label: label.clone(),
+                            is_fault: true,
+                            transition_type: TransitionType::IndirectHelper {
+                                helper_name: fn_name.clone(),
+                                argument: arg_text.clone(),
+                            },
+                            line,
+                        });
+                    }
+                }
+            } else {
+                transitions.push(AppTransition {
+                    from: "(any state)".to_string(),
+                    to: target,
+                    guard: full_guard,
+                    label,
+                    is_fault: true,
+                    transition_type: TransitionType::IndirectHelper {
+                        helper_name: fn_name.clone(),
+                        argument: arg_text,
+                    },
+                    line,
+                });
+            }
         }
     }
+}
+
+fn is_fault_coordinator_name(name: &str) -> bool {
+    let lower = name.to_lowercase();
+    (lower.contains("fault") || lower.contains("panic") || lower.contains("abort"))
+        && !lower.contains("clear")
+        && !lower.contains("in_fault")
+        && name != "Error_Handler"
 }
 
 fn walk_if_statement(
@@ -2979,5 +3084,57 @@ mod tests {
         assert_eq!(hatch_cand.var.name, "hatchState");
         assert!(hatch_cand.var.file_path.ends_with("hatch.c"));
         assert_eq!(hatch_cand.enum_def.variants.len(), 3);
+    }
+
+    #[test]
+    fn test_fault_coordinator_aa_ns_stm_port() {
+        let fixture_main_c = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/fixtures/aa_ns_stm_port/Core/Src/main.c");
+        let candidates = discover_state_machines_in_project(&fixture_main_c)
+            .expect("discovery across project files should succeed");
+
+        let align_cand = candidates.iter().find(|c| c.enum_def.name == "AlignState")
+            .expect("AlignState candidate must be found");
+        let align_file = Path::new(&align_cand.var.file_path);
+        let align_sm = extract_state_machine_transitions(align_cand, align_file)
+            .expect("AlignState transitions extraction should succeed");
+
+        // AlignState calls system_fault() -> synthetic SYSTEM FAULT sink node must exist
+        assert!(align_sm.states.contains(&"SYSTEM FAULT".to_string()), "AlignState must contain synthetic SYSTEM FAULT state");
+        assert_eq!(align_sm.states.len(), 12, "Expected 11 enum states + 1 synthetic SYSTEM FAULT state");
+
+        let fault_transitions: Vec<&AppTransition> = align_sm.transitions.iter().filter(|t| t.to == "SYSTEM FAULT").collect();
+        assert!(!fault_transitions.is_empty(), "AlignState must have transitions into SYSTEM FAULT");
+        for t in &fault_transitions {
+            assert!(t.is_fault);
+        }
+
+        let fault_labels: Vec<&str> = fault_transitions.iter().map(|t| t.label.as_str()).collect();
+        assert!(fault_labels.contains(&"CAL TIMEOUT"));
+        assert!(fault_labels.contains(&"CAL SKEW"));
+        assert!(fault_labels.contains(&"Z2 LIMIT NOT FOUND"));
+        assert!(fault_labels.contains(&"GO TIMEOUT"));
+        assert!(fault_labels.contains(&"RETURN TIMEOUT"));
+        assert!(fault_labels.contains(&"REC TIMEOUT"));
+
+        // HatchState does NOT call system_fault() -> NO synthetic SYSTEM FAULT node
+        let hatch_cand = candidates.iter().find(|c| c.enum_def.name == "HatchState")
+            .expect("HatchState candidate must be found");
+        let hatch_file = Path::new(&hatch_cand.var.file_path);
+        let hatch_sm = extract_state_machine_transitions(hatch_cand, hatch_file)
+            .expect("HatchState transitions extraction should succeed");
+
+        assert!(!hatch_sm.states.contains(&"SYSTEM FAULT".to_string()), "HatchState must NOT contain SYSTEM FAULT state");
+        assert_eq!(hatch_sm.states.len(), 3, "HatchState must have exactly 3 states");
+        assert!(!hatch_sm.transitions.iter().any(|t| t.to == "SYSTEM FAULT" || t.is_fault), "HatchState must have 0 fault transitions");
+
+        // Layout verification: AlignState layout must contain SYSTEM FAULT node
+        let align_layout = compute_state_machine_layout(&align_sm);
+        let fault_node = align_layout.nodes.get("SYSTEM FAULT").expect("SYSTEM FAULT node layout must exist");
+        assert!(fault_node.is_fault);
+
+        // Layout verification: HatchState layout must NOT contain SYSTEM FAULT node
+        let hatch_layout = compute_state_machine_layout(&hatch_sm);
+        assert!(!hatch_layout.nodes.contains_key("SYSTEM FAULT"), "HatchState layout must NOT have SYSTEM FAULT node");
     }
 }
