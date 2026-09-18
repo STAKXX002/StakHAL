@@ -81,7 +81,7 @@ typedef struct {
     long current_pos;
     long target_pos;
     long step_accumulator;
-    long step_interval;         // keep this — now used as the CRUISE (minimum) interval
+    long step_interval;         // keep this - now used as the CRUISE (minimum) interval
     long step_interval_current; // current ramp position
     uint32_t move_start_tick;   // isrTicks value when this move began
     GPIO_TypeDef* step_port; uint16_t step_pin;

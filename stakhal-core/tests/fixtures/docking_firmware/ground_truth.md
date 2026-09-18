@@ -1,4 +1,4 @@
-# Docking Firmware State Machine — Ground Truth
+# Docking Firmware State Machine - Ground Truth
 
 ## State Machine Definition
 - **Enum Type**: `SystemState`

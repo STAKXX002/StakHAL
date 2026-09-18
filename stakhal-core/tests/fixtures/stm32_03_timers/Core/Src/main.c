@@ -48,10 +48,10 @@ TIM_HandleTypeDef htim6;
 
 /* USER CODE BEGIN PV */
 
-// TIM6 — control loop counter (just for demo)
+// TIM6 - control loop counter (just for demo)
 volatile uint32_t isrCount = 0;
 
-// TIM2 — step pulse demo
+// TIM2 - step pulse demo
 uint32_t stepInterval = 90000; // 90MHz / 90000 = 1000 steps/sec
 
 // Encoder positions
@@ -488,7 +488,7 @@ static void MX_GPIO_Init(void)
 
 /* USER CODE BEGIN 4 */
 
-// TIM6 — fires at 10kHz
+// TIM6 - fires at 10kHz
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 {
     if (htim->Instance == TIM6)
@@ -497,7 +497,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
     }
 }
 
-// TIM2 — output compare, advance each channel's next pulse
+// TIM2 - output compare, advance each channel's next pulse
 void HAL_TIM_OC_DelayElapsedCallback(TIM_HandleTypeDef *htim)
 {
     if (htim->Instance == TIM2)
