@@ -7,26 +7,30 @@
 ## Features
 
 ### 1. CubeMX Project Inspection
-- Automatically discovers and parses CubeMX `.ioc` hardware configuration files and C source files (`main.c`).
+- Automatically discovers and parses CubeMX `.ioc` hardware configuration files and C source files across project directories (`Core/Src`, `Src`, etc.).
 - Extracts MCU family (`STM32F4`, etc.), chip part number, and peripheral configurations (GPIO, TIM, USART, etc.).
 - Identifies and validates `USER CODE BEGIN` / `USER CODE END` code blocks and main `while (1)` loop boundaries.
 
-### 2. Application State Machine Visualizer
-- Automatically extracts enum-driven state machines, states, transitions, and guards directly from C source code.
-- **Hub-Anchored Swimlane Layout**: Uses a customized Sugiyama algorithm (`rust-sugiyama`) anchored around high-degree hub states (e.g. `IDLE`, `RETURNED`) with dedicated parallel swimlanes for functional clusters.
+### 2. Multi-Machine Application State Visualizer
+- **Multi-File State Machine Discovery**: Automatically discovers state machines across modular multi-file architectures (`alignment.c`, `hatch.c`, etc.) as well as monolithic single-file projects (`main.c`).
+- **Interactive Multi-Machine Dropdown**: Switch seamlessly between individual discovered machines (e.g. `AlignState`, `HatchState`) with dedicated per-machine layout computation.
+- **Cross-Cutting Fault Coordinator Modeling**: Detects external fault coordinators (`system_fault()`, etc.) and automatically injects a synthetic `"SYSTEM FAULT"` sink node with targeted fault transition edges.
+- **Multi-Hop Command Table Dispatch**: Traces serial command tables (`commandTable[]`) mapping CLI string tokens (`"GO"`, `"CAL"`, `"RET"`, `"OPEN"`, `"CLOSE"`) through handlers and query function guards (`alignment_is_idle()`) to state assignments (`alignment_go()`).
+- **Hub-Anchored Swimlane Layout**: Uses a customized Sugiyama algorithm (`rust-sugiyama`) anchored around high-degree hub states with dedicated parallel swimlanes for functional clusters.
 - **Human-Readable Transition Badges**: Prioritizes fault string literals, command triggers (`CMD: GO`, `CMD: RET`), timeout expressions, and clean boolean guards.
-- Interactive canvas with hardware-accelerated pan, zoom, fit-to-view, and click-to-inspect transition details.
+- **Hardware-Accelerated Canvas**: Smooth 60fps pan, zoom, fit-to-view, and click-to-inspect transition details, optimized with batch dot-grid rendering and OpenGL acceleration for WSL2/WSLg.
 
 ### 3. Nucleo Physical Pinout Visualizer
 - Visual connector inspector for STM32 Nucleo boards (Morpho `CN7`/`CN10` and Arduino Uno `CN5`/`CN6`/`CN8`/`CN9` headers).
 - Interactive hover tooltips mapping physical connector pin numbers to MCU GPIO pins and alternate functions.
+- Visual conflict detection and warning banners for duplicate pin assignments.
 
 ### 4. Integrated Build & Flash Subsystem
 - **Multi-Build System Support**: Automatically detects and builds **Makefile**, **CMake**, and **Ninja** projects.
 - **Fresh Clone Auto-Configuration**: Detects unconfigured CMake repositories (e.g. freshly cloned from GitHub) and automatically configures presets (`cmake --preset Debug`).
-- **Auto `.elf` → `.bin` Conversion**: Automatically extracts binary flash images using `arm-none-eabi-objcopy` when the build toolchain outputs only `.elf`.
+- **Auto `.elf` -> `.bin` Conversion**: Automatically extracts binary flash images using `arm-none-eabi-objcopy` when the build toolchain outputs only `.elf`.
 - **ST-Link Probe Auto-Detection**: Scans connected programmers (`st-info --probe`), auto-selects single targets, and presents an interactive picker if multiple ST-Links are connected.
-- **Non-Blocking Streaming Console**: Live compiler and flasher output streamed line-by-line into a bottom drawer console with status badges (`BUILDING...`, `PROBING...`, `FLASHING...`, `SUCCESS`).
+- **Non-Blocking Streaming Console**: Live compiler and flasher output streamed line-by-line into an expandable bottom console drawer with status badges (`BUILDING...`, `PROBING...`, `FLASHING...`, `SUCCESS`).
 - Separate **`[ Build ]`** (compile only) and **`[ Build & Flash ]`** (compile + flash to `0x08000000` + hardware reset) actions.
 
 ---
@@ -99,7 +103,7 @@ Windows 11 natively runs GUI Linux applications with hardware acceleration via *
    ```
 2. Inside Ubuntu WSL2, install the Debian package:
    ```bash
-   sudo apt install -y ./dist/stakhal_0.1.0_amd64.deb
+   sudo apt install -y ./dist/stakhal_0.1.3_amd64.deb
    ```
 3. StakHAL will now appear in your **Windows 11 Start Menu** and can be launched directly from Windows.
 4. To enable ST-Link USB hardware access inside WSL2, install [usbipd-win](https://github.com/dorssel/usbipd-win):
