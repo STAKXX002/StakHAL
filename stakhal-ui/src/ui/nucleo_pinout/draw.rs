@@ -413,7 +413,7 @@ pub fn draw_nucleo_pinout(
     cr.select_font_face("monospace", cairo::FontSlant::Normal, cairo::FontWeight::Normal);
     cr.set_font_size(10.5);
     cr.set_source_rgb(115.0 / 255.0, 115.0 / 255.0, 115.0 / 255.0);
-    let subtitle_str = "ARM® Cortex®-M4 MCU @ 180MHz — Physical 64-Pin Connector Pinout";
+    let subtitle_str = "ARM® Cortex®-M4 MCU @ 180MHz • Physical 64-Pin Connector Pinout";
     let subtitle_y = title_y + 20.0;
     if let Ok(ext) = cr.text_extents(subtitle_str) {
         let _ = cr.move_to(board_x + (board_w - ext.width()) / 2.0, subtitle_y);
@@ -432,9 +432,9 @@ pub fn draw_nucleo_pinout(
         };
 
         let banner_str = if count == 1 {
-            "⚠ 1 pin conflict detected — see highlighted pins below".to_string()
+            "⚠ 1 pin conflict detected • see highlighted pins below".to_string()
         } else {
-            format!("⚠ {} pin conflicts detected — see highlighted pins below", count)
+            format!("⚠ {} pin conflicts detected • see highlighted pins below", count)
         };
 
         cr.select_font_face("sans-serif", cairo::FontSlant::Normal, cairo::FontWeight::Bold);
@@ -588,7 +588,7 @@ pub fn draw_nucleo_pinout(
             .count();
 
         let tag = if is_morpho { "[MORPHO]" } else { "[ARDUINO]" };
-        let header_text = format!("{} {} — {} ({} active)", conn.name, tag, type_title, active_count);
+        let header_text = format!("{} {} • {} ({} active)", conn.name, tag, type_title, active_count);
 
         cr.select_font_face("monospace", cairo::FontSlant::Normal, cairo::FontWeight::Bold);
         cr.set_font_size(10.5);

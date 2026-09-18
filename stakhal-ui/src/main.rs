@@ -218,7 +218,7 @@ row, listboxrow, actionrow {
 
     let window = adw::ApplicationWindow::builder()
         .application(app)
-        .title("StakHAL — Hardware Abstraction Inspector")
+        .title(concat!("StakHAL v", env!("CARGO_PKG_VERSION")))
         .default_width(1280)
         .default_height(820)
         .content(&toast_overlay)
@@ -589,8 +589,8 @@ fn try_discover_folder(dir: &Path, state: &Rc<RefCell<AppState>>, widgets: &Rc<A
         }
         Err(err) => {
             widgets.toast_overlay.add_toast(adw::Toast::new(&format!("Discovery Error: {}", err)));
-            widgets.lbl_ioc_path.set_text("IOC Path: —");
-            widgets.lbl_main_c_path.set_text("Main C Path: —");
+            widgets.lbl_ioc_path.set_text("IOC Path: N/A");
+            widgets.lbl_main_c_path.set_text("Main C Path: N/A");
             st.discovered_ioc = None;
             st.discovered_main_c = None;
             widgets.btn_load.set_sensitive(false);

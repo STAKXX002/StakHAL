@@ -7,7 +7,7 @@ pub enum DiscoveryError {
     NoIocFound(PathBuf),
     #[error("multiple .ioc files found in {0}, expected exactly one: {1:?}")]
     MultipleIocFound(PathBuf, Vec<PathBuf>),
-    #[error("no main.c found — checked: {0:?}")]
+    #[error("no main.c found • checked: {0:?}")]
     NoMainCFound(Vec<PathBuf>),
 }
 

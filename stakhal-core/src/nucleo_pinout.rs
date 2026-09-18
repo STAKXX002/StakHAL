@@ -119,32 +119,32 @@ pub struct ReservedPin {
 pub const RESERVED_PINS: &[ReservedPin] = &[
     ReservedPin {
         mcu_pin: "PA13",
-        reason: "PA13 is SWDIO — used by the onboard debugger. Reusing this pin will break reprogramming.",
+        reason: "PA13 is SWDIO • used by the onboard debugger. Reusing this pin will break reprogramming.",
         severity: ReservedSeverity::Critical,
     },
     ReservedPin {
         mcu_pin: "PA14",
-        reason: "PA14 is SWCLK — used by the onboard debugger. Reusing this pin will break reprogramming.",
+        reason: "PA14 is SWCLK • used by the onboard debugger. Reusing this pin will break reprogramming.",
         severity: ReservedSeverity::Critical,
     },
     ReservedPin {
         mcu_pin: "PH0",
-        reason: "PH0 is OSC_IN — system main oscillator input.",
+        reason: "PH0 is OSC_IN • system main oscillator input.",
         severity: ReservedSeverity::Caution,
     },
     ReservedPin {
         mcu_pin: "PH1",
-        reason: "PH1 is OSC_OUT — system main oscillator output.",
+        reason: "PH1 is OSC_OUT • system main oscillator output.",
         severity: ReservedSeverity::Caution,
     },
     ReservedPin {
         mcu_pin: "PC14",
-        reason: "PC14 is OSC32_IN — 32.768 kHz RTC oscillator input.",
+        reason: "PC14 is OSC32_IN • 32.768 kHz RTC oscillator input.",
         severity: ReservedSeverity::Caution,
     },
     ReservedPin {
         mcu_pin: "PC15",
-        reason: "PC15 is OSC32_OUT — 32.768 kHz RTC oscillator output.",
+        reason: "PC15 is OSC32_OUT • 32.768 kHz RTC oscillator output.",
         severity: ReservedSeverity::Caution,
     },
 ];

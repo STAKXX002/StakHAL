@@ -505,7 +505,7 @@ project(DockingFirmware C ASM)
             match detected.unwrap() {
                 BuildSystem::CMake { target, build_dir, .. } => {
                     assert_eq!(target.as_deref(), Some("AA_NS_STM_V1"));
-                    assert!(build_dir.ends_with("build/Debug") || build_dir.ends_with("build"));
+                    assert!(build_dir.ends_with("build/Debug") || build_dir.ends_with("build/Release") || build_dir.ends_with("build"));
                 }
                 other => panic!("Expected CMake build system for AA_NS_STM_V1, got {:?}", other),
             }
