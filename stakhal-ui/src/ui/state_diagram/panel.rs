@@ -37,8 +37,8 @@ pub fn build_state_diagram_panel() -> StateDiagramPanelWidgets {
         .spacing(12)
         .margin_top(12)
         .margin_bottom(8)
-        .margin_start(18)
-        .margin_end(18)
+        .margin_start(16)
+        .margin_end(16)
         .build();
     diagram_header_bar.append(&btn_diagram_back);
     diagram_header_bar.append(&btn_fit_to_view);
@@ -54,8 +54,8 @@ pub fn build_state_diagram_panel() -> StateDiagramPanelWidgets {
         .wrap_mode(gtk4::pango::WrapMode::WordChar)
         .lines(2)
         .ellipsize(gtk4::pango::EllipsizeMode::End)
-        .margin_start(18)
-        .margin_end(18)
+        .margin_start(16)
+        .margin_end(16)
         .margin_bottom(8)
         .css_classes(vec!["dim-label".to_string(), "caption".to_string()])
         .build();

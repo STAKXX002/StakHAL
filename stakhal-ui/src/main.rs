@@ -25,6 +25,28 @@ fn append_log_text(view: &gtk4::TextView, text: &str) {
     view.scroll_to_mark(&mark, 0.0, true, 0.0, 1.0);
 }
 
+#[derive(Copy, Clone, PartialEq, Eq)]
+pub enum StatusKind {
+    Ready,
+    Active,
+    Error,
+    Idle,
+}
+
+pub fn update_build_status(lbl: &gtk4::Label, text: &str, kind: StatusKind) {
+    lbl.set_text(text);
+    lbl.remove_css_class("status-ready");
+    lbl.remove_css_class("status-active");
+    lbl.remove_css_class("status-error");
+    lbl.remove_css_class("status-idle");
+    match kind {
+        StatusKind::Ready => lbl.add_css_class("status-ready"),
+        StatusKind::Active => lbl.add_css_class("status-active"),
+        StatusKind::Error => lbl.add_css_class("status-error"),
+        StatusKind::Idle => lbl.add_css_class("status-idle"),
+    }
+}
+
 use config::{load_app_config, save_app_config};
 use state::{AppState, AppWidgets};
 use ui::nucleo_pinout::{
@@ -61,90 +83,173 @@ fn build_ui(app: &adw::Application) {
 
     let css_provider = gtk4::CssProvider::new();
     css_provider.load_from_string(r#"
+@define-color bg_void #0A0D10;
+@define-color bg_panel #14181C;
+@define-color border_hair #262C31;
+@define-color text_primary #E4E7EA;
+@define-color text_muted #6B7378;
+@define-color state_ready #34D399;
+@define-color state_active #F5A623;
+@define-color state_error #E5484D;
+@define-color accent #4FD1C5;
+
 * {
-    font-family: 'DejaVu Sans Mono', 'Liberation Mono', monospace;
+    font-family: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
     font-size: 13px;
     border-radius: 0px;
     box-shadow: none;
 }
+
 window, dialog {
-    background-color: #0a0a0a;
-    color: #e5e5e5;
+    background-color: @bg_void;
+    color: @text_primary;
 }
+
 windowcontrols button {
     border: none;
     background: transparent;
     border-radius: 0px;
 }
+
 windowcontrols button:hover {
     border: none;
     background: transparent;
 }
-button.stakhal-btn {
-    border: 1px solid #262626;
-    background-color: #121212;
-    color: #e5e5e5;
-    transition: all 120ms ease;
+
+/* Panel and Card Containers */
+.card, frame, scrolledwindow.card, box.card {
+    background-color: @bg_panel;
+    border: 1px solid @border_hair;
     border-radius: 0px;
 }
+
+/* Buttons */
+button.stakhal-btn {
+    font-family: 'IBM Plex Sans', sans-serif;
+    font-weight: 500;
+    border: 1px solid @border_hair;
+    background-color: @bg_panel;
+    color: @text_primary;
+    transition: all 120ms ease;
+    border-radius: 2px;
+}
+
 button.stakhal-btn:hover {
-    border-color: #525252;
-    background-color: #1a1a1a;
+    border-color: @accent;
+    background-color: #1a2026;
     color: #ffffff;
 }
+
 button.stakhal-btn:active {
-    background-color: #262626;
+    background-color: #262C31;
 }
+
 button.stakhal-btn.suggested-action {
-    border-color: #e5e5e5;
-    background-color: #e5e5e5;
-    color: #0a0a0a;
+    border: 1px solid @accent;
+    background-color: @accent;
+    color: @bg_void;
+    font-weight: 600;
+    border-radius: 2px;
 }
+
 button.stakhal-btn.suggested-action:hover {
-    border-color: #ffffff;
-    background-color: #ffffff;
-    color: #000000;
+    border-color: #5fe3d7;
+    background-color: #5fe3d7;
+    color: @bg_void;
 }
+
+button.stakhal-btn.suggested-action:active {
+    background-color: #3bb3a8;
+}
+
 button.stakhal-btn.flat {
-    border-color: transparent;
+    border: 1px solid transparent;
     background-color: transparent;
-    color: #a3a3a3;
+    color: @text_muted;
+    border-radius: 2px;
 }
+
 button.stakhal-btn.flat:hover {
-    border-color: #262626;
-    background-color: #171717;
-    color: #ffffff;
+    border-color: @border_hair;
+    background-color: @bg_panel;
+    color: @text_primary;
 }
+
+/* Rows and ListBoxes */
 row, listboxrow, actionrow {
     border-radius: 0px;
     transition: none;
+    border-bottom: 1px solid @border_hair;
 }
+
 .clickable-row {
     transition: all 120ms ease;
 }
+
 .clickable-row:hover {
-    background-color: #171717;
-}
-.clickable-row:active {
-    background-color: #262626;
-}
-.dim-label {
-    color: #737373;
-}
-.title-1, .title-2, .title-3, .heading {
-    color: #f5f5f5;
-    font-weight: bold;
+    background-color: #1a2026;
 }
 
-/* Reserved Status Classes */
-.status-error, .error {
-    color: #ef4444;
+.clickable-row:active {
+    background-color: #262C31;
 }
-.status-warning, .warning {
-    color: #f59e0b;
+
+/* Data / Monospace Typography Split */
+textview, textview text, .data-mono, .data-mono * {
+    font-family: 'JetBrains Mono', 'DejaVu Sans Mono', 'Liberation Mono', monospace;
+    font-size: 12px;
 }
-.status-ok, .ok {
-    color: #22c55e;
+
+textview text {
+    background-color: @bg_panel;
+    color: @text_primary;
+}
+
+.dim-label {
+    color: @text_muted;
+}
+
+.title-1, .title-2, .title-3, .title-4, .heading {
+    font-family: 'IBM Plex Sans', sans-serif;
+    color: @text_primary;
+    font-weight: 600;
+}
+
+/* Strictly Reserved Status Classes (signal only, never decoration) */
+.status-ready, .status-ok {
+    color: @state_ready;
+    font-weight: 600;
+}
+
+.status-active, .status-busy, .status-warning {
+    color: @state_active;
+    font-weight: 600;
+}
+
+.status-error, .status-fault {
+    color: @state_error;
+    font-weight: 600;
+}
+
+.status-idle {
+    color: @text_muted;
+}
+
+.implicit-badge {
+    font-family: 'JetBrains Mono', monospace;
+    color: @text_muted;
+    background-color: #1a2026;
+    border: 1px solid @border_hair;
+    border-radius: 2px;
+    padding: 2px 6px;
+}
+
+dropdown button {
+    border: 1px solid @border_hair;
+    background-color: @bg_panel;
+    color: @text_primary;
+    border-radius: 2px;
+    font-family: 'IBM Plex Sans', sans-serif;
 }
 "#);
 
@@ -357,7 +462,7 @@ row, listboxrow, actionrow {
     let status_clear = widgets.lbl_build_status.clone();
     widgets.btn_clear_log.connect_clicked(move |_| {
         log_view_clear.buffer().set_text("");
-        status_clear.set_text("IDLE");
+        update_build_status(&status_clear, "IDLE", StatusKind::Idle);
     });
 
     // Connect Build & Flash Button
@@ -365,16 +470,15 @@ row, listboxrow, actionrow {
     let state_b = Rc::clone(&state);
     let widgets_b = Rc::clone(&widgets);
     widgets.btn_build.connect_clicked(move |_| {
-        execute_build_pipeline(&state_b, &widgets_b, false);
+        execute_build_pipeline(false, &state_b, &widgets_b);
     });
 
     // Connect Build & Flash Button
     let state_bf = Rc::clone(&state);
     let widgets_bf = Rc::clone(&widgets);
     widgets.btn_build_flash.connect_clicked(move |_| {
-        execute_build_pipeline(&state_bf, &widgets_bf, true);
+        execute_build_pipeline(true, &state_bf, &widgets_bf);
     });
-
 
     window.present();
 
@@ -391,41 +495,37 @@ row, listboxrow, actionrow {
 
 
 fn execute_build_pipeline(
+    flash_after_build: bool,
     state: &Rc<RefCell<AppState>>,
     widgets: &Rc<AppWidgets>,
-    flash_after_build: bool,
 ) {
-    let (project_dir, detected_build_system) = {
-        let st = state.borrow();
-        (st.project_dir.clone(), st.detected_build_system.clone())
-    };
-
-    let (dir, build_sys) = match (project_dir, detected_build_system) {
-        (Some(d), Some(bs)) => (d, bs),
-        _ => {
-            widgets.toast_overlay.add_toast(adw::Toast::new("No supported build system (Makefile/CMake/Ninja) found"));
-            return;
-        }
-    };
-
-    {
+    let (dir, build_sys) = {
         let mut st = state.borrow_mut();
         if st.build_in_progress {
             return;
         }
+        let dir = match &st.project_dir {
+            Some(d) => d.clone(),
+            None => return,
+        };
+        let build_sys = match &st.detected_build_system {
+            Some(bs) => bs.clone(),
+            None => return,
+        };
         st.build_in_progress = true;
-    }
+        (dir, build_sys)
+    };
 
     widgets.btn_build.set_sensitive(false);
     widgets.btn_build_flash.set_sensitive(false);
-    widgets.lbl_build_status.set_text("BUILDING...");
+    update_build_status(&widgets.lbl_build_status, "BUILDING...", StatusKind::Active);
 
     let build_cmd_res = toolchain::builder::get_build_command(&build_sys, &dir);
     let (cmd, args, exec_dir) = match build_cmd_res {
         Ok(tuple) => tuple,
         Err(err) => {
             append_log_text(&widgets.build_log_view, &format!("[ERROR] {}", err));
-            widgets.lbl_build_status.set_text("BUILD FAILED");
+            update_build_status(&widgets.lbl_build_status, "BUILD FAILED", StatusKind::Error);
             let mut st = state.borrow_mut();
             st.build_in_progress = false;
             widgets.btn_build.set_sensitive(st.has_build_system);
@@ -474,10 +574,10 @@ fn execute_build_pipeline(
                     toolchain::makefile::ArtifactResolution::Exact(bin_path) => {
                         append_log_text(&widgets_timer.build_log_view, &format!("[ARTIFACT] Resolved output binary: {}", bin_path.display()));
                         if flash_after_build {
-                            widgets_timer.lbl_build_status.set_text("PROBING...");
+                            update_build_status(&widgets_timer.lbl_build_status, "PROBING...", StatusKind::Active);
                             run_probe_detection_and_flash(bin_path, &state_timer, &widgets_timer, dir_timer.clone());
                         } else {
-                            widgets_timer.lbl_build_status.set_text("SUCCESS");
+                            update_build_status(&widgets_timer.lbl_build_status, "SUCCESS", StatusKind::Ready);
                             widgets_timer.toast_overlay.add_toast(adw::Toast::new("[OK] Build succeeded"));
                             let mut st = state_timer.borrow_mut();
                             st.build_in_progress = false;
@@ -491,7 +591,7 @@ fn execute_build_pipeline(
                             append_log_text(&widgets_timer.build_log_view, &format!("  - {}", c.display()));
                         }
                         if flash_after_build {
-                            widgets_timer.lbl_build_status.set_text("SELECT ARTIFACT");
+                            update_build_status(&widgets_timer.lbl_build_status, "SELECT ARTIFACT", StatusKind::Active);
 
                             let dialog = adw::MessageDialog::builder()
                                 .heading("Multiple Build Artifacts Found")
@@ -518,7 +618,7 @@ fn execute_build_pipeline(
                                     }
                                 }
                                 append_log_text(&widgets_dlg.build_log_view, "[ARTIFACT] Operation cancelled by user.");
-                                widgets_dlg.lbl_build_status.set_text("CANCELLED");
+                                update_build_status(&widgets_dlg.lbl_build_status, "CANCELLED", StatusKind::Idle);
                                 let mut st = state_dlg.borrow_mut();
                                 st.build_in_progress = false;
                                 widgets_dlg.btn_build.set_sensitive(st.has_build_system);
@@ -526,7 +626,7 @@ fn execute_build_pipeline(
                             });
                             dialog.present();
                         } else {
-                            widgets_timer.lbl_build_status.set_text("SUCCESS");
+                            update_build_status(&widgets_timer.lbl_build_status, "SUCCESS", StatusKind::Ready);
                             widgets_timer.toast_overlay.add_toast(adw::Toast::new("[OK] Build succeeded"));
                             let mut st = state_timer.borrow_mut();
                             st.build_in_progress = false;
@@ -536,7 +636,7 @@ fn execute_build_pipeline(
                     }
                     toolchain::makefile::ArtifactResolution::NoneFound(expected) => {
                         append_log_text(&widgets_timer.build_log_view, &format!("[ERROR] Build succeeded but target .bin was not found. Expected: {}", expected.display()));
-                        widgets_timer.lbl_build_status.set_text("ARTIFACT MISSING");
+                        update_build_status(&widgets_timer.lbl_build_status, "ARTIFACT MISSING", StatusKind::Error);
                         let mut st = state_timer.borrow_mut();
                         st.build_in_progress = false;
                         widgets_timer.btn_build.set_sensitive(st.has_build_system);
@@ -547,7 +647,7 @@ fn execute_build_pipeline(
                 let code_str = code.map(|c| c.to_string()).unwrap_or_else(|| "unknown".to_string());
                 let action_type = if flash_after_build { "Flashing halted." } else { "Build failed." };
                 append_log_text(&widgets_timer.build_log_view, &format!("\n[BUILD FAILED] {} exited with error code {}. {}", cmd, code_str, action_type));
-                widgets_timer.lbl_build_status.set_text("BUILD FAILED");
+                update_build_status(&widgets_timer.lbl_build_status, "BUILD FAILED", StatusKind::Error);
                 let mut st = state_timer.borrow_mut();
                 st.build_in_progress = false;
                 widgets_timer.btn_build.set_sensitive(st.has_build_system);
@@ -787,7 +887,7 @@ fn run_probe_detection_and_flash(
                 for p in &probes {
                     append_log_text(&widgets.build_log_view, &format!("  - {}", p.display_label()));
                 }
-                widgets.lbl_build_status.set_text("SELECT PROBE");
+                update_build_status(&widgets.lbl_build_status, "SELECT PROBE", StatusKind::Active);
 
                 let dialog = adw::MessageDialog::builder()
                     .heading("Multiple ST-Link Probes Detected")
@@ -817,7 +917,7 @@ fn run_probe_detection_and_flash(
                         }
                     }
                     append_log_text(&widgets_dlg.build_log_view, "[PROBE] Flashing cancelled by user.");
-                    widgets_dlg.lbl_build_status.set_text("CANCELLED");
+                    update_build_status(&widgets_dlg.lbl_build_status, "CANCELLED", StatusKind::Idle);
                     let mut st = state_dlg.borrow_mut();
                     st.build_in_progress = false;
                     widgets_dlg.btn_build.set_sensitive(st.has_build_system);
@@ -828,11 +928,12 @@ fn run_probe_detection_and_flash(
         }
         Err(err) => {
             append_log_text(&widgets.build_log_view, &format!("[ERROR] {}", err));
-            widgets.lbl_build_status.set_text(match err {
-                toolchain::probe::ProbeError::ToolNotFound => "ST-INFO MISSING",
-                toolchain::probe::ProbeError::ZeroProbesFound => "NO PROBE",
-                toolchain::probe::ProbeError::ExecutionFailed(_) => "PROBE ERROR",
-            });
+            let (txt, kind) = match err {
+                toolchain::probe::ProbeError::ToolNotFound => ("ST-INFO MISSING", StatusKind::Error),
+                toolchain::probe::ProbeError::ZeroProbesFound => ("NO PROBE", StatusKind::Active),
+                toolchain::probe::ProbeError::ExecutionFailed(_) => ("PROBE ERROR", StatusKind::Error),
+            };
+            update_build_status(&widgets.lbl_build_status, txt, kind);
             widgets.toast_overlay.add_toast(adw::Toast::new(&format!("[ERROR] {}", err)));
             let mut st = state.borrow_mut();
             st.build_in_progress = false;
@@ -851,7 +952,7 @@ fn run_flash_stage(
 ) {
     if !toolchain::runner::is_executable_on_path("st-flash") {
         append_log_text(&widgets.build_log_view, "[ERROR] `st-flash` executable not found on PATH. Please install stlink-tools (e.g. `sudo apt install stlink-tools`).");
-        widgets.lbl_build_status.set_text("ST-FLASH MISSING");
+        update_build_status(&widgets.lbl_build_status, "ST-FLASH MISSING", StatusKind::Error);
         widgets.toast_overlay.add_toast(adw::Toast::new("[ERROR] `st-flash` not found on PATH"));
         let mut st = state.borrow_mut();
         st.build_in_progress = false;
@@ -862,7 +963,7 @@ fn run_flash_stage(
 
     let (cmd, args) = toolchain::flasher::build_flash_command(probe_serial.as_deref(), &artifact);
 
-    widgets.lbl_build_status.set_text("FLASHING...");
+    update_build_status(&widgets.lbl_build_status, "FLASHING...", StatusKind::Active);
     append_log_text(&widgets.build_log_view, "\n============================================================");
     append_log_text(&widgets.build_log_view, &format!("[FLASH] Running `{} {}`", cmd, args.join(" ")));
     append_log_text(&widgets.build_log_view, "============================================================");
@@ -897,12 +998,12 @@ fn run_flash_stage(
 
             if success {
                 append_log_text(&widgets_timer.build_log_view, "\n[FLASH SUCCESS] Firmware written to 0x08000000 and target MCU reset successfully!");
-                widgets_timer.lbl_build_status.set_text("SUCCESS");
+                update_build_status(&widgets_timer.lbl_build_status, "SUCCESS", StatusKind::Ready);
                 widgets_timer.toast_overlay.add_toast(adw::Toast::new("[OK] Build and Flash Succeeded!"));
             } else {
                 let code_str = code.map(|c| c.to_string()).unwrap_or_else(|| "unknown".to_string());
                 append_log_text(&widgets_timer.build_log_view, &format!("\n[FLASH FAILED] st-flash exited with code {}.", code_str));
-                widgets_timer.lbl_build_status.set_text("FLASH FAILED");
+                update_build_status(&widgets_timer.lbl_build_status, "FLASH FAILED", StatusKind::Error);
                 widgets_timer.toast_overlay.add_toast(adw::Toast::new("[ERROR] Flash failed (see console output)"));
             }
 
@@ -989,6 +1090,42 @@ mod tests {
         let layout1 = stakhal_core::graph::compute_state_machine_layout(sm1);
         assert_eq!(layout1.nodes.len(), 3);
         assert!(!layout1.nodes.contains_key("SYSTEM FAULT"));
+    }
+
+    #[test]
+    fn test_render_snapshots() {
+        let _ = gtk4::init();
+
+        // 1. State diagram rendering test
+        let surface_sm = gtk4::cairo::ImageSurface::create(gtk4::cairo::Format::ARgb32, 1400, 900).expect("surface create");
+        let cr_sm = gtk4::cairo::Context::new(&surface_sm).expect("cr create");
+        let state_sm = Rc::new(RefCell::new(AppState::default()));
+        let fixture_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../stakhal-core/tests/fixtures/docking_firmware_v2");
+        let ioc_path = fixture_dir.join("docking_firmware_v2.ioc");
+        let main_c_path = fixture_dir.join("Core/Src/main.c");
+        if let Ok(project) = load_project(&ioc_path, &main_c_path) {
+            state_sm.borrow_mut().loaded_project = Some(project);
+            state_sm.borrow_mut().selected_state_node = Some("GOING".to_string());
+            ui::state_diagram::draw::draw_state_diagram(&cr_sm, 1400.0, 900.0, &state_sm);
+            surface_sm.flush();
+        }
+
+        // 2. Nucleo pinout rendering test
+        let surface_pin = gtk4::cairo::ImageSurface::create(gtk4::cairo::Format::ARgb32, 1400, 850).expect("surface create");
+        let cr_pin = gtk4::cairo::Context::new(&surface_pin).expect("cr create");
+        let state_pin = Rc::new(RefCell::new(AppState::default()));
+        let f446_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../stakhal-core/tests/fixtures/stakhal_blink_f446re");
+        let f446_ioc = f446_dir.join("stakhal_blink_f446re.ioc");
+        let f446_main = f446_dir.join("Core/Src/main.c");
+        if let Ok(project) = load_project(&f446_ioc, &f446_main) {
+            state_pin.borrow_mut().loaded_project = Some(project);
+            state_pin.borrow_mut().hovered_pinout_pin = Some(("CN10".to_string(), 11));
+            state_pin.borrow_mut().hovered_pinout_mouse = Some((600.0, 300.0));
+            ui::nucleo_pinout::draw::draw_nucleo_pinout(&cr_pin, 1400.0, 850.0, &state_pin);
+            surface_pin.flush();
+        }
     }
 }
 

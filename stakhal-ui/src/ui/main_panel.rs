@@ -45,20 +45,20 @@ pub fn build_main_panel() -> MainPanelWidgets {
     let lbl_ioc_path = gtk4::Label::builder()
         .label("IOC Path: N/A")
         .halign(gtk4::Align::Start)
-        .css_classes(vec!["dim-label".to_string(), "caption".to_string()])
+        .css_classes(vec!["dim-label".to_string(), "caption".to_string(), "data-mono".to_string()])
         .build();
 
     let lbl_main_c_path = gtk4::Label::builder()
         .label("Main C Path: N/A")
         .halign(gtk4::Align::Start)
-        .css_classes(vec!["dim-label".to_string(), "caption".to_string()])
+        .css_classes(vec!["dim-label".to_string(), "caption".to_string(), "data-mono".to_string()])
         .build();
 
     let btn_load = create_icon_button("Load Project", "system-run-symbolic", true);
     btn_load.set_sensitive(false);
 
     let btn_build = gtk4::Button::builder()
-        .label("[ Build ]")
+        .label("Build")
         .css_classes(vec!["stakhal-btn".to_string(), "flat".to_string()])
         .sensitive(false)
         .tooltip_text("Compile project without flashing")
@@ -66,7 +66,7 @@ pub fn build_main_panel() -> MainPanelWidgets {
     btn_build.set_cursor_from_name(Some("pointer"));
 
     let btn_build_flash = gtk4::Button::builder()
-        .label("[ Build & Flash ]")
+        .label("Build & Flash")
         .css_classes(vec!["stakhal-btn".to_string(), "suggested-action".to_string()])
         .sensitive(false)
         .tooltip_text("Build project and flash to STM32 target via ST-Link")
@@ -74,7 +74,7 @@ pub fn build_main_panel() -> MainPanelWidgets {
     btn_build_flash.set_cursor_from_name(Some("pointer"));
 
     let btn_call_graph = gtk4::Button::builder()
-        .label("[ State Machine Graph ]")
+        .label("State Machine Graph")
         .css_classes(vec!["stakhal-btn".to_string(), "flat".to_string()])
         .sensitive(false)
         .tooltip_text("Application State Machine Transition Diagram")
@@ -82,7 +82,7 @@ pub fn build_main_panel() -> MainPanelWidgets {
     btn_call_graph.set_cursor_from_name(Some("pointer"));
 
     let btn_nucleo_pinout = gtk4::Button::builder()
-        .label("[ Nucleo Pinout ]")
+        .label("Nucleo Pinout")
         .css_classes(vec!["stakhal-btn".to_string(), "flat".to_string()])
         .sensitive(false)
         .tooltip_text("Nucleo Pinout visualizer (F446RE only)")
@@ -94,13 +94,13 @@ pub fn build_main_panel() -> MainPanelWidgets {
         .spacing(12)
         .margin_top(12)
         .margin_bottom(12)
-        .margin_start(18)
-        .margin_end(18)
+        .margin_start(16)
+        .margin_end(16)
         .build();
 
     let paths_box = gtk4::Box::builder()
         .orientation(gtk4::Orientation::Vertical)
-        .spacing(2)
+        .spacing(4)
         .hexpand(true)
         .build();
 
@@ -124,19 +124,19 @@ pub fn build_main_panel() -> MainPanelWidgets {
     let lbl_project_name = gtk4::Label::builder()
         .label("NAME: N/A")
         .halign(gtk4::Align::Start)
-        .css_classes(vec!["caption".to_string()])
+        .css_classes(vec!["caption".to_string(), "data-mono".to_string()])
         .build();
 
     let lbl_mcu_family = gtk4::Label::builder()
         .label("FAMILY: N/A")
         .halign(gtk4::Align::Start)
-        .css_classes(vec!["caption".to_string()])
+        .css_classes(vec!["caption".to_string(), "data-mono".to_string()])
         .build();
 
     let lbl_mcu_name = gtk4::Label::builder()
         .label("MCU: N/A")
         .halign(gtk4::Align::Start)
-        .css_classes(vec!["caption".to_string()])
+        .css_classes(vec!["caption".to_string(), "data-mono".to_string()])
         .build();
 
     let status_bar_box = gtk4::Box::builder()
@@ -144,8 +144,8 @@ pub fn build_main_panel() -> MainPanelWidgets {
         .spacing(24)
         .margin_top(4)
         .margin_bottom(8)
-        .margin_start(18)
-        .margin_end(18)
+        .margin_start(16)
+        .margin_end(16)
         .build();
 
     status_bar_box.append(&lbl_project_name);
@@ -180,9 +180,9 @@ pub fn build_main_panel() -> MainPanelWidgets {
         .homogeneous(false)
         .spacing(12)
         .vexpand(true)
-        .margin_start(18)
-        .margin_end(18)
-        .margin_bottom(12)
+        .margin_start(16)
+        .margin_end(16)
+        .margin_bottom(16)
         .build();
     columns_box.append(&col_peripherals);
     columns_box.append(&col_regions);
@@ -197,7 +197,7 @@ pub fn build_main_panel() -> MainPanelWidgets {
     let lbl_build_status = gtk4::Label::builder()
         .label("IDLE")
         .valign(gtk4::Align::Center)
-        .css_classes(vec!["card".to_string(), "caption".to_string(), "dim-label".to_string()])
+        .css_classes(vec!["card".to_string(), "caption".to_string(), "data-mono".to_string(), "status-idle".to_string()])
         .build();
 
     let btn_clear_log = gtk4::Button::builder()
@@ -208,7 +208,7 @@ pub fn build_main_panel() -> MainPanelWidgets {
 
     let console_header_box = gtk4::Box::builder()
         .orientation(gtk4::Orientation::Horizontal)
-        .spacing(10)
+        .spacing(8)
         .build();
     console_header_box.append(&lbl_console_header);
     console_header_box.append(&lbl_build_status);
@@ -221,8 +221,8 @@ pub fn build_main_panel() -> MainPanelWidgets {
         .cursor_visible(false)
         .monospace(true)
         .wrap_mode(gtk4::WrapMode::WordChar)
-        .top_margin(6)
-        .bottom_margin(6)
+        .top_margin(8)
+        .bottom_margin(8)
         .left_margin(8)
         .right_margin(8)
         .build();
@@ -239,10 +239,10 @@ pub fn build_main_panel() -> MainPanelWidgets {
 
     let console_panel_box = gtk4::Box::builder()
         .orientation(gtk4::Orientation::Vertical)
-        .spacing(6)
-        .margin_start(18)
-        .margin_end(18)
-        .margin_bottom(14)
+        .spacing(8)
+        .margin_start(16)
+        .margin_end(16)
+        .margin_bottom(16)
         .build();
     console_panel_box.append(&console_header_box);
     console_panel_box.append(&build_scrolled);
@@ -289,7 +289,7 @@ pub fn create_column_box(header_label: &gtk4::Label, list_box: &gtk4::ListBox) -
 
     let col_box = gtk4::Box::builder()
         .orientation(gtk4::Orientation::Vertical)
-        .spacing(6)
+        .spacing(8)
         .hexpand(true)
         .vexpand(true)
         .build();
@@ -309,12 +309,13 @@ pub fn create_peripheral_row(name: &str, mode: Option<&str>, param_count: usize)
     let row = adw::ActionRow::builder()
         .title(name)
         .subtitle(mode.unwrap_or("N/A"))
+        .css_classes(vec!["data-mono".to_string()])
         .build();
 
     let badge = gtk4::Label::builder()
         .label(&format!("{} params", param_count))
         .valign(gtk4::Align::Center)
-        .css_classes(vec!["dim-label".to_string(), "caption".to_string()])
+        .css_classes(vec!["dim-label".to_string(), "caption".to_string(), "data-mono".to_string()])
         .build();
 
     row.add_suffix(&badge);
@@ -333,13 +334,14 @@ pub fn create_region_row(
     let row = adw::ActionRow::builder()
         .title(tag)
         .subtitle(&details)
+        .css_classes(vec!["data-mono".to_string()])
         .build();
 
     if is_implicit {
         let badge = gtk4::Label::builder()
             .label("implicit")
             .valign(gtk4::Align::Center)
-            .css_classes(vec!["implicit-badge".to_string()])
+            .css_classes(vec!["implicit-badge".to_string(), "caption".to_string(), "data-mono".to_string()])
             .build();
         row.add_suffix(&badge);
     }

@@ -3,26 +3,37 @@ use std::rc::Rc;
 use gtk4::cairo;
 use stakhal_core::graph::{compute_state_machine_layout, is_fault_state};
 use crate::state::AppState;
+use crate::ui::tokens;
 
-// Strict Monochrome Theme & Reserved Fault Color Tokens
-const COLOR_CANVAS_BG: (f64, f64, f64) = (10.0 / 255.0, 10.0 / 255.0, 10.0 / 255.0); // #0a0a0a
-const COLOR_DOT_GRID: (f64, f64, f64, f64) = (0.22, 0.22, 0.22, 0.35);
+// Strict Design Tokens Integration
+const COLOR_CANVAS_BG: (f64, f64, f64) = tokens::color::BG_VOID;
+const COLOR_DOT_GRID: (f64, f64, f64, f64) = (
+    tokens::color::BORDER_HAIR.0,
+    tokens::color::BORDER_HAIR.1,
+    tokens::color::BORDER_HAIR.2,
+    0.35,
+);
 
 // Fault tokens (strictly reserved for FAULT state and fault transitions)
-const COLOR_FAULT_RED: (f64, f64, f64) = (239.0 / 255.0, 68.0 / 255.0, 68.0 / 255.0); // #ef4444
-const COLOR_FAULT_FILL: (f64, f64, f64, f64) = (38.0 / 255.0, 12.0 / 255.0, 12.0 / 255.0, 0.95);
+const COLOR_FAULT_RED: (f64, f64, f64) = tokens::color::STATE_ERROR;
+const COLOR_FAULT_FILL: (f64, f64, f64, f64) = (45.0 / 255.0, 16.0 / 255.0, 18.0 / 255.0, 0.95);
 
-// Monochrome Node Fills (#171717 base)
-const COLOR_NODE_FILL_DEFAULT: (f64, f64, f64, f64) = (23.0 / 255.0, 23.0 / 255.0, 23.0 / 255.0, 0.95);
-const COLOR_NODE_FILL_INITIAL: (f64, f64, f64, f64) = (30.0 / 255.0, 30.0 / 255.0, 30.0 / 255.0, 0.95);
-const COLOR_NODE_FILL_HOVER: (f64, f64, f64, f64) = (38.0 / 255.0, 38.0 / 255.0, 38.0 / 255.0, 0.95);
-const COLOR_NODE_FILL_SELECTED: (f64, f64, f64, f64) = (48.0 / 255.0, 48.0 / 255.0, 48.0 / 255.0, 0.95);
+// Panel surface fills
+const COLOR_NODE_FILL_DEFAULT: (f64, f64, f64, f64) = (
+    tokens::color::BG_PANEL.0,
+    tokens::color::BG_PANEL.1,
+    tokens::color::BG_PANEL.2,
+    0.95,
+);
+const COLOR_NODE_FILL_INITIAL: (f64, f64, f64, f64) = (24.0 / 255.0, 30.0 / 255.0, 36.0 / 255.0, 0.95);
+const COLOR_NODE_FILL_HOVER: (f64, f64, f64, f64) = (28.0 / 255.0, 36.0 / 255.0, 44.0 / 255.0, 0.95);
+const COLOR_NODE_FILL_SELECTED: (f64, f64, f64, f64) = (20.0 / 255.0, 32.0 / 255.0, 38.0 / 255.0, 0.95);
 
-// Monochrome Node Borders (#404040 base)
-const COLOR_BORDER_DEFAULT: (f64, f64, f64) = (64.0 / 255.0, 64.0 / 255.0, 64.0 / 255.0); // #404040
-const COLOR_BORDER_INITIAL: (f64, f64, f64) = (115.0 / 255.0, 115.0 / 255.0, 115.0 / 255.0); // #737373
-const COLOR_BORDER_HOVER: (f64, f64, f64) = (163.0 / 255.0, 163.0 / 255.0, 163.0 / 255.0); // #a3a3a3
-const COLOR_BORDER_SELECTED: (f64, f64, f64) = (245.0 / 255.0, 245.0 / 255.0, 245.0 / 255.0); // #f5f5f5
+// 1px Hairline Borders
+const COLOR_BORDER_DEFAULT: (f64, f64, f64) = tokens::color::BORDER_HAIR;
+const COLOR_BORDER_INITIAL: (f64, f64, f64) = (50.0 / 255.0, 60.0 / 255.0, 70.0 / 255.0);
+const COLOR_BORDER_HOVER: (f64, f64, f64) = (60.0 / 255.0, 75.0 / 255.0, 85.0 / 255.0);
+const COLOR_BORDER_SELECTED: (f64, f64, f64) = tokens::color::ACCENT;
 
 pub fn draw_state_diagram_canvas(
     _area: &gtk4::DrawingArea,
@@ -84,9 +95,9 @@ pub fn draw_state_diagram(
             cr.rectangle(0.0, 0.0, width, height);
             let _ = cr.fill();
 
-            cr.select_font_face("monospace", cairo::FontSlant::Normal, cairo::FontWeight::Bold);
+            cr.select_font_face(tokens::font::CAIRO_SANS, cairo::FontSlant::Normal, cairo::FontWeight::Bold);
             cr.set_font_size(14.0);
-            cr.set_source_rgb(0.45, 0.45, 0.45);
+            cr.set_source_rgb(tokens::color::TEXT_MUTED.0, tokens::color::TEXT_MUTED.1, tokens::color::TEXT_MUTED.2);
             let _ = cr.move_to(width * 0.35, height * 0.5);
             let _ = cr.show_text("No state machines detected in current project.");
             return;
@@ -111,15 +122,15 @@ pub fn draw_state_diagram(
     // Draw technical dot grid
     draw_dot_grid(cr, layout.width.max(1600.0), layout.height.max(1200.0));
 
-    // Draw Lane Header Banners
+    // Draw Lane Header Banners (Interface talking -> Sans)
     for lane in &layout.lanes {
         if lane.name != "INITIAL" {
-            cr.select_font_face("monospace", cairo::FontSlant::Normal, cairo::FontWeight::Bold);
+            cr.select_font_face(tokens::font::CAIRO_SANS, cairo::FontSlant::Normal, cairo::FontWeight::Bold);
             cr.set_font_size(8.5);
             if selected_node.is_some() {
-                cr.set_source_rgba(0.4, 0.4, 0.4, 0.35);
+                cr.set_source_rgba(tokens::color::TEXT_MUTED.0, tokens::color::TEXT_MUTED.1, tokens::color::TEXT_MUTED.2, 0.35);
             } else {
-                cr.set_source_rgba(0.5, 0.5, 0.5, 0.65);
+                cr.set_source_rgba(tokens::color::TEXT_MUTED.0, tokens::color::TEXT_MUTED.1, tokens::color::TEXT_MUTED.2, 0.75);
             }
             let banner_text = if lane.name == "FAULT" {
                 "// GLOBAL FAULT HANDLER".to_string()
@@ -165,27 +176,24 @@ pub fn draw_state_diagram(
             edge.end.1,
         );
 
-        if edge.is_fault {
+        let (edge_r, edge_g, edge_b, edge_a) = if edge.is_fault {
             if is_dimmed {
-                cr.set_source_rgba(COLOR_FAULT_RED.0, COLOR_FAULT_RED.1, COLOR_FAULT_RED.2, 0.15);
-                cr.set_line_width(0.8);
+                (COLOR_FAULT_RED.0, COLOR_FAULT_RED.1, COLOR_FAULT_RED.2, 0.15)
             } else if is_connected_to_selection {
-                cr.set_source_rgba(COLOR_FAULT_RED.0, COLOR_FAULT_RED.1, COLOR_FAULT_RED.2, 1.0);
-                cr.set_line_width(2.6);
+                (COLOR_FAULT_RED.0, COLOR_FAULT_RED.1, COLOR_FAULT_RED.2, 1.0)
             } else {
-                cr.set_source_rgba(COLOR_FAULT_RED.0, COLOR_FAULT_RED.1, COLOR_FAULT_RED.2, 0.85);
-                cr.set_line_width(1.8);
+                (COLOR_FAULT_RED.0, COLOR_FAULT_RED.1, COLOR_FAULT_RED.2, 0.85)
             }
         } else if is_connected_to_selection {
-            cr.set_source_rgba(1.0, 1.0, 1.0, 0.95);
-            cr.set_line_width(2.4);
+            (tokens::color::ACCENT.0, tokens::color::ACCENT.1, tokens::color::ACCENT.2, 0.95)
         } else if is_dimmed {
-            cr.set_source_rgba(0.35, 0.35, 0.35, 0.15);
-            cr.set_line_width(0.8);
+            (COLOR_BORDER_DEFAULT.0, COLOR_BORDER_DEFAULT.1, COLOR_BORDER_DEFAULT.2, 0.25)
         } else {
-            cr.set_source_rgba(0.45, 0.45, 0.45, 0.65);
-            cr.set_line_width(1.4);
-        }
+            (COLOR_BORDER_DEFAULT.0, COLOR_BORDER_DEFAULT.1, COLOR_BORDER_DEFAULT.2, 0.85)
+        };
+
+        cr.set_source_rgba(edge_r, edge_g, edge_b, edge_a);
+        cr.set_line_width(tokens::shape::BORDER_WIDTH_HAIR);
         let _ = cr.stroke();
 
         // Draw arrowhead at edge.end
@@ -205,6 +213,7 @@ pub fn draw_state_diagram(
             edge.end.1 - arrow_len * (angle + 0.4).sin(),
         );
         cr.close_path();
+        cr.set_source_rgba(edge_r, edge_g, edge_b, edge_a);
         let _ = cr.fill();
 
         // Draw guard condition badge
@@ -235,7 +244,7 @@ pub fn draw_state_diagram(
             node.y,
             node.width,
             node.height,
-            6.0,
+            tokens::shape::BORDER_RADIUS_ELEMENT as f64,
             node.is_fault,
             node.is_initial,
             is_selected,
@@ -243,18 +252,18 @@ pub fn draw_state_diagram(
             is_dimmed_node,
         );
 
-        // Draw node label
-        cr.select_font_face("monospace", cairo::FontSlant::Normal, cairo::FontWeight::Bold);
+        // Draw node label (Data -> JetBrains Mono)
+        cr.select_font_face(tokens::font::CAIRO_MONO, cairo::FontSlant::Normal, cairo::FontWeight::Bold);
         cr.set_font_size(12.0);
 
         if is_dimmed_node {
-            cr.set_source_rgba(0.4, 0.4, 0.4, 0.4);
+            cr.set_source_rgba(tokens::color::TEXT_MUTED.0, tokens::color::TEXT_MUTED.1, tokens::color::TEXT_MUTED.2, 0.4);
         } else if node.is_fault {
             cr.set_source_rgb(COLOR_FAULT_RED.0, COLOR_FAULT_RED.1, COLOR_FAULT_RED.2);
         } else if is_selected {
-            cr.set_source_rgb(1.0, 1.0, 1.0);
+            cr.set_source_rgb(tokens::color::TEXT_PRIMARY.0, tokens::color::TEXT_PRIMARY.1, tokens::color::TEXT_PRIMARY.2);
         } else {
-            cr.set_source_rgb(0.9, 0.9, 0.9);
+            cr.set_source_rgb(tokens::color::TEXT_PRIMARY.0, tokens::color::TEXT_PRIMARY.1, tokens::color::TEXT_PRIMARY.2);
         }
 
         let ext = cr.text_extents(&node.label);
@@ -266,17 +275,19 @@ pub fn draw_state_diagram(
         let _ = cr.move_to(text_x, text_y);
         let _ = cr.show_text(&node.label);
 
-        // Top-left tag badge (INITIAL or FAULT)
+        // Top-left tag badge (INITIAL or FAULT) - Interface talking -> Sans
         if node.is_initial {
+            cr.select_font_face(tokens::font::CAIRO_SANS, cairo::FontSlant::Normal, cairo::FontWeight::Bold);
             cr.set_font_size(8.0);
             if is_dimmed_node {
-                cr.set_source_rgba(0.4, 0.4, 0.4, 0.3);
+                cr.set_source_rgba(tokens::color::TEXT_MUTED.0, tokens::color::TEXT_MUTED.1, tokens::color::TEXT_MUTED.2, 0.3);
             } else {
-                cr.set_source_rgb(0.65, 0.65, 0.65);
+                cr.set_source_rgb(tokens::color::TEXT_MUTED.0, tokens::color::TEXT_MUTED.1, tokens::color::TEXT_MUTED.2);
             }
             let _ = cr.move_to(node.x + 8.0, node.y + 12.0);
             let _ = cr.show_text("[INIT]");
         } else if node.is_fault {
+            cr.select_font_face(tokens::font::CAIRO_SANS, cairo::FontSlant::Normal, cairo::FontWeight::Bold);
             cr.set_font_size(8.0);
             if is_dimmed_node {
                 cr.set_source_rgba(COLOR_FAULT_RED.0, COLOR_FAULT_RED.1, COLOR_FAULT_RED.2, 0.3);
@@ -322,7 +333,7 @@ fn draw_dot_grid(cr: &cairo::Context, max_w: f64, max_h: f64) {
     while x < max_w {
         let mut y = 20.0;
         while y < max_h {
-            cr.rectangle(x, y, 1.5, 1.5);
+            cr.rectangle(x, y, 1.0, 1.0);
             y += step;
         }
         x += step;
@@ -352,7 +363,7 @@ fn draw_rounded_node(
 
     // Node fill
     if is_dimmed {
-        cr.set_source_rgba(0.06, 0.06, 0.06, 0.5);
+        cr.set_source_rgba(tokens::color::BG_VOID.0, tokens::color::BG_VOID.1, tokens::color::BG_VOID.2, 0.5);
     } else if is_fault {
         cr.set_source_rgba(COLOR_FAULT_FILL.0, COLOR_FAULT_FILL.1, COLOR_FAULT_FILL.2, COLOR_FAULT_FILL.3);
     } else if is_selected {
@@ -366,26 +377,21 @@ fn draw_rounded_node(
     }
     let _ = cr.fill_preserve();
 
-    // Node stroke
+    // Node stroke (Strict 1px hairline)
     if is_dimmed {
-        cr.set_source_rgba(0.2, 0.2, 0.2, 0.35);
-        cr.set_line_width(1.0);
+        cr.set_source_rgba(tokens::color::BORDER_HAIR.0, tokens::color::BORDER_HAIR.1, tokens::color::BORDER_HAIR.2, 0.35);
     } else if is_fault {
         cr.set_source_rgb(COLOR_FAULT_RED.0, COLOR_FAULT_RED.1, COLOR_FAULT_RED.2);
-        cr.set_line_width(if is_selected { 2.5 } else { 1.8 });
     } else if is_selected {
         cr.set_source_rgb(COLOR_BORDER_SELECTED.0, COLOR_BORDER_SELECTED.1, COLOR_BORDER_SELECTED.2);
-        cr.set_line_width(2.2);
     } else if is_hovered {
         cr.set_source_rgb(COLOR_BORDER_HOVER.0, COLOR_BORDER_HOVER.1, COLOR_BORDER_HOVER.2);
-        cr.set_line_width(1.6);
     } else if is_initial {
         cr.set_source_rgb(COLOR_BORDER_INITIAL.0, COLOR_BORDER_INITIAL.1, COLOR_BORDER_INITIAL.2);
-        cr.set_line_width(1.6);
     } else {
         cr.set_source_rgb(COLOR_BORDER_DEFAULT.0, COLOR_BORDER_DEFAULT.1, COLOR_BORDER_DEFAULT.2);
-        cr.set_line_width(1.2);
     }
+    cr.set_line_width(tokens::shape::BORDER_WIDTH_HAIR);
     let _ = cr.stroke();
 }
 
@@ -397,7 +403,7 @@ fn draw_node_badge(
     is_fault: bool,
     is_dimmed: bool,
 ) {
-    cr.select_font_face("monospace", cairo::FontSlant::Normal, cairo::FontWeight::Bold);
+    cr.select_font_face(tokens::font::CAIRO_MONO, cairo::FontSlant::Normal, cairo::FontWeight::Bold);
     cr.set_font_size(7.5);
 
     let (ext_w, ext_h, ext_xb, ext_yb) = if let Ok(e) = cr.text_extents(text) {
@@ -410,7 +416,7 @@ fn draw_node_badge(
     let pad_y = 2.0;
     let w = ext_w + pad_x * 2.0;
     let h = ext_h + pad_y * 2.0;
-    let r = 3.0;
+    let r = tokens::shape::BORDER_RADIUS_ELEMENT as f64;
 
     cr.new_path();
     cr.arc(x + w - r, y + r, r, -std::f64::consts::FRAC_PI_2, 0.0);
@@ -431,16 +437,16 @@ fn draw_node_badge(
         }
     } else {
         if is_dimmed {
-            cr.set_source_rgba(0.12, 0.12, 0.12, 0.3);
+            cr.set_source_rgba(tokens::color::BG_PANEL.0, tokens::color::BG_PANEL.1, tokens::color::BG_PANEL.2, 0.3);
             let _ = cr.fill_preserve();
-            cr.set_source_rgba(0.3, 0.3, 0.3, 0.25);
+            cr.set_source_rgba(tokens::color::BORDER_HAIR.0, tokens::color::BORDER_HAIR.1, tokens::color::BORDER_HAIR.2, 0.25);
         } else {
-            cr.set_source_rgba(0.16, 0.16, 0.16, 0.95);
+            cr.set_source_rgba(tokens::color::BG_PANEL.0, tokens::color::BG_PANEL.1, tokens::color::BG_PANEL.2, 0.95);
             let _ = cr.fill_preserve();
-            cr.set_source_rgba(0.45, 0.45, 0.45, 0.85);
+            cr.set_source_rgba(tokens::color::BORDER_HAIR.0, tokens::color::BORDER_HAIR.1, tokens::color::BORDER_HAIR.2, 0.85);
         }
     }
-    cr.set_line_width(0.8);
+    cr.set_line_width(tokens::shape::BORDER_WIDTH_HAIR);
     let _ = cr.stroke();
 
     if is_fault {
@@ -451,9 +457,9 @@ fn draw_node_badge(
         }
     } else {
         if is_dimmed {
-            cr.set_source_rgba(0.6, 0.6, 0.6, 0.3);
+            cr.set_source_rgba(tokens::color::TEXT_MUTED.0, tokens::color::TEXT_MUTED.1, tokens::color::TEXT_MUTED.2, 0.3);
         } else {
-            cr.set_source_rgb(0.8, 0.8, 0.8);
+            cr.set_source_rgb(tokens::color::TEXT_PRIMARY.0, tokens::color::TEXT_PRIMARY.1, tokens::color::TEXT_PRIMARY.2);
         }
     }
     let _ = cr.move_to(x + pad_x - ext_xb, y + pad_y - ext_yb);
@@ -468,7 +474,7 @@ fn draw_guard_badge(
     is_fault: bool,
     is_dimmed: bool,
 ) {
-    cr.select_font_face("monospace", cairo::FontSlant::Normal, cairo::FontWeight::Normal);
+    cr.select_font_face(tokens::font::CAIRO_MONO, cairo::FontSlant::Normal, cairo::FontWeight::Normal);
     cr.set_font_size(9.5);
 
     let (ext_w, ext_h, ext_xb, ext_yb) = if let Ok(e) = cr.text_extents(text) {
@@ -483,7 +489,7 @@ fn draw_guard_badge(
     let badge_h = ext_h + padding_y * 2.0;
     let badge_x = center_x - badge_w * 0.5;
     let badge_y = center_y - badge_h * 0.5;
-    let r = 4.0;
+    let r = tokens::shape::BORDER_RADIUS_ELEMENT as f64;
 
     cr.new_path();
     cr.arc(badge_x + badge_w - r, badge_y + r, r, -std::f64::consts::FRAC_PI_2, 0.0);
@@ -494,13 +500,13 @@ fn draw_guard_badge(
 
     // Badge fill
     if is_dimmed {
-        cr.set_source_rgba(0.08, 0.08, 0.08, 0.4);
+        cr.set_source_rgba(tokens::color::BG_PANEL.0, tokens::color::BG_PANEL.1, tokens::color::BG_PANEL.2, 0.4);
     } else {
-        cr.set_source_rgba(0.08, 0.08, 0.08, 0.95);
+        cr.set_source_rgba(tokens::color::BG_PANEL.0, tokens::color::BG_PANEL.1, tokens::color::BG_PANEL.2, 0.95);
     }
     let _ = cr.fill_preserve();
 
-    // Badge stroke
+    // Badge stroke (1px hairline)
     if is_fault {
         if is_dimmed {
             cr.set_source_rgba(COLOR_FAULT_RED.0, COLOR_FAULT_RED.1, COLOR_FAULT_RED.2, 0.3);
@@ -508,11 +514,11 @@ fn draw_guard_badge(
             cr.set_source_rgba(COLOR_FAULT_RED.0, COLOR_FAULT_RED.1, COLOR_FAULT_RED.2, 0.85);
         }
     } else if is_dimmed {
-        cr.set_source_rgba(0.2, 0.2, 0.2, 0.3);
+        cr.set_source_rgba(tokens::color::BORDER_HAIR.0, tokens::color::BORDER_HAIR.1, tokens::color::BORDER_HAIR.2, 0.3);
     } else {
-        cr.set_source_rgba(0.25, 0.25, 0.27, 0.85);
+        cr.set_source_rgba(tokens::color::BORDER_HAIR.0, tokens::color::BORDER_HAIR.1, tokens::color::BORDER_HAIR.2, 0.85);
     }
-    cr.set_line_width(0.8);
+    cr.set_line_width(tokens::shape::BORDER_WIDTH_HAIR);
     let _ = cr.stroke();
 
     // Badge text
@@ -523,9 +529,9 @@ fn draw_guard_badge(
             cr.set_source_rgb(COLOR_FAULT_RED.0, COLOR_FAULT_RED.1, COLOR_FAULT_RED.2);
         }
     } else if is_dimmed {
-        cr.set_source_rgba(0.6, 0.6, 0.6, 0.3);
+        cr.set_source_rgba(tokens::color::TEXT_MUTED.0, tokens::color::TEXT_MUTED.1, tokens::color::TEXT_MUTED.2, 0.3);
     } else {
-        cr.set_source_rgb(0.72, 0.72, 0.72);
+        cr.set_source_rgb(tokens::color::TEXT_PRIMARY.0, tokens::color::TEXT_PRIMARY.1, tokens::color::TEXT_PRIMARY.2);
     }
 
     let _ = cr.move_to(badge_x + padding_x - ext_xb, badge_y + padding_y - ext_yb);

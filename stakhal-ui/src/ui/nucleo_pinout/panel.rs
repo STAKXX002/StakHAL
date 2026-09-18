@@ -29,8 +29,8 @@ pub fn build_nucleo_pinout_panel() -> NucleoPinoutPanelWidgets {
         .spacing(12)
         .margin_top(12)
         .margin_bottom(12)
-        .margin_start(18)
-        .margin_end(18)
+        .margin_start(16)
+        .margin_end(16)
         .build();
     pinout_header_bar.append(&btn_pinout_back);
     pinout_header_bar.append(&lbl_pinout_title);
