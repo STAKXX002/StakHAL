@@ -962,7 +962,34 @@ mod tests {
         assert_eq!(pin_loc.arduino, Some(("CN5", 6, "D13")));
     }
 
+    #[test]
+    fn test_multi_machine_loading_and_selection_aa_ns_stm_port() {
+        let fixture_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../stakhal-core/tests/fixtures/aa_ns_stm_port");
+        let ioc_path = fixture_dir.join("aa_ns_stm_port.ioc");
+        let main_c_path = fixture_dir.join("Core/Src/main.c");
 
+        let project = load_project(&ioc_path, &main_c_path).expect("Failed to load aa_ns_stm_port project");
+        assert_eq!(project.state_machines.len(), 2, "Expected exactly 2 state machines");
+
+        // Verify machine 0: AlignState (state)
+        let sm0 = &project.state_machines[0];
+        assert_eq!(sm0.enum_def.name, "AlignState");
+        assert_eq!(sm0.display_name, "AlignState (state)");
+        assert_eq!(sm0.states.len(), 12); // 11 variants + synthetic SYSTEM FAULT
+        let layout0 = stakhal_core::graph::compute_state_machine_layout(sm0);
+        assert_eq!(layout0.nodes.len(), 12);
+        assert!(layout0.nodes.contains_key("SYSTEM FAULT"));
+
+        // Verify machine 1: HatchState (hatchState)
+        let sm1 = &project.state_machines[1];
+        assert_eq!(sm1.enum_def.name, "HatchState");
+        assert_eq!(sm1.display_name, "HatchState (hatchState)");
+        assert_eq!(sm1.states.len(), 3);
+        let layout1 = stakhal_core::graph::compute_state_machine_layout(sm1);
+        assert_eq!(layout1.nodes.len(), 3);
+        assert!(!layout1.nodes.contains_key("SYSTEM FAULT"));
+    }
 }
 
 
