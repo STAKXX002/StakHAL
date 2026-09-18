@@ -3,3 +3,12 @@ artifacts/
 *.log
 dist/
 /target/deb_staging/
+*.deb
+
+# Editor and IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
