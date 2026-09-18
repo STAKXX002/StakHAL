@@ -1,0 +1,8 @@
+If:
+  PathMatch: .*/tests/fixtures/.*
+CompileFlags:
+  Add:
+    - -w
+    - -ferror-limit=0
+Diagnostics:
+  Suppress: "*"
