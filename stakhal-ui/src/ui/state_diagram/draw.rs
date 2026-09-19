@@ -164,17 +164,24 @@ pub fn draw_state_diagram(
 
         let is_dimmed = selected_node.is_some() && !is_connected_to_selection;
 
-        // Draw bezier connector
+        // Draw orthogonal connector
         cr.new_path();
-        cr.move_to(edge.start.0, edge.start.1);
-        cr.curve_to(
-            edge.control1.0,
-            edge.control1.1,
-            edge.control2.0,
-            edge.control2.1,
-            edge.end.0,
-            edge.end.1,
-        );
+        if !edge.waypoints.is_empty() {
+            cr.move_to(edge.waypoints[0].0, edge.waypoints[0].1);
+            for pt in &edge.waypoints[1..] {
+                cr.line_to(pt.0, pt.1);
+            }
+        } else {
+            cr.move_to(edge.start.0, edge.start.1);
+            cr.curve_to(
+                edge.control1.0,
+                edge.control1.1,
+                edge.control2.0,
+                edge.control2.1,
+                edge.end.0,
+                edge.end.1,
+            );
+        }
 
         let (edge_r, edge_g, edge_b, edge_a) = if edge.is_fault {
             if is_dimmed {
@@ -196,9 +203,13 @@ pub fn draw_state_diagram(
         cr.set_line_width(tokens::shape::BORDER_WIDTH_HAIR);
         let _ = cr.stroke();
 
-        // Draw arrowhead at edge.end
-        let arrow_dx = edge.end.0 - edge.control2.0;
-        let arrow_dy = edge.end.1 - edge.control2.1;
+        // Draw arrowhead at edge.end aligned with the final segment
+        let (arrow_dx, arrow_dy) = if edge.waypoints.len() >= 2 {
+            let n = edge.waypoints.len();
+            (edge.waypoints[n - 1].0 - edge.waypoints[n - 2].0, edge.waypoints[n - 1].1 - edge.waypoints[n - 2].1)
+        } else {
+            (edge.end.0 - edge.control2.0, edge.end.1 - edge.control2.1)
+        };
         let angle = arrow_dy.atan2(arrow_dx);
         let arrow_len = 8.0;
 
@@ -215,11 +226,6 @@ pub fn draw_state_diagram(
         cr.close_path();
         cr.set_source_rgba(edge_r, edge_g, edge_b, edge_a);
         let _ = cr.fill();
-
-        // Draw guard condition badge
-        if !edge.display_guard.is_empty() {
-            draw_guard_badge(cr, edge.label_pos.0, edge.label_pos.1, &edge.display_guard, edge.is_fault, is_dimmed);
-        }
     }
 
     // 3. Draw Nodes
@@ -322,6 +328,36 @@ pub fn draw_state_diagram(
                 draw_node_badge(cr, bx, by, badge_label, is_fault_target, is_dimmed_node);
             }
         }
+    }
+
+    // 4. Draw Edge Guard Badges (rendered on top of edges and nodes for clean legibility)
+    for edge in &layout.edges {
+        if edge.display_guard.is_empty() {
+            continue;
+        }
+
+        let is_connected_to_selection = match selected_node {
+            Some(sel) => edge.from == sel || edge.to == sel,
+            None => false,
+        };
+
+        if selected_node.is_none() && edge.is_high_fan_in {
+            continue;
+        }
+
+        if selected_node.is_some() && !is_connected_to_selection && edge.is_high_fan_in {
+            continue;
+        }
+
+        let is_dimmed = selected_node.is_some() && !is_connected_to_selection;
+        draw_guard_badge(
+            cr,
+            edge.label_pos.0,
+            edge.label_pos.1,
+            &edge.display_guard,
+            edge.is_fault,
+            is_dimmed,
+        );
     }
 }
 

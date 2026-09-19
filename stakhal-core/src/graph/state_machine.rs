@@ -160,6 +160,8 @@ pub struct EdgeLayout {
     pub end: (f64, f64),
     pub control1: (f64, f64),
     pub control2: (f64, f64),
+    #[serde(default)]
+    pub waypoints: Vec<(f64, f64)>,
     pub label_pos: (f64, f64),
     pub transition_type: TransitionType,
     #[serde(default)]
@@ -687,7 +689,7 @@ pub fn compute_state_machine_layout(sm: &AppStateMachine) -> StateMachineLayout 
 
     // 4. Geometry & Positioning of Hubs and Swimlanes
     let left_margin = 110.0;
-    let top_margin = 80.0;
+    let top_margin = 110.0;
     let lane_gap = 130.0;
     let hub_to_lane_gap = 140.0;
     let rank_step_x = node_width + 80.0; // 255.0
@@ -863,6 +865,10 @@ pub fn compute_state_machine_layout(sm: &AppStateMachine) -> StateMachineLayout 
         .filter(|t| t.from == entry_hub && !t.is_fault && !is_fault_state(&t.to))
         .collect();
 
+    let mut overhead_track_idx = 0;
+    let mut exit_corridor_track_idx = 0;
+    let mut inter_lane_track_map: HashMap<(i32, i32), usize> = HashMap::new();
+
     for t in &sm.transitions {
         let from_layout = nodes_layout.get(&t.from);
         let to_layout = nodes_layout.get(&t.to);
@@ -872,7 +878,7 @@ pub fn compute_state_machine_layout(sm: &AppStateMachine) -> StateMachineLayout 
             let is_high_fan_in = high_fan_in_nodes.contains(&t.to) && t.from != t.to;
             let is_inter_cluster = from.cluster != to.cluster;
 
-            let (start, end, control1, control2, label_pos) = if to.is_fault {
+            let (start, end, control1, control2, label_pos, waypoints) = if to.is_fault {
                 // Route down toward centered fault
                 let start = (from.x + from.width * 0.5, from.y + from.height);
                 let end = (to.x + to.width * 0.5, to.y);
@@ -880,7 +886,13 @@ pub fn compute_state_machine_layout(sm: &AppStateMachine) -> StateMachineLayout 
                 let control1 = (start.0, start.1 + dy * 0.45);
                 let control2 = (end.0, end.1 - dy * 0.45);
                 let label_pos = (from.x + from.width * 0.5, from.y + from.height + 24.0);
-                (start, end, control1, control2, label_pos)
+                let waypoints = if (start.0 - end.0).abs() < 2.0 {
+                    vec![start, end]
+                } else {
+                    let drop_y = lowest_lane_y + node_height + 40.0;
+                    vec![start, (start.0, drop_y), (end.0, drop_y), end]
+                };
+                (start, end, control1, control2, label_pos, waypoints)
             } else if t.from == entry_hub {
                 // Outgoing from Entry Hub (IDLE): stack connection anchors along right edge based on target vertical order
                 let target_order = entry_outgoing
@@ -891,93 +903,162 @@ pub fn compute_state_machine_layout(sm: &AppStateMachine) -> StateMachineLayout 
                 let fraction = (target_order as f64 + 1.0) / (n_conns as f64 + 1.0);
                 let start_y = from.y + from.height * fraction;
                 let start = (from.x + from.width, start_y);
-                let end = (to.x, to.y + to.height * 0.5);
-
-                let dx = (end.0 - start.0).max(30.0);
+                let dx = (to.x - start.0).max(30.0);
                 let control1 = (start.0 + dx * 0.35, start.1);
-                let control2 = (end.0 - dx * 0.35, end.1);
-                let label_y = (start.1 + end.1) * 0.5 + if start.1 > end.1 { -14.0 } else { 14.0 };
-                let label_pos = ((start.0 + end.0) * 0.5, label_y);
-                (start, end, control1, control2, label_pos)
+                let control2 = (to.x - dx * 0.35, to.y + to.height * 0.5);
+
+                let corridor_x = from.x + from.width + 25.0 + (target_order as f64) * 20.0;
+                let label_pos = (from.x + from.width + 35.0, start_y - 12.0);
+                let (end, waypoints) = if (start.1 - (to.y + to.height * 0.5)).abs() < 2.0 {
+                    let end = (to.x, to.y + to.height * 0.5);
+                    (end, vec![start, end])
+                } else if to.x <= lane_start_x + 10.0 {
+                    let end = (to.x, to.y + to.height * 0.5);
+                    (end, vec![start, (corridor_x, start.1), (corridor_x, end.1), end])
+                } else {
+                    let channel_y = to.y - 25.0;
+                    let end = (to.x + to.width * 0.5, to.y);
+                    (end, vec![start, (corridor_x, start.1), (corridor_x, channel_y), (to.x + to.width * 0.5, channel_y), end])
+                };
+                (start, end, control1, control2, label_pos, waypoints)
             } else if t.to == entry_hub {
                 // Returning to Entry Hub (IDLE): route back smoothly
                 if from.y <= to.y {
                     // Coming from upper lane (e.g. CAL_BACKOFF -> IDLE, CLOSING -> IDLE)
                     let start = (from.x + from.width * 0.5, from.y);
                     let end = (to.x + to.width * 0.6, to.y);
-                    let arc_y = (from.y - 35.0).max(25.0);
+                    let arc_y = (top_margin - 30.0 - (overhead_track_idx as f64) * 16.0).min(from.y - 25.0);
+                    overhead_track_idx += 1;
                     let control1 = (from.x + from.width * 0.5, arc_y);
                     let control2 = (to.x + to.width * 0.6, arc_y);
                     let label_pos = ((start.0 + end.0) * 0.5, arc_y - 12.0);
-                    (start, end, control1, control2, label_pos)
+                    let waypoints = vec![start, (start.0, arc_y), (end.0, arc_y), end];
+                    (start, end, control1, control2, label_pos, waypoints)
                 } else {
-                    // Coming from lower lane (e.g. OPENING -> IDLE)
-                    let start = (from.x, from.y + from.height * 0.5);
-                    let end = (to.x + to.width, to.y + to.height * 0.8);
+                    // Coming from lower lane (e.g. OPENING -> IDLE, REC_BACKOFF -> ALIGN_IDLE)
+                    let start = (from.x + from.width * 0.5, from.y + from.height);
+                    let end = (to.x + to.width * 0.5, to.y + to.height);
+                    let route_y = lowest_lane_y + node_height + 30.0;
                     let control1 = ((start.0 + end.0) * 0.5, start.1 + 20.0);
                     let control2 = ((start.0 + end.0) * 0.5, end.1);
-                    let label_pos = ((start.0 + end.0) * 0.5, start.1 + 18.0);
-                    (start, end, control1, control2, label_pos)
+                    let label_pos = ((start.0 + end.0) * 0.5, route_y + 14.0);
+                    let waypoints = vec![start, (start.0, route_y), (end.0, route_y), end];
+                    (start, end, control1, control2, label_pos, waypoints)
                 }
             } else if exit_hubs.contains(&t.to) {
                 // Entering Exit Hub (RETURNED): direct diagonal from right of lane to left of hub
                 let start = (from.x + from.width, from.y + from.height * 0.5);
                 let anchor_y = if from.y < to.y {
                     to.y + to.height * 0.3
-                } else {
+                } else if from.y > to.y {
                     to.y + to.height * 0.7
+                } else {
+                    to.y + to.height * 0.5
                 };
                 let end = (to.x, anchor_y);
                 let dx = (end.0 - start.0).max(20.0);
                 let control1 = (start.0 + dx * 0.4, start.1);
                 let control2 = (end.0 - dx * 0.4, end.1);
                 let label_pos = ((start.0 + end.0) * 0.5, (start.1 + end.1) * 0.5 - 14.0);
-                (start, end, control1, control2, label_pos)
+                let corridor_x = (from.x + from.width + 30.0 + (exit_corridor_track_idx as f64) * 20.0).max((from.x + from.width + to.x) * 0.5);
+                exit_corridor_track_idx += 1;
+                let waypoints = if (start.1 - end.1).abs() < 2.0 {
+                    vec![start, end]
+                } else {
+                    vec![start, (corridor_x, start.1), (corridor_x, end.1), end]
+                };
+                (start, end, control1, control2, label_pos, waypoints)
             } else if exit_hubs.contains(&t.from) {
                 // Outgoing repeat/loopback from Exit Hub (RETURNED -> GOING, OPENING, CLOSING)
-                let start = (from.x + from.width * 0.3, from.y);
+                let start = (from.x + from.width * 0.5, from.y);
                 let end = (to.x + to.width * 0.5, to.y);
-                let arc_y = from.y.min(to.y) - 40.0;
+                let arc_y = (top_margin - 30.0 - (overhead_track_idx as f64) * 16.0).min(from.y.min(to.y) - 25.0);
+                overhead_track_idx += 1;
                 let control1 = (start.0, arc_y);
                 let control2 = (end.0, arc_y);
                 let label_pos = ((start.0 + end.0) * 0.5, arc_y - 12.0);
-                (start, end, control1, control2, label_pos)
-            } else if from.x + from.width <= to.x + 15.0 {
-                // Forward intra-lane or inter-lane edge (left to right)
-                let start = (from.x + from.width, from.y + from.height * 0.5);
-                let end = (to.x, to.y + to.height * 0.5);
-                let dx = (end.0 - start.0).max(20.0);
-                let control1 = (start.0 + dx * 0.4, start.1);
-                let control2 = (end.0 - dx * 0.4, end.1);
-                let label_pos = ((start.0 + end.0) * 0.5, (start.1 + end.1) * 0.5 - 14.0);
-                (start, end, control1, control2, label_pos)
-            } else if from.x >= to.x + to.width - 15.0 {
-                // Backward loop edge (right to left, e.g. RETURNING -> RECOVERY)
-                let start = (from.x, from.y + from.height * 0.5);
-                let end = (to.x + to.width, to.y + to.height * 0.5);
-                let dy = (end.1 - start.1).abs().max(20.0);
-                let control1 = (start.0 - 40.0, start.1 + dy * 0.3);
-                let control2 = (end.0 + 40.0, end.1 - dy * 0.3);
-                let label_pos = ((start.0 + end.0) * 0.5, (start.1 + end.1) * 0.5);
-                (start, end, control1, control2, label_pos)
+                let waypoints = vec![start, (start.0, arc_y), (end.0, arc_y), end];
+                (start, end, control1, control2, label_pos, waypoints)
+            } else if (from.y - to.y).abs() < 5.0 {
+                // Same horizontal lane
+                if from.x + from.width <= to.x + 15.0 {
+                    // Forward in same lane
+                    let is_adjacent = to.x <= from.x + rank_step_x + 15.0;
+                    if is_adjacent {
+                        let start = (from.x + from.width, from.y + from.height * 0.5);
+                        let end = (to.x, to.y + to.height * 0.5);
+                        let dx = (end.0 - start.0).max(20.0);
+                        let control1 = (start.0 + dx * 0.4, start.1);
+                        let control2 = (end.0 - dx * 0.4, end.1);
+                        let label_w = (display_guard.len() as f64 * 6.0 + 10.0).max(28.0);
+                        let label_pos = if label_w > 62.0 {
+                            ((start.0 + end.0) * 0.5, from.y + from.height + 18.0)
+                        } else {
+                            ((start.0 + end.0) * 0.5, start.1 + 14.0)
+                        };
+                        let waypoints = vec![start, end];
+                        (start, end, control1, control2, label_pos, waypoints)
+                    } else {
+                        // Skipping over intermediate node in same lane
+                        let start = (from.x + from.width * 0.5, from.y);
+                        let channel_y = from.y - 25.0;
+                        let end = (to.x + to.width * 0.5, to.y);
+                        let control1 = (start.0, channel_y);
+                        let control2 = (end.0, channel_y);
+                        let label_pos = ((start.0 + end.0) * 0.5, channel_y - 12.0);
+                        let waypoints = vec![start, (start.0, channel_y), (end.0, channel_y), end];
+                        (start, end, control1, control2, label_pos, waypoints)
+                    }
+                } else {
+                    // Backward loop within same lane
+                    let start = (from.x + from.width * 0.5, from.y);
+                    let channel_y = from.y - 25.0;
+                    let end = (to.x + to.width * 0.5, to.y);
+                    let control1 = (start.0, channel_y);
+                    let control2 = (end.0, channel_y);
+                    let label_pos = ((start.0 + end.0) * 0.5, channel_y - 12.0);
+                    let waypoints = vec![start, (start.0, channel_y), (end.0, channel_y), end];
+                    (start, end, control1, control2, label_pos, waypoints)
+                }
             } else {
-                // Overlapping columns
+                // Cross-lane edge (e.g. RETURNING -> RECOVERY)
+                let lane1 = (from.y / lane_gap).round() as i32;
+                let lane2 = (to.y / lane_gap).round() as i32;
+                let pair = (lane1.min(lane2), lane1.max(lane2));
+                let track = inter_lane_track_map.entry(pair).or_insert(0);
+                let track_offset = (*track as f64) * 16.0 - 8.0;
+                *track += 1;
+
                 if from.y < to.y {
+                    // Upper lane to lower lane
                     let start = (from.x + from.width * 0.5, from.y + from.height);
                     let end = (to.x + to.width * 0.5, to.y);
-                    let dy = (end.1 - start.1).max(20.0);
-                    let control1 = (start.0 + 30.0, start.1 + dy * 0.4);
-                    let control2 = (end.0 + 30.0, end.1 - dy * 0.4);
-                    let label_pos = (start.0 + 40.0, (start.1 + end.1) * 0.5);
-                    (start, end, control1, control2, label_pos)
+                    let base_channel_y = from.y + node_height + (to.y - (from.y + node_height)) * 0.5;
+                    let channel_y = base_channel_y + track_offset;
+                    let control1 = (start.0, channel_y);
+                    let control2 = (end.0, channel_y);
+                    let label_pos = ((start.0 + end.0) * 0.5, channel_y - 12.0);
+                    let waypoints = if (start.0 - end.0).abs() < 2.0 {
+                        vec![start, end]
+                    } else {
+                        vec![start, (start.0, channel_y), (end.0, channel_y), end]
+                    };
+                    (start, end, control1, control2, label_pos, waypoints)
                 } else {
+                    // Lower lane to upper lane
                     let start = (from.x + from.width * 0.5, from.y);
                     let end = (to.x + to.width * 0.5, to.y + to.height);
-                    let dy = (start.1 - end.1).max(20.0);
-                    let control1 = (start.0 + 30.0, start.1 - dy * 0.4);
-                    let control2 = (end.0 + 30.0, end.1 + dy * 0.4);
-                    let label_pos = (start.0 + 40.0, (start.1 + end.1) * 0.5);
-                    (start, end, control1, control2, label_pos)
+                    let base_channel_y = to.y + node_height + (from.y - (to.y + node_height)) * 0.5;
+                    let channel_y = base_channel_y + track_offset;
+                    let control1 = (start.0, channel_y);
+                    let control2 = (end.0, channel_y);
+                    let label_pos = ((start.0 + end.0) * 0.5, channel_y - 12.0);
+                    let waypoints = if (start.0 - end.0).abs() < 2.0 {
+                        vec![start, end]
+                    } else {
+                        vec![start, (start.0, channel_y), (end.0, channel_y), end]
+                    };
+                    (start, end, control1, control2, label_pos, waypoints)
                 }
             };
 
@@ -992,6 +1073,7 @@ pub fn compute_state_machine_layout(sm: &AppStateMachine) -> StateMachineLayout 
                 end,
                 control1,
                 control2,
+                waypoints,
                 label_pos,
                 transition_type: t.transition_type.clone(),
                 is_high_fan_in,
@@ -1001,25 +1083,27 @@ pub fn compute_state_machine_layout(sm: &AppStateMachine) -> StateMachineLayout 
     }
 
     // 6. Post-layout label collision avoidance pass
-    let mut obstacles: Vec<BoundingBox> = Vec::new();
-
-    for node in nodes_layout.values() {
-        obstacles.push(BoundingBox {
-            x0: node.x - 6.0,
-            y0: node.y - 6.0,
-            x1: node.x + node.width + 6.0,
-            y1: node.y + node.height + 6.0,
+    let mut node_obstacles: HashMap<String, BoundingBox> = HashMap::new();
+    for (id, node) in &nodes_layout {
+        node_obstacles.insert(id.clone(), BoundingBox {
+            x0: node.x - 4.0,
+            y0: node.y - 4.0,
+            x1: node.x + node.width + 4.0,
+            y1: node.y + node.height + 4.0,
         });
     }
 
+    let mut lane_obstacles: Vec<BoundingBox> = Vec::new();
     for lane in &lanes {
-        obstacles.push(BoundingBox {
+        lane_obstacles.push(BoundingBox {
             x0: lane.x_start - 6.0,
             y0: lane.y - 22.0,
             x1: lane.x_start + 220.0,
             y1: lane.y + 2.0,
         });
     }
+
+    let mut placed_label_boxes: Vec<BoundingBox> = Vec::new();
 
     for edge in &mut edges_layout {
         if edge.display_guard.is_empty() {
@@ -1029,21 +1113,53 @@ pub fn compute_state_machine_layout(sm: &AppStateMachine) -> StateMachineLayout 
         let label_h = 20.0;
 
         let box_at = |cx: f64, cy: f64| BoundingBox {
-            x0: cx - label_w * 0.5 - 3.0,
-            y0: cy - label_h * 0.5 - 3.0,
-            x1: cx + label_w * 0.5 + 3.0,
-            y1: cy + label_h * 0.5 + 3.0,
+            x0: cx - label_w * 0.5 - 2.0,
+            y0: cy - label_h * 0.5 - 2.0,
+            x1: cx + label_w * 0.5 + 2.0,
+            y1: cy + label_h * 0.5 + 2.0,
+        };
+
+        let is_intra_adjacent = {
+            if let (Some(f), Some(t)) = (nodes_layout.get(&edge.from), nodes_layout.get(&edge.to)) {
+                (f.y - t.y).abs() < 5.0 && f.x + f.width <= t.x + 15.0 && t.x <= f.x + rank_step_x + 15.0
+            } else {
+                false
+            }
         };
 
         let (mut cx, mut cy) = edge.label_pos;
         let mut best_box = box_at(cx, cy);
 
-        if obstacles.iter().any(|obs| best_box.intersects(obs)) {
+        // For intra-adjacent edges, the label sits right on the horizontal connector between from and to.
+        // We exclude from and to node bounding boxes so the label isn't shoved away.
+        let collides = |b: &BoundingBox| -> bool {
+            for (nid, nobs) in &node_obstacles {
+                if is_intra_adjacent && (*nid == edge.from || *nid == edge.to) {
+                    continue;
+                }
+                if b.intersects(nobs) {
+                    return true;
+                }
+            }
+            for lobs in &lane_obstacles {
+                if b.intersects(lobs) {
+                    return true;
+                }
+            }
+            for pl in &placed_label_boxes {
+                if b.intersects(pl) {
+                    return true;
+                }
+            }
+            false
+        };
+
+        if collides(&best_box) {
             let mut resolved = false;
             let mut candidate_offsets = Vec::new();
 
             for dy in [0.0, 24.0, -24.0, 48.0, -48.0] {
-                for dx in [0.0, 50.0, -50.0, 100.0, -100.0, 160.0, -160.0, 230.0, -230.0, 310.0, -310.0, 400.0, -400.0] {
+                for dx in [0.0, 50.0, -50.0, 100.0, -100.0, 160.0, -160.0, 230.0, -230.0, 310.0, -310.0] {
                     if dx == 0.0 && dy == 0.0 {
                         continue;
                     }
@@ -1051,7 +1167,7 @@ pub fn compute_state_machine_layout(sm: &AppStateMachine) -> StateMachineLayout 
                 }
             }
 
-            for dy in [70.0, -70.0, 140.0, -140.0] {
+            for dy in [70.0, -70.0, 100.0, -100.0, 140.0, -140.0] {
                 for dx in [0.0, 60.0, -60.0, 120.0, -120.0, 180.0, -180.0, 260.0, -260.0] {
                     candidate_offsets.push((dx, dy));
                 }
@@ -1059,7 +1175,7 @@ pub fn compute_state_machine_layout(sm: &AppStateMachine) -> StateMachineLayout 
 
             for (dx, dy) in candidate_offsets {
                 let cand_box = box_at(cx + dx, cy + dy);
-                if !obstacles.iter().any(|obs| cand_box.intersects(obs)) {
+                if !collides(&cand_box) {
                     cx += dx;
                     cy += dy;
                     best_box = cand_box;
@@ -1069,19 +1185,19 @@ pub fn compute_state_machine_layout(sm: &AppStateMachine) -> StateMachineLayout 
             }
 
             if !resolved {
-                for step in 1..=20 {
-                    let cand_box = box_at(cx + 80.0 * step as f64, cy);
-                    if !obstacles.iter().any(|obs| cand_box.intersects(obs)) {
-                        cx += 80.0 * step as f64;
+                for step in 1..=30 {
+                    let cand_box = box_at(cx + 60.0 * step as f64, cy);
+                    if !collides(&cand_box) {
+                        cx += 60.0 * step as f64;
                         best_box = cand_box;
                         break;
                     }
                 }
             }
-            edge.label_pos = (cx, cy);
         }
+        edge.label_pos = (cx, cy);
 
-        obstacles.push(best_box);
+        placed_label_boxes.push(best_box);
     }
 
     // 7. Compute true encompassing diagram bounding box
@@ -1113,6 +1229,12 @@ pub fn compute_state_machine_layout(sm: &AppStateMachine) -> StateMachineLayout 
         max_bound_x = max_bound_x.max(edge.control1.0.max(edge.control2.0));
         min_bound_y = min_bound_y.min(edge.control1.1.min(edge.control2.1));
         max_bound_y = max_bound_y.max(edge.control1.1.max(edge.control2.1));
+        for pt in &edge.waypoints {
+            min_bound_x = min_bound_x.min(pt.0);
+            max_bound_x = max_bound_x.max(pt.0);
+            min_bound_y = min_bound_y.min(pt.1);
+            max_bound_y = max_bound_y.max(pt.1);
+        }
     }
 
     let total_width = (max_bound_x - min_bound_x.min(0.0) + 120.0).max(1300.0);
@@ -3248,12 +3370,14 @@ mod tests {
         }
 
         // Check against other labels
+        let non_empty_edges: Vec<&EdgeLayout> = layout.edges.iter().filter(|e| !e.display_guard.is_empty()).collect();
         for i in 0..labels_with_boxes.len() {
             for j in (i + 1)..labels_with_boxes.len() {
                 assert!(
                     !labels_with_boxes[i].intersects(&labels_with_boxes[j]),
-                    "Label {} and Label {} overlap",
-                    i, j
+                    "Label {} ({} -> {} '{}' at {:?}) and Label {} ({} -> {} '{}' at {:?}) overlap",
+                    i, non_empty_edges[i].from, non_empty_edges[i].to, non_empty_edges[i].display_guard, non_empty_edges[i].label_pos,
+                    j, non_empty_edges[j].from, non_empty_edges[j].to, non_empty_edges[j].display_guard, non_empty_edges[j].label_pos
                 );
             }
         }

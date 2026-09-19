@@ -1209,6 +1209,104 @@ mod tests {
                     let _ = surf_hatch.write_to_png(&mut f);
                 }
             }
+
+            // 4. State diagram orthogonal snapshots: docking_firmware_v2
+            if let Ok(dock_proj) = load_project(&Path::new(env!("CARGO_MANIFEST_DIR")).join("../stakhal-core/tests/fixtures/docking_firmware_v2/docking_firmware_v2.ioc"), &Path::new(env!("CARGO_MANIFEST_DIR")).join("../stakhal-core/tests/fixtures/docking_firmware_v2/Core/Src/main.c")) {
+                let sm = dock_proj.state_machines[0].clone();
+                let layout = stakhal_core::graph::compute_state_machine_layout(&sm);
+                let w = (layout.width as i32).max(1400);
+                let h = (layout.height as i32).max(900);
+
+                let surf_dock = gtk4::cairo::ImageSurface::create(gtk4::cairo::Format::ARgb32, w, h).expect("surf");
+                let cr_dock = gtk4::cairo::Context::new(&surf_dock).expect("cr");
+                let st_dock = Rc::new(RefCell::new(AppState {
+                    loaded_project: Some(dock_proj.clone()),
+                    state_diagram_layout: Some(layout.clone()),
+                    diagram_bounds: (w, h),
+                    diagram_zoom: 1.0,
+                    diagram_pan_x: 40.0,
+                    diagram_pan_y: 40.0,
+                    selected_state_node: None,
+                    ..AppState::default()
+                }));
+                ui::state_diagram::draw::draw_state_diagram(&cr_dock, w as f64, h as f64, &st_dock);
+                surf_dock.flush();
+                if artifact_dir.exists() {
+                    if let Ok(mut f) = std::fs::File::create(artifact_dir.join("orthogonal_docking_v2.png")) {
+                        let _ = surf_dock.write_to_png(&mut f);
+                    }
+                }
+
+                // Docking with GOING selected
+                let surf_dock_sel = gtk4::cairo::ImageSurface::create(gtk4::cairo::Format::ARgb32, w, h).expect("surf");
+                let cr_dock_sel = gtk4::cairo::Context::new(&surf_dock_sel).expect("cr");
+                let st_dock_sel = Rc::new(RefCell::new(AppState {
+                    loaded_project: Some(dock_proj),
+                    state_diagram_layout: Some(layout),
+                    diagram_bounds: (w, h),
+                    diagram_zoom: 1.0,
+                    diagram_pan_x: 40.0,
+                    diagram_pan_y: 40.0,
+                    selected_state_node: Some("GOING".to_string()),
+                    ..AppState::default()
+                }));
+                ui::state_diagram::draw::draw_state_diagram(&cr_dock_sel, w as f64, h as f64, &st_dock_sel);
+                surf_dock_sel.flush();
+                if artifact_dir.exists() {
+                    if let Ok(mut f) = std::fs::File::create(artifact_dir.join("orthogonal_docking_v2_selected.png")) {
+                        let _ = surf_dock_sel.write_to_png(&mut f);
+                    }
+                }
+            }
+
+            // 5. State diagram orthogonal snapshots: aa_ns_stm_port (AlignState)
+            {
+                let sm_align = project.state_machines.iter().find(|s| s.enum_def.name.contains("Align")).unwrap_or(&project.state_machines[0]).clone();
+                let layout_align = stakhal_core::graph::compute_state_machine_layout(&sm_align);
+                let w = (layout_align.width as i32).max(1400);
+                let h = (layout_align.height as i32).max(900);
+
+                let surf_align = gtk4::cairo::ImageSurface::create(gtk4::cairo::Format::ARgb32, w, h).expect("surf");
+                let cr_align = gtk4::cairo::Context::new(&surf_align).expect("cr");
+                let st_align = Rc::new(RefCell::new(AppState {
+                    loaded_project: Some(project.clone()),
+                    state_diagram_layout: Some(layout_align.clone()),
+                    diagram_bounds: (w, h),
+                    diagram_zoom: 1.0,
+                    diagram_pan_x: 40.0,
+                    diagram_pan_y: 40.0,
+                    selected_state_node: None,
+                    ..AppState::default()
+                }));
+                ui::state_diagram::draw::draw_state_diagram(&cr_align, w as f64, h as f64, &st_align);
+                surf_align.flush();
+                if artifact_dir.exists() {
+                    if let Ok(mut f) = std::fs::File::create(artifact_dir.join("orthogonal_aa_ns_align.png")) {
+                        let _ = surf_align.write_to_png(&mut f);
+                    }
+                }
+
+                // AlignState with RETURNING selected (shows RETURNING -> RECOVERY cross-lane edge)
+                let surf_align_ret = gtk4::cairo::ImageSurface::create(gtk4::cairo::Format::ARgb32, w, h).expect("surf");
+                let cr_align_ret = gtk4::cairo::Context::new(&surf_align_ret).expect("cr");
+                let st_align_ret = Rc::new(RefCell::new(AppState {
+                    loaded_project: Some(project),
+                    state_diagram_layout: Some(layout_align),
+                    diagram_bounds: (w, h),
+                    diagram_zoom: 1.0,
+                    diagram_pan_x: 40.0,
+                    diagram_pan_y: 40.0,
+                    selected_state_node: Some("RETURNING".to_string()),
+                    ..AppState::default()
+                }));
+                ui::state_diagram::draw::draw_state_diagram(&cr_align_ret, w as f64, h as f64, &st_align_ret);
+                surf_align_ret.flush();
+                if artifact_dir.exists() {
+                    if let Ok(mut f) = std::fs::File::create(artifact_dir.join("orthogonal_aa_ns_align_selected.png")) {
+                        let _ = surf_align_ret.write_to_png(&mut f);
+                    }
+                }
+            }
         }
     }
 }
