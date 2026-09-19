@@ -170,22 +170,33 @@ pub const CONNECTORS: &[ConnectorDef] = &[
     },
 ];
 
-struct PinHighlightInfo {
-    signal: String,
-    label: Option<String>,
+#[derive(Debug, Clone)]
+pub struct PinHighlightInfo {
+    pub signal: String,
+    pub label: Option<String>,
+    pub modules: Vec<String>,
+    pub is_muted: bool,
 }
 
-fn get_active_pin_highlights(state: &AppState) -> HashMap<(&'static str, u8), PinHighlightInfo> {
+pub fn get_active_pin_highlights(state: &AppState) -> HashMap<(&'static str, u8), PinHighlightInfo> {
     let mut map = HashMap::new();
     let project = match &state.loaded_project {
         Some(p) => p,
         None => return map,
     };
 
+    let selected_mod = state.selected_pinout_module.as_deref();
+
     for pin_cfg in &project.pins {
         let mcu_pin = &pin_cfg.pin;
         let signal = &pin_cfg.signal;
         let label = &pin_cfg.label;
+        let modules = &pin_cfg.modules;
+
+        let is_muted = match selected_mod {
+            None => false,
+            Some(target) => !modules.iter().any(|m| m == target),
+        };
 
         if let Some(loc) = stakhal_core::nucleo_pinout::lookup_pin(mcu_pin) {
             if let Some((conn, pin_num)) = loc.morpho {
@@ -197,6 +208,8 @@ fn get_active_pin_highlights(state: &AppState) -> HashMap<(&'static str, u8), Pi
                 map.insert((static_conn, pin_num), PinHighlightInfo {
                     signal: signal.clone(),
                     label: label.clone(),
+                    modules: modules.clone(),
+                    is_muted,
                 });
             }
             if let Some((conn, pin_num, _label)) = loc.arduino {
@@ -210,6 +223,8 @@ fn get_active_pin_highlights(state: &AppState) -> HashMap<(&'static str, u8), Pi
                 map.insert((static_conn, pin_num), PinHighlightInfo {
                     signal: signal.clone(),
                     label: label.clone(),
+                    modules: modules.clone(),
+                    is_muted,
                 });
             }
         }
@@ -636,21 +651,37 @@ pub fn draw_nucleo_pinout(
                 // Interactive/Selection ONLY uses ACCENT
                 if is_hovered {
                     cr.set_source_rgb(tokens::color::ACCENT.0, tokens::color::ACCENT.1, tokens::color::ACCENT.2);
+                } else if hl_info.is_muted {
+                    cr.set_source_rgba(hl_r, hl_g, hl_b, 0.35);
                 } else {
                     cr.set_source_rgb(hl_r, hl_g, hl_b);
                 }
                 cr.set_line_width(tokens::shape::BORDER_WIDTH_HAIR);
                 let _ = cr.stroke();
 
-                // Pin Number Badge Box - sharp 0px corners, filled with highlight color
+                // Pin Number Badge Box - sharp 0px corners
                 let badge_w = (cell_w * 0.16).clamp(24.0, 32.0);
-                cr.set_source_rgb(hl_r, hl_g, hl_b);
-                cr.rectangle(cell_x + 3.0, cell_y + 3.0, badge_w, cell_h - 6.0);
-                let _ = cr.fill();
+                if hl_info.is_muted {
+                    cr.set_source_rgba(hl_r, hl_g, hl_b, 0.18);
+                    cr.rectangle(cell_x + 3.0, cell_y + 3.0, badge_w, cell_h - 6.0);
+                    let _ = cr.fill_preserve();
+                    cr.set_source_rgba(hl_r, hl_g, hl_b, 0.40);
+                    cr.set_line_width(tokens::shape::BORDER_WIDTH_HAIR);
+                    let _ = cr.stroke();
 
-                cr.select_font_face(tokens::font::CAIRO_MONO, cairo::FontSlant::Normal, cairo::FontWeight::Bold);
-                cr.set_font_size(9.5);
-                cr.set_source_rgb(tokens::color::BG_VOID.0, tokens::color::BG_VOID.1, tokens::color::BG_VOID.2);
+                    cr.select_font_face(tokens::font::CAIRO_MONO, cairo::FontSlant::Normal, cairo::FontWeight::Bold);
+                    cr.set_font_size(9.5);
+                    cr.set_source_rgba(hl_r, hl_g, hl_b, 0.80);
+                } else {
+                    cr.set_source_rgb(hl_r, hl_g, hl_b);
+                    cr.rectangle(cell_x + 3.0, cell_y + 3.0, badge_w, cell_h - 6.0);
+                    let _ = cr.fill();
+
+                    cr.select_font_face(tokens::font::CAIRO_MONO, cairo::FontSlant::Normal, cairo::FontWeight::Bold);
+                    cr.set_font_size(9.5);
+                    cr.set_source_rgb(tokens::color::BG_VOID.0, tokens::color::BG_VOID.1, tokens::color::BG_VOID.2);
+                }
+
                 let pnum_str = format!("{}", p.pin_num);
                 if let Ok(ext) = cr.text_extents(&pnum_str) {
                     let tx = cell_x + 3.0 + (badge_w - ext.width()) / 2.0;
@@ -658,9 +689,13 @@ pub fn draw_nucleo_pinout(
                     let _ = cr.show_text(&pnum_str);
                 }
 
-                // MCU Pin Text - TEXT_PRIMARY
+                // MCU Pin Text
                 cr.set_font_size(9.5);
-                cr.set_source_rgb(tokens::color::TEXT_PRIMARY.0, tokens::color::TEXT_PRIMARY.1, tokens::color::TEXT_PRIMARY.2);
+                if hl_info.is_muted {
+                    cr.set_source_rgb(tokens::color::TEXT_MUTED.0, tokens::color::TEXT_MUTED.1, tokens::color::TEXT_MUTED.2);
+                } else {
+                    cr.set_source_rgb(tokens::color::TEXT_PRIMARY.0, tokens::color::TEXT_PRIMARY.1, tokens::color::TEXT_PRIMARY.2);
+                }
                 let mcu_pin_x = cell_x + badge_w + 8.0;
                 let _ = cr.move_to(mcu_pin_x, cell_y + cell_h * 0.64);
                 let _ = cr.show_text(p.mcu_pin);
@@ -681,7 +716,11 @@ pub fn draw_nucleo_pinout(
 
                 cr.select_font_face(tokens::font::CAIRO_MONO, cairo::FontSlant::Normal, cairo::FontWeight::Bold);
                 cr.set_font_size(9.0);
-                cr.set_source_rgb(hl_r, hl_g, hl_b);
+                if hl_info.is_muted {
+                    cr.set_source_rgba(hl_r, hl_g, hl_b, 0.45);
+                } else {
+                    cr.set_source_rgb(hl_r, hl_g, hl_b);
+                }
                 if let Ok(ext) = cr.text_extents(&primary_text) {
                     let min_x = mcu_pin_x + mcu_ext_w + 6.0;
                     let right_x = cell_x + cell_w - ext.width() - 6.0;
@@ -742,12 +781,13 @@ pub fn draw_nucleo_pinout(
         }
     }
 
-    // 7. Footer Legend Bar inside Board Outline - Single green STATE_READY swatch for active signal
+    // 7. Footer Legend Bar inside Board Outline
     let legend_y = board_y + board_h - 28.0;
     cr.select_font_face(tokens::font::CAIRO_SANS, cairo::FontSlant::Normal, cairo::FontWeight::Bold);
     cr.set_font_size(10.0);
 
     let leg_x = board_x + (board_w * 0.02).max(16.0);
+    let is_filtering_module = st.selected_pinout_module.is_some();
 
     // Active Signal Legend
     cr.set_source_rgb(tokens::color::STATE_READY.0, tokens::color::STATE_READY.1, tokens::color::STATE_READY.2);
@@ -756,7 +796,26 @@ pub fn draw_nucleo_pinout(
 
     cr.set_source_rgb(tokens::color::TEXT_PRIMARY.0, tokens::color::TEXT_PRIMARY.1, tokens::color::TEXT_PRIMARY.2);
     let _ = cr.move_to(leg_x + 22.0, legend_y + 11.0);
-    let _ = cr.show_text("Active Signal in Loaded Project");
+    let active_label = if is_filtering_module {
+        "Active in Module"
+    } else {
+        "Active Signal in Loaded Project"
+    };
+    let _ = cr.show_text(active_label);
+
+    if is_filtering_module {
+        let leg_x2 = leg_x + 150.0;
+        cr.set_source_rgba(tokens::color::STATE_READY.0, tokens::color::STATE_READY.1, tokens::color::STATE_READY.2, 0.20);
+        cr.rectangle(leg_x2, legend_y, 14.0, 14.0);
+        let _ = cr.fill_preserve();
+        cr.set_source_rgba(tokens::color::STATE_READY.0, tokens::color::STATE_READY.1, tokens::color::STATE_READY.2, 0.40);
+        cr.set_line_width(tokens::shape::BORDER_WIDTH_HAIR);
+        let _ = cr.stroke();
+
+        cr.set_source_rgb(tokens::color::TEXT_MUTED.0, tokens::color::TEXT_MUTED.1, tokens::color::TEXT_MUTED.2);
+        let _ = cr.move_to(leg_x2 + 22.0, legend_y + 11.0);
+        let _ = cr.show_text("Active Elsewhere in Project");
+    }
 
     // 8. FINAL PASS: Compact Floating Tooltip Card - sharp 0px corners, BG_PANEL, 1px hairline border
     if let (Some((conn_name, pin_num)), Some((mx, my))) = (hovered_pin, hovered_mouse) {
@@ -768,11 +827,15 @@ pub fn draw_nucleo_pinout(
                 let is_hl = highlights.get(&(conn_name.as_str(), *pin_num));
                 let line2 = match is_hl {
                     Some(hl) => {
+                        let mut parts = Vec::new();
+                        parts.push(format!("Signal: {}", hl.signal));
                         if let Some(lbl) = &hl.label {
-                            format!("Signal: {} | Label: {}", hl.signal, lbl)
-                        } else {
-                            format!("Signal: {} [Active]", hl.signal)
+                            parts.push(format!("Label: {}", lbl));
                         }
+                        if !hl.modules.is_empty() {
+                            parts.push(format!("Module: {}", hl.modules.join(", ")));
+                        }
+                        parts.join(" • ")
                     }
                     None => "Unused in Project".to_string(),
                 };
@@ -1013,6 +1076,54 @@ mod tests {
         }
 
         draw_nucleo_pinout(&cr, 1200.0, 750.0, &state);
+        surface.flush();
+    }
+
+    #[test]
+    fn test_nucleo_pinout_module_filter() {
+        let fixture_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../stakhal-core/tests/fixtures/aa_ns_stm_port");
+        let ioc_path = fixture_dir.join("aa_ns_stm_port.ioc");
+        let main_c_path = fixture_dir.join("Core/Src/main.c");
+        let project = stakhal_core::ir::schema::load_project(&ioc_path, &main_c_path)
+            .expect("Failed to load aa_ns_stm_port");
+
+        let state = AppState {
+            loaded_project: Some(project),
+            selected_pinout_module: None,
+            ..AppState::default()
+        };
+
+        // When selected_pinout_module is None ("All Modules"), no active pins are muted
+        let all_hl = get_active_pin_highlights(&state);
+        assert!(!all_hl.is_empty());
+        for hl in all_hl.values() {
+            assert!(!hl.is_muted);
+        }
+
+        // When selected_pinout_module is Some("hatch"), pins in hatch are active, other pins are muted
+        let hatch_state = AppState {
+            loaded_project: state.loaded_project.clone(),
+            selected_pinout_module: Some("hatch".to_string()),
+            ..AppState::default()
+        };
+        let hatch_hl = get_active_pin_highlights(&hatch_state);
+
+        // Find GRIP_IN1
+        let grip = hatch_hl.values().find(|h| h.label.as_deref() == Some("GRIP_IN1")).expect("GRIP_IN1 missing");
+        assert!(!grip.is_muted, "GRIP_IN1 should not be muted for hatch module");
+        assert!(grip.modules.contains(&"hatch".to_string()));
+
+        // Find Z1_LIMIT
+        let z1 = hatch_hl.values().find(|h| h.label.as_deref() == Some("Z1_LIMIT")).expect("Z1_LIMIT missing");
+        assert!(z1.is_muted, "Z1_LIMIT should be muted when hatch is selected");
+        assert!(z1.modules.contains(&"alignment".to_string()));
+
+        // Render to canvas to verify drawing with module filter doesn't panic
+        let surface = cairo::ImageSurface::create(cairo::Format::ARgb32, 1200, 750).expect("Failed to create surface");
+        let cr = cairo::Context::new(&surface).expect("Failed to create context");
+        let rc_state = Rc::new(RefCell::new(hatch_state));
+        draw_nucleo_pinout(&cr, 1200.0, 750.0, &rc_state);
         surface.flush();
     }
 }

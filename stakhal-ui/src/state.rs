@@ -27,6 +27,7 @@ pub struct AppState {
     // Nucleo pinout state
     pub hovered_pinout_pin: Option<(String, u8)>,
     pub hovered_pinout_mouse: Option<(f64, f64)>,
+    pub selected_pinout_module: Option<String>,
 
     // Build & flash state
     pub build_in_progress: bool,
@@ -58,6 +59,7 @@ impl Default for AppState {
             drag_start_pan_pos: (40.0, 40.0),
             hovered_pinout_pin: None,
             hovered_pinout_mouse: None,
+            selected_pinout_module: None,
             build_in_progress: false,
             has_makefile: false,
             has_build_system: false,
@@ -104,6 +106,7 @@ pub struct AppWidgets {
     // Nucleo Pinout widgets
     pub pinout_drawing_area: gtk4::DrawingArea,
     pub _pinout_scrolled: gtk4::ScrolledWindow,
+    pub combo_pinout_module: gtk4::DropDown,
 }
 
 

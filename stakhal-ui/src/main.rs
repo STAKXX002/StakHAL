@@ -298,6 +298,7 @@ dropdown button {
         btn_pinout_back,
         pinout_drawing_area,
         pinout_scrolled,
+        combo_pinout_module,
     } = build_nucleo_pinout_panel();
 
     let stack = gtk4::Stack::builder()
@@ -359,6 +360,7 @@ dropdown button {
         lbl_selected_info: lbl_selected_info.clone(),
         pinout_drawing_area,
         _pinout_scrolled: pinout_scrolled,
+        combo_pinout_module: combo_pinout_module.clone(),
     });
 
     setup_state_diagram_drawing_and_gestures(
@@ -424,7 +426,24 @@ dropdown button {
         area_combo.queue_draw();
     });
 
+    // Nucleo Pinout module filter dropdown callback
+    let state_mod_combo = Rc::clone(&state);
+    let area_pinout_combo = widgets.pinout_drawing_area.clone();
+    combo_pinout_module.connect_selected_notify(move |cb| {
+        let idx = cb.selected();
+        let sel_str = cb.model()
+            .and_then(|m| m.downcast::<gtk4::StringList>().ok())
+            .and_then(|sl| sl.string(idx))
+            .map(|s| s.to_string());
 
+        let mod_filter = match sel_str.as_deref() {
+            Some("All Modules") | None => None,
+            Some(s) => Some(s.to_string()),
+        };
+
+        state_mod_combo.borrow_mut().selected_pinout_module = mod_filter;
+        area_pinout_combo.queue_draw();
+    });
 
     // Connect Browse Button
     let state_browse = Rc::clone(&state);
@@ -771,6 +790,7 @@ fn do_load_project(state: &Rc<RefCell<AppState>>, widgets: &Rc<AppWidgets>) {
             }
 
             let is_f446 = project.meta.mcu_name.to_uppercase().contains("F446");
+            let project_modules = project.modules.clone();
 
             // Setup state machines
             let sm_names: Vec<String> = if project.state_machines.is_empty() {
@@ -846,21 +866,42 @@ fn do_load_project(state: &Rc<RefCell<AppState>>, widgets: &Rc<AppWidgets>) {
                 widgets
                     .btn_nucleo_pinout
                     .set_tooltip_text(Some("View Nucleo-F446RE Physical Connector Pinout"));
+
+                let mut mod_names = vec!["All Modules".to_string()];
+                if project_modules.len() > 1 {
+                    mod_names.extend(project_modules.clone());
+                }
+                let mod_str_refs: Vec<&str> = mod_names.iter().map(|s| s.as_str()).collect();
+                let mod_string_list = gtk4::StringList::new(&mod_str_refs);
+                widgets.combo_pinout_module.set_model(Some(&mod_string_list));
+                widgets.combo_pinout_module.set_selected(0);
+                widgets.combo_pinout_module.set_sensitive(project_modules.len() > 1);
+
+                state.borrow_mut().selected_pinout_module = None;
             } else {
                 widgets.btn_nucleo_pinout.set_sensitive(false);
                 widgets
                     .btn_nucleo_pinout
                     .set_tooltip_text(Some("Nucleo Pinout visualizer is F446RE-only for now"));
+                let mod_string_list = gtk4::StringList::new(&["All Modules"]);
+                widgets.combo_pinout_module.set_model(Some(&mod_string_list));
+                widgets.combo_pinout_module.set_selected(0);
+                widgets.combo_pinout_module.set_sensitive(false);
+                state.borrow_mut().selected_pinout_module = None;
             }
             widgets.pinout_drawing_area.queue_draw();
 
             widgets.toast_overlay.add_toast(adw::Toast::new("[OK] Project loaded successfully"));
         }
 
-
         Err(err) => {
             widgets.btn_nucleo_pinout.set_sensitive(false);
             widgets.btn_nucleo_pinout.set_tooltip_text(Some("Nucleo Pinout visualizer is F446RE-only for now"));
+            let mod_string_list = gtk4::StringList::new(&["All Modules"]);
+            widgets.combo_pinout_module.set_model(Some(&mod_string_list));
+            widgets.combo_pinout_module.set_selected(0);
+            widgets.combo_pinout_module.set_sensitive(false);
+            state.borrow_mut().selected_pinout_module = None;
             widgets.toast_overlay.add_toast(adw::Toast::new(&format!("[ERROR] Load Error: {}", err)));
         }
     }
@@ -1125,6 +1166,49 @@ mod tests {
             state_pin.borrow_mut().hovered_pinout_mouse = Some((600.0, 300.0));
             ui::nucleo_pinout::draw::draw_nucleo_pinout(&cr_pin, 1400.0, 850.0, &state_pin);
             surface_pin.flush();
+        }
+
+        // 3. Nucleo pinout module filter snapshots (aa_ns_stm_port)
+        let aa_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../stakhal-core/tests/fixtures/aa_ns_stm_port");
+        let aa_ioc = aa_dir.join("aa_ns_stm_port.ioc");
+        let aa_main = aa_dir.join("Core/Src/main.c");
+        if let Ok(project) = load_project(&aa_ioc, &aa_main) {
+            let artifact_dir = std::path::Path::new("/home/stakxx002/.gemini/antigravity-ide/brain/e21edbbd-844e-44ef-9dfa-1af3c8e3a19b");
+
+            // All modules
+            let surf_all = gtk4::cairo::ImageSurface::create(gtk4::cairo::Format::ARgb32, 1400, 850).expect("surface");
+            let cr_all = gtk4::cairo::Context::new(&surf_all).expect("cr");
+            let st_all = Rc::new(RefCell::new(AppState {
+                loaded_project: Some(project.clone()),
+                selected_pinout_module: None,
+                ..AppState::default()
+            }));
+            ui::nucleo_pinout::draw::draw_nucleo_pinout(&cr_all, 1400.0, 850.0, &st_all);
+            surf_all.flush();
+            if artifact_dir.exists() {
+                if let Ok(mut f) = std::fs::File::create(artifact_dir.join("pinout_all_modules.png")) {
+                    let _ = surf_all.write_to_png(&mut f);
+                }
+            }
+
+            // Hatch module
+            let surf_hatch = gtk4::cairo::ImageSurface::create(gtk4::cairo::Format::ARgb32, 1400, 850).expect("surface");
+            let cr_hatch = gtk4::cairo::Context::new(&surf_hatch).expect("cr");
+            let st_hatch = Rc::new(RefCell::new(AppState {
+                loaded_project: Some(project.clone()),
+                selected_pinout_module: Some("hatch".to_string()),
+                hovered_pinout_pin: Some(("CN10".to_string(), 16)), // GRIP_IN1
+                hovered_pinout_mouse: Some((850.0, 320.0)),
+                ..AppState::default()
+            }));
+            ui::nucleo_pinout::draw::draw_nucleo_pinout(&cr_hatch, 1400.0, 850.0, &st_hatch);
+            surf_hatch.flush();
+            if artifact_dir.exists() {
+                if let Ok(mut f) = std::fs::File::create(artifact_dir.join("pinout_module_hatch.png")) {
+                    let _ = surf_hatch.write_to_png(&mut f);
+                }
+            }
         }
     }
 }

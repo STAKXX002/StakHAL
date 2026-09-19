@@ -6,6 +6,7 @@ pub struct NucleoPinoutPanelWidgets {
     pub btn_pinout_back: gtk4::Button,
     pub pinout_drawing_area: gtk4::DrawingArea,
     pub pinout_scrolled: gtk4::ScrolledWindow,
+    pub combo_pinout_module: gtk4::DropDown,
 }
 
 pub fn build_nucleo_pinout_panel() -> NucleoPinoutPanelWidgets {
@@ -17,6 +18,11 @@ pub fn build_nucleo_pinout_panel() -> NucleoPinoutPanelWidgets {
         .hexpand(true)
         .css_classes(vec!["title-3".to_string()])
         .build();
+
+    let combo_pinout_module = gtk4::DropDown::from_strings(&["All Modules"]);
+    combo_pinout_module.set_cursor_from_name(Some("pointer"));
+    combo_pinout_module.set_tooltip_text(Some("Filter pins by firmware module"));
+    combo_pinout_module.set_css_classes(&["stakhal-btn", "flat"]);
 
     let lbl_pinout_hint = gtk4::Label::builder()
         .label("Highlighted pins indicate active signals in loaded project")
@@ -34,6 +40,7 @@ pub fn build_nucleo_pinout_panel() -> NucleoPinoutPanelWidgets {
         .build();
     pinout_header_bar.append(&btn_pinout_back);
     pinout_header_bar.append(&lbl_pinout_title);
+    pinout_header_bar.append(&combo_pinout_module);
     pinout_header_bar.append(&lbl_pinout_hint);
 
     let pinout_drawing_area = gtk4::DrawingArea::builder()
@@ -60,6 +67,7 @@ pub fn build_nucleo_pinout_panel() -> NucleoPinoutPanelWidgets {
         btn_pinout_back,
         pinout_drawing_area,
         pinout_scrolled,
+        combo_pinout_module,
     }
 }
 

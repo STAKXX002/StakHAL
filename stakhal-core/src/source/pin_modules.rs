@@ -231,10 +231,6 @@ pub fn scan_pin_modules(
 
     let (patterns, periph_family_counts) = build_pin_patterns(pins);
 
-    let other_files_exist = candidate_files
-        .iter()
-        .any(|p| p.file_name().map_or(false, |f| f != "main.c"));
-
     let mut discovered_modules: HashSet<String> = HashSet::new();
 
     for file_path in &candidate_files {
@@ -251,7 +247,6 @@ pub fn scan_pin_modules(
         };
 
         let idents = extract_ast_identifiers(&source, is_main);
-        let mut module_claimed_pins = 0;
 
         for pattern in &patterns {
             let mut matched = false;
@@ -321,7 +316,6 @@ pub fn scan_pin_modules(
             }
 
             if matched {
-                module_claimed_pins += 1;
                 let target_pin = &mut updated_pins[pattern.pin_index];
                 if !target_pin.modules.contains(&file_stem) {
                     target_pin.modules.push(file_stem.clone());
