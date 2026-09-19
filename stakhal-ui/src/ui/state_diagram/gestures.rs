@@ -86,13 +86,14 @@ pub fn setup_state_diagram_drawing_and_gestures(
 
     drawing_area.add_controller(click_gesture);
 
-    // 3. Motion Controller for Hover
+    // 3. Motion Controller for Hover & Cursor Position Tracking
     let motion_controller = gtk4::EventControllerMotion::new();
     let state_motion = Rc::clone(&state);
     let area_motion = drawing_area.clone();
 
     motion_controller.connect_motion(move |_, x, y| {
         let mut st = state_motion.borrow_mut();
+        st.diagram_mouse_pos = Some((x, y));
         let zoom = st.diagram_zoom;
         let pan_x = st.diagram_pan_x;
         let pan_y = st.diagram_pan_y;
@@ -114,6 +115,18 @@ pub fn setup_state_diagram_drawing_and_gestures(
             st.hovered_state_node = hovered;
             area_motion.queue_draw();
         }
+    });
+
+    let state_enter = Rc::clone(&state);
+    motion_controller.connect_enter(move |_, x, y| {
+        let mut st = state_enter.borrow_mut();
+        st.diagram_mouse_pos = Some((x, y));
+    });
+
+    let state_leave = Rc::clone(&state);
+    motion_controller.connect_leave(move |_| {
+        let mut st = state_leave.borrow_mut();
+        st.diagram_mouse_pos = None;
     });
 
     drawing_area.add_controller(motion_controller);
@@ -144,18 +157,41 @@ pub fn setup_state_diagram_drawing_and_gestures(
 
     drawing_area.add_controller(drag_gesture);
 
-    // 5. Scroll Controller for Zooming
+    // 5. Scroll Controller for Zooming Anchored to Mouse Cursor
     let scroll_controller = gtk4::EventControllerScroll::new(
         gtk4::EventControllerScrollFlags::VERTICAL,
     );
 
     let state_scroll = Rc::clone(&state);
     let area_scroll = drawing_area.clone();
-    scroll_controller.connect_scroll(move |_, _, dy| {
+    scroll_controller.connect_scroll(move |controller, _, dy| {
         let mut st = state_scroll.borrow_mut();
+
+        // 1. Get mouse position in canvas/widget coordinates
+        let (cursor_x, cursor_y) = st
+            .diagram_mouse_pos
+            .or_else(|| controller.current_event().and_then(|e| e.position()))
+            .unwrap_or_else(|| {
+                (area_scroll.width().max(800) as f64 * 0.5, area_scroll.height().max(600) as f64 * 0.5)
+            });
+
+        // 2. Apply new zoom scale and pan offset anchored to cursor
         let factor = if dy < 0.0 { 1.15 } else { 1.0 / 1.15 };
-        let new_zoom = (st.diagram_zoom * factor).clamp(0.2, 3.5);
+        let (new_zoom, new_pan_x, new_pan_y) = calculate_zoom_at_cursor(
+            st.diagram_zoom,
+            st.diagram_pan_x,
+            st.diagram_pan_y,
+            cursor_x,
+            cursor_y,
+            factor,
+            0.2,
+            3.5,
+        );
+
         st.diagram_zoom = new_zoom;
+        st.diagram_pan_x = new_pan_x;
+        st.diagram_pan_y = new_pan_y;
+
         area_scroll.queue_draw();
         glib::Propagation::Stop
     });
@@ -170,4 +206,161 @@ pub fn setup_state_diagram_drawing_and_gestures(
         st.diagram_needs_fit = true;
         area_fit.queue_draw();
     });
+}
+
+/// Compute new zoom level and pan offsets such that the world coordinate under the cursor
+/// remains invariant before and after the zoom operation.
+pub fn calculate_zoom_at_cursor(
+    old_zoom: f64,
+    old_pan_x: f64,
+    old_pan_y: f64,
+    cursor_x: f64,
+    cursor_y: f64,
+    factor: f64,
+    min_zoom: f64,
+    max_zoom: f64,
+) -> (f64, f64, f64) {
+    // 1. Convert cursor screen position to canvas/world coordinates BEFORE zoom
+    let world_x = (cursor_x - old_pan_x) / old_zoom;
+    let world_y = (cursor_y - old_pan_y) / old_zoom;
+
+    // 2. Apply new zoom scale clamped to limits
+    let new_zoom = (old_zoom * factor).clamp(min_zoom, max_zoom);
+
+    // 3. Recompute pan offsets so the same world point still lands under the cursor
+    let new_pan_x = cursor_x - world_x * new_zoom;
+    let new_pan_y = cursor_y - world_y * new_zoom;
+
+    (new_zoom, new_pan_x, new_pan_y)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_zoom_in_anchored_to_cursor() {
+        // Cursor away from top-left corner, e.g. at (600, 300)
+        let cursor_x = 600.0;
+        let cursor_y = 300.0;
+        let old_zoom = 1.0;
+        let old_pan_x = 40.0;
+        let old_pan_y = 40.0;
+
+        // World coordinates under cursor before zoom
+        let world_x = (cursor_x - old_pan_x) / old_zoom; // 560.0
+        let world_y = (cursor_y - old_pan_y) / old_zoom; // 260.0
+
+        let factor = 1.15;
+        let (new_zoom, new_pan_x, new_pan_y) = calculate_zoom_at_cursor(
+            old_zoom, old_pan_x, old_pan_y, cursor_x, cursor_y, factor, 0.2, 3.5,
+        );
+
+        assert!((new_zoom - 1.15).abs() < 1e-9);
+
+        // Screen position of world point after zoom
+        let screen_x_after = world_x * new_zoom + new_pan_x;
+        let screen_y_after = world_y * new_zoom + new_pan_y;
+
+        assert!(
+            (screen_x_after - cursor_x).abs() < 1e-9,
+            "X drift detected: expected {}, got {}",
+            cursor_x,
+            screen_x_after
+        );
+        assert!(
+            (screen_y_after - cursor_y).abs() < 1e-9,
+            "Y drift detected: expected {}, got {}",
+            cursor_y,
+            screen_y_after
+        );
+    }
+
+    #[test]
+    fn test_repeated_zoom_drift_prevention() {
+        // Point in middle-right of graph
+        let cursor_x = 850.0;
+        let cursor_y = 420.0;
+        let mut zoom = 1.0;
+        let mut pan_x = 50.0;
+        let mut pan_y = 60.0;
+
+        // Target world coordinate
+        let target_world_x = (cursor_x - pan_x) / zoom;
+        let target_world_y = (cursor_y - pan_y) / zoom;
+
+        // Repeatedly zoom in 8 times
+        for step in 1..=8 {
+            let (next_zoom, next_pan_x, next_pan_y) = calculate_zoom_at_cursor(
+                zoom, pan_x, pan_y, cursor_x, cursor_y, 1.15, 0.2, 5.0,
+            );
+            zoom = next_zoom;
+            pan_x = next_pan_x;
+            pan_y = next_pan_y;
+
+            let rendered_x = target_world_x * zoom + pan_x;
+            let rendered_y = target_world_y * zoom + pan_y;
+
+            assert!(
+                (rendered_x - cursor_x).abs() < 1e-9,
+                "Step {}: point drifted in X from {} to {}",
+                step,
+                cursor_x,
+                rendered_x
+            );
+            assert!(
+                (rendered_y - cursor_y).abs() < 1e-9,
+                "Step {}: point drifted in Y from {} to {}",
+                step,
+                cursor_y,
+                rendered_y
+            );
+        }
+
+        // Repeatedly zoom back out 8 times
+        for step in 1..=8 {
+            let (next_zoom, next_pan_x, next_pan_y) = calculate_zoom_at_cursor(
+                zoom, pan_x, pan_y, cursor_x, cursor_y, 1.0 / 1.15, 0.2, 5.0,
+            );
+            zoom = next_zoom;
+            pan_x = next_pan_x;
+            pan_y = next_pan_y;
+
+            let rendered_x = target_world_x * zoom + pan_x;
+            let rendered_y = target_world_y * zoom + pan_y;
+
+            assert!(
+                (rendered_x - cursor_x).abs() < 1e-9,
+                "Zoom-out step {}: point drifted in X from {} to {}",
+                step,
+                cursor_x,
+                rendered_x
+            );
+            assert!(
+                (rendered_y - cursor_y).abs() < 1e-9,
+                "Zoom-out step {}: point drifted in Y from {} to {}",
+                step,
+                cursor_y,
+                rendered_y
+            );
+        }
+    }
+
+    #[test]
+    fn test_zoom_clamping_preserves_pan() {
+        let cursor_x = 500.0;
+        let cursor_y = 350.0;
+        let max_zoom = 3.5;
+        let pan_x = 100.0;
+        let pan_y = 100.0;
+
+        // Already at max zoom, zooming in further
+        let (clamped_zoom, new_pan_x, new_pan_y) = calculate_zoom_at_cursor(
+            max_zoom, pan_x, pan_y, cursor_x, cursor_y, 1.25, 0.2, max_zoom,
+        );
+
+        assert_eq!(clamped_zoom, max_zoom);
+        assert!((new_pan_x - pan_x).abs() < 1e-9);
+        assert!((new_pan_y - pan_y).abs() < 1e-9);
+    }
 }
