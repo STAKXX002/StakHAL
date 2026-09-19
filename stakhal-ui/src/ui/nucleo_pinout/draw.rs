@@ -662,16 +662,16 @@ pub fn draw_nucleo_pinout(
                 // Pin Number Badge Box - sharp 0px corners
                 let badge_w = (cell_w * 0.16).clamp(24.0, 32.0);
                 if hl_info.is_muted {
-                    cr.set_source_rgba(hl_r, hl_g, hl_b, 0.18);
+                    cr.set_source_rgb(tokens::color::BG_VOID.0, tokens::color::BG_VOID.1, tokens::color::BG_VOID.2);
                     cr.rectangle(cell_x + 3.0, cell_y + 3.0, badge_w, cell_h - 6.0);
                     let _ = cr.fill_preserve();
-                    cr.set_source_rgba(hl_r, hl_g, hl_b, 0.40);
+                    cr.set_source_rgba(hl_r, hl_g, hl_b, 0.35);
                     cr.set_line_width(tokens::shape::BORDER_WIDTH_HAIR);
                     let _ = cr.stroke();
 
-                    cr.select_font_face(tokens::font::CAIRO_MONO, cairo::FontSlant::Normal, cairo::FontWeight::Bold);
+                    cr.select_font_face(tokens::font::CAIRO_MONO, cairo::FontSlant::Normal, cairo::FontWeight::Normal);
                     cr.set_font_size(9.5);
-                    cr.set_source_rgba(hl_r, hl_g, hl_b, 0.80);
+                    cr.set_source_rgb(tokens::color::TEXT_MUTED.0, tokens::color::TEXT_MUTED.1, tokens::color::TEXT_MUTED.2);
                 } else {
                     cr.set_source_rgb(hl_r, hl_g, hl_b);
                     cr.rectangle(cell_x + 3.0, cell_y + 3.0, badge_w, cell_h - 6.0);
@@ -714,11 +714,13 @@ pub fn draw_nucleo_pinout(
                     None => hl_info.signal.clone(),
                 };
 
-                cr.select_font_face(tokens::font::CAIRO_MONO, cairo::FontSlant::Normal, cairo::FontWeight::Bold);
-                cr.set_font_size(9.0);
                 if hl_info.is_muted {
-                    cr.set_source_rgba(hl_r, hl_g, hl_b, 0.45);
+                    cr.select_font_face(tokens::font::CAIRO_MONO, cairo::FontSlant::Normal, cairo::FontWeight::Normal);
+                    cr.set_font_size(9.0);
+                    cr.set_source_rgb(tokens::color::TEXT_MUTED.0, tokens::color::TEXT_MUTED.1, tokens::color::TEXT_MUTED.2);
                 } else {
+                    cr.select_font_face(tokens::font::CAIRO_MONO, cairo::FontSlant::Normal, cairo::FontWeight::Bold);
+                    cr.set_font_size(9.0);
                     cr.set_source_rgb(hl_r, hl_g, hl_b);
                 }
                 if let Ok(ext) = cr.text_extents(&primary_text) {
@@ -805,10 +807,10 @@ pub fn draw_nucleo_pinout(
 
     if is_filtering_module {
         let leg_x2 = leg_x + 150.0;
-        cr.set_source_rgba(tokens::color::STATE_READY.0, tokens::color::STATE_READY.1, tokens::color::STATE_READY.2, 0.20);
+        cr.set_source_rgb(tokens::color::BG_PANEL.0, tokens::color::BG_PANEL.1, tokens::color::BG_PANEL.2);
         cr.rectangle(leg_x2, legend_y, 14.0, 14.0);
         let _ = cr.fill_preserve();
-        cr.set_source_rgba(tokens::color::STATE_READY.0, tokens::color::STATE_READY.1, tokens::color::STATE_READY.2, 0.40);
+        cr.set_source_rgba(tokens::color::STATE_READY.0, tokens::color::STATE_READY.1, tokens::color::STATE_READY.2, 0.35);
         cr.set_line_width(tokens::shape::BORDER_WIDTH_HAIR);
         let _ = cr.stroke();
 
