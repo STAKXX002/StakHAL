@@ -12,11 +12,13 @@ pub struct IocProject {
     pub raw: HashMap<String, String>, // full unparsed key=value map
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct PinConfig {
     pub pin: String,    // e.g. "PA2"
     pub signal: String, // e.g. "USART2_TX"
     pub label: Option<String>, // e.g. "LD2" or "TMS"
+    #[serde(default)]
+    pub modules: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -109,6 +111,7 @@ pub fn parse_ioc_str(source: &str) -> Result<IocProject, IocParseError> {
                 pin: pin_name.to_string(),
                 signal: value.clone(),
                 label: None,
+                modules: Vec::new(),
             });
         } else if let Some((periph_name, param_name)) = get_peripheral_and_param(&key) {
             let entry = peripherals_map

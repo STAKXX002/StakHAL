@@ -1004,6 +1004,7 @@ mod tests {
                 pin: "PA13".to_string(),
                 signal: "GPIO_Output".to_string(),
                 label: Some("DBG_SWDIO".to_string()),
+                modules: Vec::new(),
             });
             let mut st = state.borrow_mut();
             st.loaded_project = Some(project);

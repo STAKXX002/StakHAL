@@ -26,6 +26,8 @@ pub struct Project {
     pub pv_declarations: Vec<PvDeclaration>,
     #[serde(default)]
     pub state_machines: Vec<crate::graph::state_machine::AppStateMachine>,
+    #[serde(default)]
+    pub modules: Vec<String>,
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -78,15 +80,18 @@ pub fn load_project(ioc_path: &Path, main_c_path: &Path) -> Result<Project, Proj
         main_c_path: main_c_path.to_path_buf(),
     };
 
+    let (pins, modules) = crate::source::pin_modules::scan_pin_modules(&ioc.pins, main_c_path);
+
     Ok(Project {
         meta,
-        pins: ioc.pins,
+        pins,
         peripherals: ioc.peripherals,
         user_regions,
         loop_body,
         call_graph_edges,
         pv_declarations,
         state_machines,
+        modules,
     })
 }
 
@@ -200,5 +205,38 @@ mod tests {
         let names: Vec<&str> = project.state_machines.iter().map(|sm| sm.enum_def.name.as_str()).collect();
         assert!(names.contains(&"AlignState"));
         assert!(names.contains(&"HatchState"));
+    }
+
+    #[test]
+    fn test_pin_to_module_mapping_aa_ns_stm_port() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/fixtures/aa_ns_stm_port");
+        let ioc = root.join("aa_ns_stm_port.ioc");
+        let main_c = root.join("Core/Src/main.c");
+        let project = load_project(&ioc, &main_c).expect("failed to load aa_ns_stm_port");
+
+        // Verify discovered module list
+        assert_eq!(
+            project.modules,
+            vec!["alignment", "commands", "hatch", "relay", "system"]
+        );
+
+        // Helper to find owning modules for a pin by label, signal, or pin id
+        let find_pin_modules = |name: &str| -> Vec<String> {
+            project
+                .pins
+                .iter()
+                .find(|p| p.label.as_deref() == Some(name) || p.signal == name || p.pin == name)
+                .map(|p| p.modules.clone())
+                .unwrap_or_default()
+        };
+
+        // Assert known mappings per Phase 2 requirements
+        assert_eq!(find_pin_modules("Z1_LIMIT"), vec!["alignment"]);
+        assert_eq!(find_pin_modules("GRIP_IN1"), vec!["hatch"]);
+        assert_eq!(find_pin_modules("RELAY_FAN"), vec!["relay"]);
+        assert_eq!(find_pin_modules("RELAY_LIGHT"), vec!["relay"]);
+        assert_eq!(find_pin_modules("Z1_STEP"), vec!["alignment"]);
+        assert_eq!(find_pin_modules("USART2_TX"), vec!["commands"]);
     }
 }
