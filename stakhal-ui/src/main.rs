@@ -13,6 +13,7 @@ mod config;
 mod state;
 mod toolchain;
 mod ui;
+use crate::ui::serial_monitor::{build_serial_monitor_panel, SerialMonitorWidgets};
 
 fn append_log_text(view: &gtk4::TextView, text: &str) {
     let buffer = view.buffer();
@@ -23,6 +24,20 @@ fn append_log_text(view: &gtk4::TextView, text: &str) {
     }
     let mark = buffer.create_mark(None, &buffer.end_iter(), false);
     view.scroll_to_mark(&mark, 0.0, true, 0.0, 1.0);
+}
+
+fn append_serial_text(view: &gtk4::TextView, scrolled: &gtk4::ScrolledWindow, text: &str) {
+    let vadj = scrolled.vadjustment();
+    let is_at_bottom = (vadj.value() + vadj.page_size()) >= (vadj.upper() - 25.0);
+
+    let buffer = view.buffer();
+    let mut end_iter = buffer.end_iter();
+    buffer.insert(&mut end_iter, text);
+
+    if is_at_bottom {
+        let mark = buffer.create_mark(None, &buffer.end_iter(), false);
+        view.scroll_to_mark(&mark, 0.0, true, 0.0, 1.0);
+    }
 }
 
 #[derive(Copy, Clone, PartialEq, Eq)]
@@ -281,6 +296,7 @@ dropdown button {
         build_log_view,
         lbl_build_status,
         btn_clear_log,
+        btn_serial_monitor,
     } = build_main_panel();
 
     let StateDiagramPanelWidgets {
@@ -301,6 +317,22 @@ dropdown button {
         combo_pinout_module,
     } = build_nucleo_pinout_panel();
 
+    let SerialMonitorWidgets {
+        serial_panel_box,
+        btn_serial_back,
+        combo_port,
+        btn_refresh_ports,
+        combo_baud,
+        btn_connect: btn_connect_serial,
+        lbl_serial_status,
+        btn_clear_log: btn_clear_serial,
+        serial_log_view,
+        serial_scrolled,
+        entry_command,
+        btn_send: btn_send_command,
+        box_quick_commands,
+    } = build_serial_monitor_panel();
+
     let stack = gtk4::Stack::builder()
         .transition_type(gtk4::StackTransitionType::SlideLeftRight)
         .transition_duration(220)
@@ -309,6 +341,7 @@ dropdown button {
     stack.add_named(&overview_box, Some("overview"));
     stack.add_named(&diagram_panel_box, Some("state_diagram"));
     stack.add_named(&pinout_panel_box, Some("nucleo_pinout"));
+    stack.add_named(&serial_panel_box, Some("serial_monitor"));
     stack.set_visible_child_name("overview");
 
     let header_bar = adw::HeaderBar::new();
@@ -361,6 +394,18 @@ dropdown button {
         pinout_drawing_area,
         _pinout_scrolled: pinout_scrolled,
         combo_pinout_module: combo_pinout_module.clone(),
+        btn_serial_monitor: btn_serial_monitor.clone(),
+        combo_port: combo_port.clone(),
+        btn_refresh_ports: btn_refresh_ports.clone(),
+        combo_baud: combo_baud.clone(),
+        btn_connect_serial: btn_connect_serial.clone(),
+        lbl_serial_status: lbl_serial_status.clone(),
+        btn_clear_serial: btn_clear_serial.clone(),
+        serial_log_view: serial_log_view.clone(),
+        serial_scrolled: serial_scrolled.clone(),
+        entry_command: entry_command.clone(),
+        btn_send_command: btn_send_command.clone(),
+        box_quick_commands: box_quick_commands.clone(),
     });
 
     setup_state_diagram_drawing_and_gestures(
@@ -382,6 +427,11 @@ dropdown button {
         stack_back3.set_visible_child_full("overview", gtk4::StackTransitionType::SlideRight);
     });
 
+    let stack_back_serial = stack.clone();
+    btn_serial_back.connect_clicked(move |_| {
+        stack_back_serial.set_visible_child_full("overview", gtk4::StackTransitionType::SlideRight);
+    });
+
     let stack_diagram = stack.clone();
     btn_call_graph.connect_clicked(move |_| {
         stack_diagram.set_visible_child_full("state_diagram", gtk4::StackTransitionType::SlideLeft);
@@ -390,6 +440,14 @@ dropdown button {
     let stack_pinout = stack.clone();
     btn_nucleo_pinout.connect_clicked(move |_| {
         stack_pinout.set_visible_child_full("nucleo_pinout", gtk4::StackTransitionType::SlideLeft);
+    });
+
+    let stack_serial = stack.clone();
+    let state_serial = Rc::clone(&state);
+    let widgets_serial = Rc::clone(&widgets);
+    btn_serial_monitor.connect_clicked(move |_| {
+        refresh_serial_ports(&state_serial, &widgets_serial);
+        stack_serial.set_visible_child_full("serial_monitor", gtk4::StackTransitionType::SlideLeft);
     });
 
     // State machine selector dropdown callback
@@ -498,6 +556,61 @@ dropdown button {
     widgets.btn_build_flash.connect_clicked(move |_| {
         execute_build_pipeline(true, &state_bf, &widgets_bf);
     });
+
+    // Connect Serial Monitor Controls
+    let state_ref_ports = Rc::clone(&state);
+    let widgets_ref_ports = Rc::clone(&widgets);
+    widgets.btn_refresh_ports.connect_clicked(move |_| {
+        refresh_serial_ports(&state_ref_ports, &widgets_ref_ports);
+    });
+
+    let state_cp = Rc::clone(&state);
+    widgets.combo_port.connect_selected_notify(move |cb| {
+        let idx = cb.selected() as usize;
+        let mut st = state_cp.borrow_mut();
+        if idx < st.available_serial_ports.len() {
+            st.selected_serial_port = Some(st.available_serial_ports[idx].port_name.clone());
+        }
+    });
+
+    let state_cb = Rc::clone(&state);
+    widgets.combo_baud.connect_selected_notify(move |cb| {
+        let idx = cb.selected() as usize;
+        if idx < crate::toolchain::serial::COMMON_BAUD_RATES.len() {
+            let baud = crate::toolchain::serial::COMMON_BAUD_RATES[idx];
+            state_cb.borrow_mut().selected_serial_baud = baud;
+        }
+    });
+
+    let s_view_clear = widgets.serial_log_view.clone();
+    widgets.btn_clear_serial.connect_clicked(move |_| {
+        s_view_clear.buffer().set_text("");
+    });
+
+    let state_conn = Rc::clone(&state);
+    let widgets_conn = Rc::clone(&widgets);
+    widgets.btn_connect_serial.connect_clicked(move |_| {
+        toggle_serial_connection(&state_conn, &widgets_conn);
+    });
+
+    let state_send = Rc::clone(&state);
+    let widgets_send = Rc::clone(&widgets);
+    let entry_cmd_clone = widgets.entry_command.clone();
+    widgets.btn_send_command.connect_clicked(move |_| {
+        let text = entry_cmd_clone.text().to_string();
+        send_serial_command(&text, &state_send, &widgets_send);
+        entry_cmd_clone.set_text("");
+    });
+
+    let state_entry = Rc::clone(&state);
+    let widgets_entry = Rc::clone(&widgets);
+    widgets.entry_command.connect_activate(move |entry| {
+        let text = entry.text().to_string();
+        send_serial_command(&text, &state_entry, &widgets_entry);
+        entry.set_text("");
+    });
+
+    refresh_serial_ports(&state, &widgets);
 
     window.present();
 
@@ -891,6 +1004,28 @@ fn do_load_project(state: &Rc<RefCell<AppState>>, widgets: &Rc<AppWidgets>) {
             }
             widgets.pinout_drawing_area.queue_draw();
 
+            // Auto-detect console UART and baud rate
+            if let Some(ref main_c) = state.borrow().discovered_main_c {
+                if let Some(uart_info) = stakhal_core::source::detect_console_uart(main_c) {
+                    append_log_text(
+                        &widgets.build_log_view,
+                        &format!(
+                            "[SERIAL] Auto-detected console UART: {} @ {} baud",
+                            uart_info.uart_instance, uart_info.baud_rate
+                        ),
+                    );
+                    if let Some(pos) = crate::toolchain::serial::COMMON_BAUD_RATES
+                        .iter()
+                        .position(|&b| b == uart_info.baud_rate)
+                    {
+                        widgets.combo_baud.set_selected(pos as u32);
+                    }
+                    let mut st = state.borrow_mut();
+                    st.selected_serial_baud = uart_info.baud_rate;
+                    st.detected_console_uart = Some(uart_info);
+                }
+            }
+
             widgets.toast_overlay.add_toast(adw::Toast::new("[OK] Project loaded successfully"));
         }
 
@@ -1055,9 +1190,210 @@ fn run_flash_stage(
     });
 }
 
+fn refresh_serial_ports(state: &Rc<RefCell<AppState>>, widgets: &Rc<AppWidgets>) {
+    let ports = crate::toolchain::serial::enumerate_serial_ports();
+    let is_connected = state.borrow().is_serial_connected;
+
+    if ports.is_empty() {
+        let empty_list = gtk4::StringList::new(&["No Ports Detected"]);
+        widgets.combo_port.set_model(Some(&empty_list));
+        widgets.combo_port.set_selected(0);
+        widgets.combo_port.set_sensitive(false);
+        if !is_connected {
+            widgets.btn_connect_serial.set_sensitive(false);
+        }
+        let mut st = state.borrow_mut();
+        st.available_serial_ports = Vec::new();
+        st.selected_serial_port = None;
+    } else if ports.len() == 1 {
+        let p = &ports[0];
+        let single_list = gtk4::StringList::new(&[&p.display_name]);
+        widgets.combo_port.set_model(Some(&single_list));
+        widgets.combo_port.set_selected(0);
+        widgets.combo_port.set_sensitive(!is_connected);
+        if !is_connected {
+            widgets.btn_connect_serial.set_sensitive(true);
+        }
+        let mut st = state.borrow_mut();
+        st.selected_serial_port = Some(p.port_name.clone());
+        st.available_serial_ports = ports;
+    } else {
+        let display_names: Vec<String> = ports.iter().map(|p| p.display_name.clone()).collect();
+        let display_refs: Vec<&str> = display_names.iter().map(|s| s.as_str()).collect();
+        let list = gtk4::StringList::new(&display_refs);
+        widgets.combo_port.set_model(Some(&list));
+        widgets.combo_port.set_sensitive(!is_connected);
+        if !is_connected {
+            widgets.btn_connect_serial.set_sensitive(true);
+        }
+
+        let mut st = state.borrow_mut();
+        let current_sel = st.selected_serial_port.clone();
+        let mut select_idx = 0;
+        if let Some(ref cur) = current_sel {
+            if let Some(pos) = ports.iter().position(|p| &p.port_name == cur) {
+                select_idx = pos;
+            }
+        }
+        widgets.combo_port.set_selected(select_idx as u32);
+        st.selected_serial_port = Some(ports[select_idx].port_name.clone());
+        st.available_serial_ports = ports;
+    }
+}
+
+fn toggle_serial_connection(state: &Rc<RefCell<AppState>>, widgets: &Rc<AppWidgets>) {
+    let is_connected = state.borrow().is_serial_connected;
+
+    if is_connected {
+        if let Some(ref session) = state.borrow().serial_session {
+            session
+                .tx_cmd
+                .send(crate::toolchain::serial::SerialTxCommand::Disconnect)
+                .ok();
+        }
+    } else {
+        let (port_name, baud_rate) = {
+            let st = state.borrow();
+            let port = match &st.selected_serial_port {
+                Some(p) => p.clone(),
+                None => {
+                    widgets
+                        .toast_overlay
+                        .add_toast(adw::Toast::new("No serial communication port selected"));
+                    return;
+                }
+            };
+            let baud = st.selected_serial_baud;
+            (port, baud)
+        };
+
+        update_build_status(&widgets.lbl_serial_status, "CONNECTING...", StatusKind::Active);
+
+        match crate::toolchain::serial::spawn_serial_connection(port_name.clone(), baud_rate) {
+            Ok((session, event_rx)) => {
+                {
+                    let mut st = state.borrow_mut();
+                    st.is_serial_connected = true;
+                    st.serial_session = Some(session);
+                }
+
+                widgets.btn_connect_serial.set_label("Disconnect");
+                widgets.btn_connect_serial.remove_css_class("suggested-action");
+                widgets.btn_connect_serial.add_css_class("destructive-action");
+                update_build_status(&widgets.lbl_serial_status, "CONNECTED", StatusKind::Ready);
+                widgets.combo_port.set_sensitive(false);
+                widgets.combo_baud.set_sensitive(false);
+                widgets.btn_refresh_ports.set_sensitive(false);
+
+                let state_timer = Rc::clone(state);
+                let widgets_timer = Rc::clone(widgets);
+
+                glib::timeout_add_local(std::time::Duration::from_millis(20), move || {
+                    let mut should_continue = true;
+
+                    while let Ok(evt) = event_rx.try_recv() {
+                        match evt {
+                            crate::toolchain::serial::SerialRxEvent::Connected { port_name, baud_rate } => {
+                                append_serial_text(
+                                    &widgets_timer.serial_log_view,
+                                    &widgets_timer.serial_scrolled,
+                                    &format!("\n[SERIAL] Connected to {} at {} baud (8N1).\n", port_name, baud_rate),
+                                );
+                            }
+                            crate::toolchain::serial::SerialRxEvent::Data(data) => {
+                                append_serial_text(
+                                    &widgets_timer.serial_log_view,
+                                    &widgets_timer.serial_scrolled,
+                                    &data,
+                                );
+                            }
+                            crate::toolchain::serial::SerialRxEvent::Error(err) => {
+                                append_serial_text(
+                                    &widgets_timer.serial_log_view,
+                                    &widgets_timer.serial_scrolled,
+                                    &format!("\n[SERIAL ERROR] {}\n", err),
+                                );
+                            }
+                            crate::toolchain::serial::SerialRxEvent::Disconnected => {
+                                append_serial_text(
+                                    &widgets_timer.serial_log_view,
+                                    &widgets_timer.serial_scrolled,
+                                    "\n[SERIAL] Port disconnected.\n",
+                                );
+                                {
+                                    let mut st = state_timer.borrow_mut();
+                                    st.is_serial_connected = false;
+                                    st.serial_session = None;
+                                }
+                                widgets_timer.btn_connect_serial.set_label("Connect");
+                                widgets_timer.btn_connect_serial.remove_css_class("destructive-action");
+                                widgets_timer.btn_connect_serial.add_css_class("suggested-action");
+                                update_build_status(&widgets_timer.lbl_serial_status, "DISCONNECTED", StatusKind::Idle);
+                                widgets_timer.combo_port.set_sensitive(true);
+                                widgets_timer.combo_baud.set_sensitive(true);
+                                widgets_timer.btn_refresh_ports.set_sensitive(true);
+                                should_continue = false;
+                                break;
+                            }
+                        }
+                    }
+
+                    if should_continue {
+                        glib::ControlFlow::Continue
+                    } else {
+                        glib::ControlFlow::Break
+                    }
+                });
+            }
+            Err(err) => {
+                append_serial_text(
+                    &widgets.serial_log_view,
+                    &widgets.serial_scrolled,
+                    &format!("\n[SERIAL ERROR] {}\n", err),
+                );
+                update_build_status(&widgets.lbl_serial_status, "ERROR", StatusKind::Error);
+                widgets
+                    .toast_overlay
+                    .add_toast(adw::Toast::new(&format!("Serial connection error: {}", err)));
+            }
+        }
+    }
+}
+
+fn send_serial_command(text: &str, state: &Rc<RefCell<AppState>>, widgets: &Rc<AppWidgets>) {
+    let text = text.trim();
+    if text.is_empty() {
+        return;
+    }
+    let st = state.borrow();
+    if let Some(ref session) = st.serial_session {
+        let payload = format!("{}\r\n", text);
+        session
+            .tx_cmd
+            .send(crate::toolchain::serial::SerialTxCommand::Send(payload))
+            .ok();
+    } else {
+        widgets
+            .toast_overlay
+            .add_toast(adw::Toast::new("Serial port is not currently connected"));
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_serial_monitor_baud_auto_detection() {
+        let fixture_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../stakhal-core/tests/fixtures/aa_ns_stm_port");
+        let main_c_path = fixture_dir.join("Core/Src/main.c");
+
+        let uart_info = stakhal_core::source::detect_console_uart(&main_c_path)
+            .expect("should detect console UART in aa_ns_stm_port");
+        assert_eq!(uart_info.uart_instance, "huart2");
+        assert_eq!(uart_info.baud_rate, 115200);
+    }
 
     #[test]
     fn test_ui_build_smoke() {
@@ -1135,8 +1471,6 @@ mod tests {
 
     #[test]
     fn test_render_snapshots() {
-        let _ = gtk4::init();
-
         // 1. State diagram rendering test
         let surface_sm = gtk4::cairo::ImageSurface::create(gtk4::cairo::Format::ARgb32, 1400, 900).expect("surface create");
         let cr_sm = gtk4::cairo::Context::new(&surface_sm).expect("cr create");

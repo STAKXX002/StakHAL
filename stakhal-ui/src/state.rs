@@ -37,6 +37,14 @@ pub struct AppState {
     pub detected_build_system: Option<crate::toolchain::builder::BuildSystem>,
     #[allow(dead_code)]
     pub selected_probe: Option<String>,
+
+    // Serial monitor state
+    pub detected_console_uart: Option<stakhal_core::source::ConsoleUartInfo>,
+    pub available_serial_ports: Vec<crate::toolchain::serial::SerialPortInfo>,
+    pub selected_serial_port: Option<String>,
+    pub selected_serial_baud: u32,
+    pub is_serial_connected: bool,
+    pub serial_session: Option<crate::toolchain::serial::ActiveSerialSession>,
 }
 
 impl Default for AppState {
@@ -67,6 +75,12 @@ impl Default for AppState {
             has_build_system: false,
             detected_build_system: None,
             selected_probe: None,
+            detected_console_uart: None,
+            available_serial_ports: Vec::new(),
+            selected_serial_port: None,
+            selected_serial_baud: 115200,
+            is_serial_connected: false,
+            serial_session: None,
         }
     }
 }
@@ -109,6 +123,22 @@ pub struct AppWidgets {
     pub pinout_drawing_area: gtk4::DrawingArea,
     pub _pinout_scrolled: gtk4::ScrolledWindow,
     pub combo_pinout_module: gtk4::DropDown,
+
+    // Serial monitor widgets
+    #[allow(dead_code)]
+    pub btn_serial_monitor: gtk4::Button,
+    pub combo_port: gtk4::DropDown,
+    pub btn_refresh_ports: gtk4::Button,
+    pub combo_baud: gtk4::DropDown,
+    pub btn_connect_serial: gtk4::Button,
+    pub lbl_serial_status: gtk4::Label,
+    pub btn_clear_serial: gtk4::Button,
+    pub serial_log_view: gtk4::TextView,
+    pub serial_scrolled: gtk4::ScrolledWindow,
+    pub entry_command: gtk4::Entry,
+    pub btn_send_command: gtk4::Button,
+    #[allow(dead_code)]
+    pub box_quick_commands: gtk4::Box,
 }
 
 

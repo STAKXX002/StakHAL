@@ -24,6 +24,7 @@ pub struct MainPanelWidgets {
     pub build_log_view: gtk4::TextView,
     pub lbl_build_status: gtk4::Label,
     pub btn_clear_log: gtk4::Button,
+    pub btn_serial_monitor: gtk4::Button,
 }
 
 pub fn build_main_panel() -> MainPanelWidgets {
@@ -89,6 +90,13 @@ pub fn build_main_panel() -> MainPanelWidgets {
         .build();
     btn_nucleo_pinout.set_cursor_from_name(Some("pointer"));
 
+    let btn_serial_monitor = gtk4::Button::builder()
+        .label("Serial Monitor")
+        .css_classes(vec!["stakhal-btn".to_string(), "flat".to_string()])
+        .tooltip_text("Open Serial Monitor console")
+        .build();
+    btn_serial_monitor.set_cursor_from_name(Some("pointer"));
+
     let toolbar_box = gtk4::Box::builder()
         .orientation(gtk4::Orientation::Horizontal)
         .spacing(12)
@@ -120,6 +128,7 @@ pub fn build_main_panel() -> MainPanelWidgets {
     toolbar_box.append(&btn_build_flash);
     toolbar_box.append(&btn_call_graph);
     toolbar_box.append(&btn_nucleo_pinout);
+    toolbar_box.append(&btn_serial_monitor);
 
     let lbl_project_name = gtk4::Label::builder()
         .label("NAME: N/A")
@@ -276,6 +285,7 @@ pub fn build_main_panel() -> MainPanelWidgets {
         build_log_view,
         lbl_build_status,
         btn_clear_log,
+        btn_serial_monitor,
     }
 }
 
