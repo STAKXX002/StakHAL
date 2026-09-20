@@ -1050,27 +1050,25 @@ fn do_load_project(state: &Rc<RefCell<AppState>>, widgets: &Rc<AppWidgets>) {
             widgets.pinout_drawing_area.queue_draw();
 
             // Auto-detect console UART and baud rate
-            if let Some(ref main_c) = state.borrow().discovered_main_c {
-                if let Some(uart_info) = stakhal_core::source::detect_console_uart(main_c) {
-                    append_log_text(
-                        &widgets.build_log_view,
-                        &format!(
-                            "[SERIAL] Auto-detected console UART: {} @ {} baud",
-                            uart_info.uart_instance, uart_info.baud_rate
-                        ),
-                    );
-                    if let Some(pos) = crate::toolchain::serial::COMMON_BAUD_RATES
-                        .iter()
-                        .position(|&b| b == uart_info.baud_rate)
-                    {
-                        widgets.combo_baud.set_selected(pos as u32);
-                    }
-                    let mut st = state.borrow_mut();
-                    st.selected_serial_baud = uart_info.baud_rate;
-                    st.detected_console_uart = Some(uart_info);
+            if let Some(uart_info) = stakhal_core::source::detect_console_uart(&main_c_path) {
+                append_log_text(
+                    &widgets.build_log_view,
+                    &format!(
+                        "[SERIAL] Auto-detected console UART: {} @ {} baud",
+                        uart_info.uart_instance, uart_info.baud_rate
+                    ),
+                );
+                if let Some(pos) = crate::toolchain::serial::COMMON_BAUD_RATES
+                    .iter()
+                    .position(|&b| b == uart_info.baud_rate)
+                {
+                    widgets.combo_baud.set_selected(pos as u32);
                 }
-                update_quick_send_buttons(main_c, state, widgets);
+                let mut st = state.borrow_mut();
+                st.selected_serial_baud = uart_info.baud_rate;
+                st.detected_console_uart = Some(uart_info);
             }
+            update_quick_send_buttons(&main_c_path, state, widgets);
 
             widgets.toast_overlay.add_toast(adw::Toast::new("[OK] Project loaded successfully"));
         }
@@ -1184,7 +1182,8 @@ fn run_flash_stage(
     }
 
     // Phase 5: Disconnect any active serial session prior to flashing to avoid USB port contention
-    if state.borrow().is_serial_connected {
+    let was_serial_connected = state.borrow().is_serial_connected;
+    if was_serial_connected {
         if let Some(session) = state.borrow_mut().serial_session.take() {
             session
                 .tx_cmd
@@ -1665,6 +1664,30 @@ mod tests {
             !windows.is_empty(),
             "Expected ApplicationWindow to be constructed during build_ui"
         );
+
+        fn find_button(widget: &gtk4::Widget, label: &str) -> Option<gtk4::Button> {
+            if let Ok(btn) = widget.clone().downcast::<gtk4::Button>() {
+                if btn.label().as_deref() == Some(label) {
+                    return Some(btn);
+                }
+            }
+            let mut child = widget.first_child();
+            while let Some(c) = child {
+                if let Some(found) = find_button(&c, label) {
+                    return Some(found);
+                }
+                child = c.next_sibling();
+            }
+            None
+        }
+
+        if let Some(win) = windows.first() {
+            if let Some(btn_load) = find_button(win.upcast_ref(), "Load Project") {
+                if btn_load.is_sensitive() {
+                    btn_load.emit_clicked();
+                }
+            }
+        }
     }
 
     #[test]
