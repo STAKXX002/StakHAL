@@ -681,6 +681,7 @@ fn execute_build_pipeline(
         if st.build_in_progress {
             return;
         }
+
         let dir = match &st.project_dir {
             Some(d) => d.clone(),
             None => return,
@@ -703,10 +704,13 @@ fn execute_build_pipeline(
         Err(err) => {
             append_log_text(&widgets.build_log_view, &format!("[ERROR] {}", err));
             update_build_status(&widgets.lbl_build_status, "BUILD FAILED", StatusKind::Error);
-            let mut st = state.borrow_mut();
-            st.build_in_progress = false;
-            widgets.btn_build.set_sensitive(st.has_build_system);
-            widgets.btn_build_flash.set_sensitive(st.has_build_system);
+            let has_build_system = {
+                let mut st = state.borrow_mut();
+                st.build_in_progress = false;
+                st.has_build_system
+            };
+            widgets.btn_build.set_sensitive(has_build_system);
+            widgets.btn_build_flash.set_sensitive(has_build_system);
             return;
         }
     };
@@ -756,10 +760,13 @@ fn execute_build_pipeline(
                         } else {
                             update_build_status(&widgets_timer.lbl_build_status, "SUCCESS", StatusKind::Ready);
                             widgets_timer.toast_overlay.add_toast(adw::Toast::new("[OK] Build succeeded"));
-                            let mut st = state_timer.borrow_mut();
-                            st.build_in_progress = false;
-                            widgets_timer.btn_build.set_sensitive(st.has_build_system);
-                            widgets_timer.btn_build_flash.set_sensitive(st.has_build_system);
+                            let has_build_system = {
+                                let mut st = state_timer.borrow_mut();
+                                st.build_in_progress = false;
+                                st.has_build_system
+                            };
+                            widgets_timer.btn_build.set_sensitive(has_build_system);
+                            widgets_timer.btn_build_flash.set_sensitive(has_build_system);
                         }
                     }
                     toolchain::makefile::ArtifactResolution::MultipleCandidates(candidates) => {
@@ -796,28 +803,37 @@ fn execute_build_pipeline(
                                 }
                                 append_log_text(&widgets_dlg.build_log_view, "[ARTIFACT] Operation cancelled by user.");
                                 update_build_status(&widgets_dlg.lbl_build_status, "CANCELLED", StatusKind::Idle);
-                                let mut st = state_dlg.borrow_mut();
-                                st.build_in_progress = false;
-                                widgets_dlg.btn_build.set_sensitive(st.has_build_system);
-                                widgets_dlg.btn_build_flash.set_sensitive(st.has_build_system);
+                                let has_build_system = {
+                                    let mut st = state_dlg.borrow_mut();
+                                    st.build_in_progress = false;
+                                    st.has_build_system
+                                };
+                                widgets_dlg.btn_build.set_sensitive(has_build_system);
+                                widgets_dlg.btn_build_flash.set_sensitive(has_build_system);
                             });
                             dialog.present();
                         } else {
                             update_build_status(&widgets_timer.lbl_build_status, "SUCCESS", StatusKind::Ready);
                             widgets_timer.toast_overlay.add_toast(adw::Toast::new("[OK] Build succeeded"));
-                            let mut st = state_timer.borrow_mut();
-                            st.build_in_progress = false;
-                            widgets_timer.btn_build.set_sensitive(st.has_build_system);
-                            widgets_timer.btn_build_flash.set_sensitive(st.has_build_system);
+                            let has_build_system = {
+                                let mut st = state_timer.borrow_mut();
+                                st.build_in_progress = false;
+                                st.has_build_system
+                            };
+                            widgets_timer.btn_build.set_sensitive(has_build_system);
+                            widgets_timer.btn_build_flash.set_sensitive(has_build_system);
                         }
                     }
                     toolchain::makefile::ArtifactResolution::NoneFound(expected) => {
                         append_log_text(&widgets_timer.build_log_view, &format!("[ERROR] Build succeeded but target .bin was not found. Expected: {}", expected.display()));
                         update_build_status(&widgets_timer.lbl_build_status, "ARTIFACT MISSING", StatusKind::Error);
-                        let mut st = state_timer.borrow_mut();
-                        st.build_in_progress = false;
-                        widgets_timer.btn_build.set_sensitive(st.has_build_system);
-                        widgets_timer.btn_build_flash.set_sensitive(st.has_build_system);
+                        let has_build_system = {
+                            let mut st = state_timer.borrow_mut();
+                            st.build_in_progress = false;
+                            st.has_build_system
+                        };
+                        widgets_timer.btn_build.set_sensitive(has_build_system);
+                        widgets_timer.btn_build_flash.set_sensitive(has_build_system);
                     }
                 }
             } else {
@@ -825,33 +841,52 @@ fn execute_build_pipeline(
                 let action_type = if flash_after_build { "Flashing halted." } else { "Build failed." };
                 append_log_text(&widgets_timer.build_log_view, &format!("\n[BUILD FAILED] {} exited with error code {}. {}", cmd, code_str, action_type));
                 update_build_status(&widgets_timer.lbl_build_status, "BUILD FAILED", StatusKind::Error);
-                let mut st = state_timer.borrow_mut();
-                st.build_in_progress = false;
-                widgets_timer.btn_build.set_sensitive(st.has_build_system);
-                widgets_timer.btn_build_flash.set_sensitive(st.has_build_system);
+                let has_build_system = {
+                    let mut st = state_timer.borrow_mut();
+                    st.build_in_progress = false;
+                    st.has_build_system
+                };
+                widgets_timer.btn_build.set_sensitive(has_build_system);
+                widgets_timer.btn_build_flash.set_sensitive(has_build_system);
             }
 
             return glib::ControlFlow::Break;
         }
+
 
         glib::ControlFlow::Continue
     });
 }
 
 fn try_discover_folder(dir: &Path, state: &Rc<RefCell<AppState>>, widgets: &Rc<AppWidgets>) {
-    let mut st = state.borrow_mut();
-    st.project_dir = Some(dir.to_path_buf());
-    widgets.lbl_discovered_dir.set_text(&dir.display().to_string());
-
     let build_sys = toolchain::builder::detect_build_system(dir);
     let has_build_sys = build_sys.is_some();
-    st.has_makefile = dir.join("Makefile").is_file() || dir.join("makefile").is_file();
-    st.has_build_system = has_build_sys;
-    st.detected_build_system = build_sys;
+    let has_makefile = dir.join("Makefile").is_file() || dir.join("makefile").is_file();
+    let discovery_res = discover_project_files(dir);
+
+    {
+        let mut st = state.borrow_mut();
+        st.project_dir = Some(dir.to_path_buf());
+        st.has_makefile = has_makefile;
+        st.has_build_system = has_build_sys;
+        st.detected_build_system = build_sys;
+        match &discovery_res {
+            Ok((ioc_path, main_c_path)) => {
+                st.discovered_ioc = Some(ioc_path.clone());
+                st.discovered_main_c = Some(main_c_path.clone());
+            }
+            Err(_) => {
+                st.discovered_ioc = None;
+                st.discovered_main_c = None;
+            }
+        }
+    }
+
+    widgets.lbl_discovered_dir.set_text(&dir.display().to_string());
     widgets.btn_build.set_sensitive(has_build_sys);
     widgets.btn_build_flash.set_sensitive(has_build_sys);
 
-    match discover_project_files(dir) {
+    match discovery_res {
         Ok((ioc_path, main_c_path)) => {
             widgets
                 .lbl_ioc_path
@@ -859,21 +894,17 @@ fn try_discover_folder(dir: &Path, state: &Rc<RefCell<AppState>>, widgets: &Rc<A
             widgets
                 .lbl_main_c_path
                 .set_text(&format!("Main C: {}", main_c_path.display()));
-
-            st.discovered_ioc = Some(ioc_path);
-            st.discovered_main_c = Some(main_c_path);
             widgets.btn_load.set_sensitive(true);
         }
         Err(err) => {
             widgets.toast_overlay.add_toast(adw::Toast::new(&format!("Discovery Error: {}", err)));
             widgets.lbl_ioc_path.set_text("IOC Path: N/A");
             widgets.lbl_main_c_path.set_text("Main C Path: N/A");
-            st.discovered_ioc = None;
-            st.discovered_main_c = None;
             widgets.btn_load.set_sensitive(false);
         }
     }
 }
+
 
 fn do_load_project(state: &Rc<RefCell<AppState>>, widgets: &Rc<AppWidgets>) {
     let (ioc_path, main_c_path, dir_path) = {
@@ -1129,19 +1160,22 @@ fn run_probe_detection_and_flash(
                 dialog.connect_response(None, move |_, resp| {
                     if resp != "cancel" {
                         if let Ok(idx) = resp.parse::<usize>() {
-                            if let Some(chosen_probe) = probes_clone.get(idx) {
-                                append_log_text(&widgets_dlg.build_log_view, &format!("[PROBE] Selected target: {}", chosen_probe.display_label()));
-                                run_flash_stage(artifact_clone.clone(), Some(chosen_probe.serial.clone()), &state_dlg, &widgets_dlg, dir_clone.clone());
+                            if let Some(chosen) = probes_clone.get(idx) {
+                                append_log_text(&widgets_dlg.build_log_view, &format!("[PROBE] Selected target: {}", chosen.display_label()));
+                                run_flash_stage(artifact_clone.clone(), Some(chosen.serial.clone()), &state_dlg, &widgets_dlg, dir_clone.clone());
                                 return;
                             }
                         }
                     }
                     append_log_text(&widgets_dlg.build_log_view, "[PROBE] Flashing cancelled by user.");
                     update_build_status(&widgets_dlg.lbl_build_status, "CANCELLED", StatusKind::Idle);
-                    let mut st = state_dlg.borrow_mut();
-                    st.build_in_progress = false;
-                    widgets_dlg.btn_build.set_sensitive(st.has_build_system);
-                    widgets_dlg.btn_build_flash.set_sensitive(st.has_build_system);
+                    let has_build_system = {
+                        let mut st = state_dlg.borrow_mut();
+                        st.build_in_progress = false;
+                        st.has_build_system
+                    };
+                    widgets_dlg.btn_build.set_sensitive(has_build_system);
+                    widgets_dlg.btn_build_flash.set_sensitive(has_build_system);
                 });
                 dialog.present();
             }
@@ -1155,13 +1189,17 @@ fn run_probe_detection_and_flash(
             };
             update_build_status(&widgets.lbl_build_status, txt, kind);
             widgets.toast_overlay.add_toast(adw::Toast::new(&format!("[ERROR] {}", err)));
-            let mut st = state.borrow_mut();
-            st.build_in_progress = false;
-            widgets.btn_build.set_sensitive(st.has_build_system);
-            widgets.btn_build_flash.set_sensitive(st.has_build_system);
+            let has_build_system = {
+                let mut st = state.borrow_mut();
+                st.build_in_progress = false;
+                st.has_build_system
+            };
+            widgets.btn_build.set_sensitive(has_build_system);
+            widgets.btn_build_flash.set_sensitive(has_build_system);
         }
     }
 }
+
 
 fn run_flash_stage(
     artifact: PathBuf,
@@ -1174,24 +1212,30 @@ fn run_flash_stage(
         append_log_text(&widgets.build_log_view, "[ERROR] `st-flash` executable not found on PATH. Please install stlink-tools (e.g. `sudo apt install stlink-tools`).");
         update_build_status(&widgets.lbl_build_status, "ST-FLASH MISSING", StatusKind::Error);
         widgets.toast_overlay.add_toast(adw::Toast::new("[ERROR] `st-flash` not found on PATH"));
-        let mut st = state.borrow_mut();
-        st.build_in_progress = false;
-        widgets.btn_build.set_sensitive(st.has_build_system);
-        widgets.btn_build_flash.set_sensitive(st.has_build_system);
+        let has_build_system = {
+            let mut st = state.borrow_mut();
+            st.build_in_progress = false;
+            st.has_build_system
+        };
+        widgets.btn_build.set_sensitive(has_build_system);
+        widgets.btn_build_flash.set_sensitive(has_build_system);
         return;
     }
 
     // Phase 5: Disconnect any active serial session prior to flashing to avoid USB port contention
     let was_serial_connected = state.borrow().is_serial_connected;
     if was_serial_connected {
-        if let Some(session) = state.borrow_mut().serial_session.take() {
+        let session = {
+            let mut st = state.borrow_mut();
+            st.is_serial_connected = false;
+            st.serial_session.take()
+        };
+        if let Some(session) = session {
             session
                 .tx_cmd
                 .send(crate::toolchain::serial::SerialTxCommand::Disconnect)
                 .ok();
         }
-        let mut st = state.borrow_mut();
-        st.is_serial_connected = false;
         widgets.btn_connect_serial.set_label("Connect");
         widgets.btn_connect_serial.remove_css_class("destructive-action");
         widgets.btn_connect_serial.add_css_class("suggested-action");
@@ -1231,10 +1275,13 @@ fn run_flash_stage(
         }
 
         if let Some((success, code)) = finished {
-            let mut st = state_timer.borrow_mut();
-            st.build_in_progress = false;
-            widgets_timer.btn_build.set_sensitive(st.has_build_system);
-            widgets_timer.btn_build_flash.set_sensitive(st.has_build_system);
+            let has_build_system = {
+                let mut st = state_timer.borrow_mut();
+                st.build_in_progress = false;
+                st.has_build_system
+            };
+            widgets_timer.btn_build.set_sensitive(has_build_system);
+            widgets_timer.btn_build_flash.set_sensitive(has_build_system);
 
             if success {
                 append_log_text(&widgets_timer.build_log_view, "\n[FLASH SUCCESS] Firmware written to 0x08000000 and target MCU reset successfully!");
@@ -1258,6 +1305,7 @@ fn run_flash_stage(
     });
 }
 
+
 fn refresh_serial_ports(state: &Rc<RefCell<AppState>>, widgets: &Rc<AppWidgets>) {
     let ports = crate::toolchain::serial::enumerate_serial_ports();
     let is_connected = state.borrow().is_serial_connected;
@@ -1270,9 +1318,11 @@ fn refresh_serial_ports(state: &Rc<RefCell<AppState>>, widgets: &Rc<AppWidgets>)
         if !is_connected {
             widgets.btn_connect_serial.set_sensitive(false);
         }
-        let mut st = state.borrow_mut();
-        st.available_serial_ports = Vec::new();
-        st.selected_serial_port = None;
+        {
+            let mut st = state.borrow_mut();
+            st.available_serial_ports = Vec::new();
+            st.selected_serial_port = None;
+        }
     } else if ports.len() == 1 {
         let p = &ports[0];
         let single_list = gtk4::StringList::new(&[&p.display_name]);
@@ -1282,9 +1332,11 @@ fn refresh_serial_ports(state: &Rc<RefCell<AppState>>, widgets: &Rc<AppWidgets>)
         if !is_connected {
             widgets.btn_connect_serial.set_sensitive(true);
         }
-        let mut st = state.borrow_mut();
-        st.selected_serial_port = Some(p.port_name.clone());
-        st.available_serial_ports = ports;
+        {
+            let mut st = state.borrow_mut();
+            st.selected_serial_port = Some(p.port_name.clone());
+            st.available_serial_ports = ports;
+        }
     } else {
         let display_names: Vec<String> = ports.iter().map(|p| p.display_name.clone()).collect();
         let display_refs: Vec<&str> = display_names.iter().map(|s| s.as_str()).collect();
@@ -1295,19 +1347,22 @@ fn refresh_serial_ports(state: &Rc<RefCell<AppState>>, widgets: &Rc<AppWidgets>)
             widgets.btn_connect_serial.set_sensitive(true);
         }
 
-        let mut st = state.borrow_mut();
-        let current_sel = st.selected_serial_port.clone();
+        let current_sel = state.borrow().selected_serial_port.clone();
         let mut select_idx = 0;
         if let Some(ref cur) = current_sel {
             if let Some(pos) = ports.iter().position(|p| &p.port_name == cur) {
                 select_idx = pos;
             }
         }
+        {
+            let mut st = state.borrow_mut();
+            st.selected_serial_port = Some(ports[select_idx].port_name.clone());
+            st.available_serial_ports = ports;
+        }
         widgets.combo_port.set_selected(select_idx as u32);
-        st.selected_serial_port = Some(ports[select_idx].port_name.clone());
-        st.available_serial_ports = ports;
     }
 }
+
 
 fn attach_serial_rx_pump(
     event_rx: std::sync::mpsc::Receiver<crate::toolchain::serial::SerialRxEvent>,
@@ -1349,17 +1404,19 @@ fn attach_serial_rx_pump(
                         &widgets_timer.serial_scrolled,
                         "\n[SERIAL] Port disconnected.\n",
                     );
-                    {
+                    let has_ports = {
                         let mut st = state_timer.borrow_mut();
                         st.is_serial_connected = false;
                         st.serial_session = None;
-                    }
+                        !st.available_serial_ports.is_empty()
+                    };
                     widgets_timer.btn_connect_serial.set_label("Connect");
                     widgets_timer.btn_connect_serial.remove_css_class("destructive-action");
                     widgets_timer.btn_connect_serial.add_css_class("suggested-action");
                     widgets_timer
                         .btn_connect_serial
-                        .set_sensitive(!state_timer.borrow().available_serial_ports.is_empty());
+                        .set_sensitive(has_ports);
+
                     update_build_status(&widgets_timer.lbl_serial_status, "DISCONNECTED", StatusKind::Idle);
                     widgets_timer.combo_port.set_sensitive(true);
                     widgets_timer.combo_baud.set_sensitive(true);
@@ -1379,13 +1436,18 @@ fn attach_serial_rx_pump(
 }
 
 fn auto_reconnect_serial_after_flash(state: &Rc<RefCell<AppState>>, widgets: &Rc<AppWidgets>) {
-    if let Some(session) = state.borrow_mut().serial_session.take() {
+    let session = {
+        let mut st = state.borrow_mut();
+        st.is_serial_connected = false;
+        st.serial_session.take()
+    };
+    if let Some(session) = session {
         session
             .tx_cmd
             .send(crate::toolchain::serial::SerialTxCommand::Disconnect)
             .ok();
     }
-    state.borrow_mut().is_serial_connected = false;
+
 
     update_build_status(&widgets.lbl_serial_status, "RECONNECTING...", StatusKind::Active);
     widgets.btn_connect_serial.set_label("Connecting...");
@@ -1548,13 +1610,29 @@ fn send_serial_command(text: &str, state: &Rc<RefCell<AppState>>, widgets: &Rc<A
     if text.is_empty() {
         return;
     }
-    let is_connected = state.borrow().is_serial_connected;
-    if !is_connected {
-        widgets
-            .toast_overlay
-            .add_toast(adw::Toast::new("Serial port is not currently connected"));
-        return;
-    }
+
+    let tx_sender = {
+        let mut st = state.borrow_mut();
+        if !st.is_serial_connected {
+            None
+        } else {
+            if st.serial_command_history.last().map(|s| s.as_str()) != Some(text) {
+                st.serial_command_history.push(text.to_string());
+            }
+            st.serial_history_index = None;
+            st.serial_session.as_ref().map(|s| s.tx_cmd.clone())
+        }
+    };
+
+    let tx_cmd = match tx_sender {
+        Some(tx) => tx,
+        None => {
+            widgets
+                .toast_overlay
+                .add_toast(adw::Toast::new("Serial port is not currently connected"));
+            return;
+        }
+    };
 
     // Echo sent command to serial console
     append_serial_text(
@@ -1563,24 +1641,12 @@ fn send_serial_command(text: &str, state: &Rc<RefCell<AppState>>, widgets: &Rc<A
         &format!("> {}\n", text),
     );
 
-    // Record in history
-    {
-        let mut st = state.borrow_mut();
-        if st.serial_command_history.last().map(|s| s.as_str()) != Some(text) {
-            st.serial_command_history.push(text.to_string());
-        }
-        st.serial_history_index = None;
-    }
-
-    let st = state.borrow();
-    if let Some(ref session) = st.serial_session {
-        let payload = format!("{}\r\n", text);
-        session
-            .tx_cmd
-            .send(crate::toolchain::serial::SerialTxCommand::Send(payload))
-            .ok();
-    }
+    let payload = format!("{}\r\n", text);
+    tx_cmd
+        .send(crate::toolchain::serial::SerialTxCommand::Send(payload))
+        .ok();
 }
+
 
 fn clear_box_children(bx: &gtk4::Box) {
     while let Some(child) = bx.first_child() {
@@ -1639,6 +1705,57 @@ mod tests {
     }
 
     #[test]
+    fn test_reproduce_run_flash_stage_double_borrow() {
+        let state = Rc::new(RefCell::new(AppState::default()));
+        let finished = Some((true, Some(0)));
+
+        let panic_res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            if let Some((success, _code)) = finished {
+                let mut st = state.borrow_mut();
+                st.build_in_progress = false;
+                let _has_bs = st.has_build_system;
+
+                if success {
+                    // Simulates unpatched auto_reconnect_serial_after_flash(&state, ...):
+                    let _session = state.borrow_mut().serial_session.take();
+                }
+            }
+        }));
+
+        assert!(
+            panic_res.is_err(),
+            "Expected double-borrow panic when st is not dropped before re-borrowing state"
+        );
+    }
+
+    #[test]
+    fn test_run_flash_stage_borrow_released_before_reconnect() {
+        let state = Rc::new(RefCell::new(AppState::default()));
+        let finished = Some((true, Some(0)));
+
+        let panic_res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            if let Some((success, _code)) = finished {
+                let has_build_system = {
+                    let mut st = state.borrow_mut();
+                    st.build_in_progress = false;
+                    st.has_build_system
+                };
+                let _ = has_build_system;
+
+                if success {
+                    // Simulates auto_reconnect_serial_after_flash(&state, ...):
+                    let _session = state.borrow_mut().serial_session.take();
+                }
+            }
+        }));
+
+        assert!(
+            panic_res.is_ok(),
+            "Expected borrow to be dropped cleanly so auto-reconnect can borrow state mutably"
+        );
+    }
+
+    #[test]
     fn test_ui_build_smoke() {
         if let Err(err) = gtk4::init() {
             eprintln!("GTK display not available, skipping UI smoke test: {}", err);
@@ -1689,6 +1806,10 @@ mod tests {
             }
         }
     }
+
+
+
+
 
     #[test]
     fn test_f446_project_loading_enables_pinout_btn() {
