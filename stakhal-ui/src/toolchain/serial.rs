@@ -87,6 +87,34 @@ pub fn enumerate_serial_ports() -> Vec<SerialPortInfo> {
 }
 
 /// Connects to a serial port in a background worker thread.
+/// Processes incoming serial bytes, extracting full lines terminated by '\n' and flushing partial lines on timeout.
+pub fn process_incoming_bytes(
+    byte_buffer: &mut Vec<u8>,
+    new_bytes: &[u8],
+    is_timeout: bool,
+    elapsed_since_last: Duration,
+) -> Vec<String> {
+    let mut emitted = Vec::new();
+    byte_buffer.extend_from_slice(new_bytes);
+
+    while let Some(nl_pos) = byte_buffer.iter().position(|&b| b == b'\n') {
+        let line_bytes: Vec<u8> = byte_buffer.drain(..=nl_pos).collect();
+        let raw = String::from_utf8_lossy(&line_bytes).to_string();
+        let normalized = raw.replace("\r\n", "\n").replace('\r', "\n");
+        emitted.push(normalized);
+    }
+
+    if is_timeout && !byte_buffer.is_empty() && elapsed_since_last >= Duration::from_millis(40) {
+        let raw = String::from_utf8_lossy(byte_buffer).to_string();
+        byte_buffer.clear();
+        let normalized = raw.replace("\r\n", "\n").replace('\r', "");
+        emitted.push(normalized);
+    }
+
+    emitted
+}
+
+/// Connects to a serial port in a background worker thread.
 /// Returns the session handle (for sending commands) and an event receiver (for receiving incoming data/status).
 pub fn spawn_serial_connection(
     port_name: String,
@@ -119,6 +147,8 @@ pub fn spawn_serial_connection(
             .ok();
 
         let mut buf = [0u8; 1024];
+        let mut byte_buffer = Vec::new();
+        let mut last_rx_instant = std::time::Instant::now();
         let mut running = true;
 
         while running {
@@ -146,14 +176,34 @@ pub fn spawn_serial_connection(
             // Read incoming bytes
             match port.read(&mut buf) {
                 Ok(n) if n > 0 => {
-                    let chunk = String::from_utf8_lossy(&buf[..n]).to_string();
-                    event_tx.send(SerialRxEvent::Data(chunk)).ok();
+                    last_rx_instant = std::time::Instant::now();
+                    let lines = process_incoming_bytes(&mut byte_buffer, &buf[..n], false, Duration::ZERO);
+                    for line in lines {
+                        event_tx.send(SerialRxEvent::Data(line)).ok();
+                    }
                 }
                 Ok(_) => {}
                 Err(ref e) if e.kind() == std::io::ErrorKind::TimedOut => {
-                    // Timeout is expected, continue loop
+                    let lines = process_incoming_bytes(
+                        &mut byte_buffer,
+                        &[],
+                        true,
+                        last_rx_instant.elapsed(),
+                    );
+                    for line in lines {
+                        event_tx.send(SerialRxEvent::Data(line)).ok();
+                    }
                 }
                 Err(e) => {
+                    let lines = process_incoming_bytes(
+                        &mut byte_buffer,
+                        &[],
+                        true,
+                        Duration::from_secs(1),
+                    );
+                    for line in lines {
+                        event_tx.send(SerialRxEvent::Data(line)).ok();
+                    }
                     event_tx.send(SerialRxEvent::Error(format!("Rx error: {}", e))).ok();
                     break;
                 }
@@ -182,5 +232,45 @@ mod tests {
         let ports = enumerate_serial_ports();
         // Just verify it returns a vector and doesn't crash
         println!("Enumerated {} serial ports", ports.len());
+    }
+
+    #[test]
+    fn test_process_incoming_bytes_complete_lines() {
+        let mut buf = Vec::new();
+        let input = b"Hello STM32\r\nPosition: 120\r\n";
+        let lines = process_incoming_bytes(&mut buf, input, false, Duration::ZERO);
+        assert_eq!(lines.len(), 2);
+        assert_eq!(lines[0], "Hello STM32\n");
+        assert_eq!(lines[1], "Position: 120\n");
+        assert!(buf.is_empty());
+    }
+
+    #[test]
+    fn test_process_incoming_bytes_partial_lines_accumulate() {
+        let mut buf = Vec::new();
+        let chunk1 = b"Partial ";
+        let lines1 = process_incoming_bytes(&mut buf, chunk1, false, Duration::ZERO);
+        assert!(lines1.is_empty());
+        assert_eq!(buf, b"Partial ");
+
+        let chunk2 = b"command message\r\n";
+        let lines2 = process_incoming_bytes(&mut buf, chunk2, false, Duration::ZERO);
+        assert_eq!(lines2.len(), 1);
+        assert_eq!(lines2[0], "Partial command message\n");
+        assert!(buf.is_empty());
+    }
+
+    #[test]
+    fn test_process_incoming_bytes_timeout_flush() {
+        let mut buf = Vec::new();
+        let prompt = b"STM32> ";
+        let lines1 = process_incoming_bytes(&mut buf, prompt, false, Duration::ZERO);
+        assert!(lines1.is_empty());
+
+        // Timeout flush after 50ms
+        let lines2 = process_incoming_bytes(&mut buf, &[], true, Duration::from_millis(50));
+        assert_eq!(lines2.len(), 1);
+        assert_eq!(lines2[0], "STM32> ");
+        assert!(buf.is_empty());
     }
 }
