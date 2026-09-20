@@ -2,6 +2,8 @@
 
 **StakHAL** is a modern, high-performance developer workbench for STM32 embedded firmware engineers. Built natively in **Rust**, **GTK4**, and **Libadwaita**, StakHAL inspects STM32CubeMX projects, visualizes application state machines and physical board pinouts, and provides an integrated, non-blocking **Build & Flash** toolchain.
 
+> **Project Status & Limitations**: StakHAL's state-machine and command-table analysis is pattern-based and has been validated against a small number of real firmware projects so far. It may not correctly detect every C coding style or firmware architecture. Unresolved or ambiguous transitions are surfaced directly in the interface rather than guessed at.
+
 ---
 
 ## Features
@@ -21,9 +23,11 @@
 - **Hardware-Accelerated Canvas**: Smooth 60fps pan, zoom, fit-to-view, and click-to-inspect transition details, optimized with batch dot-grid rendering and OpenGL acceleration for WSL2/WSLg.
 
 ### 3. Nucleo Physical Pinout Visualizer
-- Visual connector inspector for STM32 Nucleo boards (Morpho `CN7`/`CN10` and Arduino Uno `CN5`/`CN6`/`CN8`/`CN9` headers).
-- Interactive hover tooltips mapping physical connector pin numbers to MCU GPIO pins and alternate functions.
-- Visual conflict detection and warning banners for duplicate pin assignments.
+- **Header & Pin Inspection**: Visual connector inspector for STM32 Nucleo boards (Morpho `CN7`/`CN10` and Arduino Uno `CN5`/`CN6`/`CN8`/`CN9` headers).
+- **Module Filter Dropdown**: Filter pins by discovered firmware module (`All Modules`, `hatch`, `alignment`, etc.) to isolate subsystem pin usage.
+- **Module-Aware Pin Muting**: Visually separates pins into "Active in Module" (full badge fill and bright accent stroke), "Active Elsewhere in Project" (neutral fill with muted accent outline), and unused pins.
+- **Hover Details & Tooltips**: Interactive hover tooltips mapping physical connector pin numbers to MCU GPIO names, assigned labels, and alternate functions.
+- **Conflict Detection**: Warning banners and visual highlighting for duplicate or conflicting pin assignments.
 
 ### 4. Integrated Build & Flash Subsystem
 - **Multi-Build System Support**: Automatically detects and builds **Makefile**, **CMake**, and **Ninja** projects.
@@ -32,6 +36,14 @@
 - **ST-Link Probe Auto-Detection**: Scans connected programmers (`st-info --probe`), auto-selects single targets, and presents an interactive picker if multiple ST-Links are connected.
 - **Non-Blocking Streaming Console**: Live compiler and flasher output streamed line-by-line into an expandable bottom console drawer with status badges (`BUILDING...`, `PROBING...`, `FLASHING...`, `SUCCESS`).
 - Separate **`[ Build ]`** (compile only) and **`[ Build & Flash ]`** (compile + flash to `0x08000000` + hardware reset) actions.
+
+### 5. Real-Time Serial Monitor & Command Console
+- **Live UART Receive Display**: Background worker thread streams incoming serial bytes into a line-buffered terminal drawer with CRLF normalization, auto-scroll anchoring, and partial-line timeout flushing.
+- **Baud Rate Auto-Detection**: Traces `_write()` / `_io_putchar` printf retargeting to the active console UART (`huart2`, etc.) and automatically parses `huart<N>.Init.BaudRate = <value>;` from source, with manual dropdown override.
+- **Port Enumeration & Connection**: Discovers available ST-Link virtual COM ports (e.g. `/dev/ttyACM0`), auto-selects single connected boards, and provides real-time connection status badges (`CONNECTED`, `DISCONNECTED`, `RECONNECTING...`).
+- **Command Transmission with History**: Free-text command entry supporting click and Enter keypress, automatically appending `\r\n` line termination, with Up/Down arrow key history navigation across past commands.
+- **Dynamic Quick-Send Buttons**: Surfaces one-click action buttons generated directly from discovered firmware `commandTable` entries (`GO`, `CAL`, `STOP`, `RET`, etc.) when present.
+- **Build -> Flash -> Observe Loop**: Automatically switches to the Serial Monitor view on successful flash and retries port reconnection across target reset and USB re-enumeration.
 
 ---
 
@@ -103,7 +115,7 @@ Windows 11 natively runs GUI Linux applications with hardware acceleration via *
    ```
 2. Inside Ubuntu WSL2, install the Debian package:
    ```bash
-   sudo apt install -y ./dist/stakhal_0.1.3_amd64.deb
+   sudo apt install -y ./dist/stakhal_*_amd64.deb
    ```
 3. StakHAL will now appear in your **Windows 11 Start Menu** and can be launched directly from Windows.
 4. To enable ST-Link USB hardware access inside WSL2, install [usbipd-win](https://github.com/dorssel/usbipd-win):
@@ -165,8 +177,8 @@ StakHAL/
 │
 ├── stakhal-ui/           # Native GTK4 / Libadwaita desktop application
 │   └── src/
-│       ├── toolchain/    # Makefile, CMake, Ninja runners, probe detection, st-flash
-│       ├── ui/           # GTK4 components, Main panel, State diagram, Nucleo pinout
+│       ├── toolchain/    # Makefile, CMake, Ninja runners, probe detection, st-flash, serial port
+│       ├── ui/           # Main panel, State diagram, Nucleo pinout, Serial monitor
 │       └── state.rs      # Reactive application state
 │
 └── Cargo.toml            # Workspace manifest
