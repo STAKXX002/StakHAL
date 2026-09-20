@@ -18,6 +18,7 @@ pub struct MainPanelWidgets {
     pub lbl_project_name: gtk4::Label,
     pub lbl_mcu_family: gtk4::Label,
     pub lbl_mcu_name: gtk4::Label,
+    pub lbl_build_traceability: gtk4::Label,
     pub lbl_periph_header: gtk4::Label,
     pub lbl_region_header: gtk4::Label,
     pub list_peripherals: gtk4::ListBox,
@@ -158,6 +159,13 @@ pub fn build_main_panel() -> MainPanelWidgets {
         .css_classes(vec!["caption".to_string(), "data-mono".to_string()])
         .build();
 
+    let lbl_build_traceability = gtk4::Label::builder()
+        .label("BUILD: Unknown")
+        .halign(gtk4::Align::Start)
+        .css_classes(vec!["caption".to_string(), "data-mono".to_string(), "dim-label".to_string()])
+        .tooltip_text("Firmware build traceability status")
+        .build();
+
     let status_bar_box = gtk4::Box::builder()
         .orientation(gtk4::Orientation::Horizontal)
         .spacing(24)
@@ -170,6 +178,7 @@ pub fn build_main_panel() -> MainPanelWidgets {
     status_bar_box.append(&lbl_project_name);
     status_bar_box.append(&lbl_mcu_family);
     status_bar_box.append(&lbl_mcu_name);
+    status_bar_box.append(&lbl_build_traceability);
 
     let lbl_periph_header = gtk4::Label::builder()
         .label("[ PERIPHERALS ]")
@@ -289,6 +298,7 @@ pub fn build_main_panel() -> MainPanelWidgets {
         lbl_project_name,
         lbl_mcu_family,
         lbl_mcu_name,
+        lbl_build_traceability,
         lbl_periph_header,
         lbl_region_header,
         list_peripherals,

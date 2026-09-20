@@ -290,6 +290,7 @@ dropdown button {
         lbl_project_name,
         lbl_mcu_family,
         lbl_mcu_name,
+        lbl_build_traceability,
         lbl_periph_header,
         lbl_region_header,
         list_peripherals,
@@ -381,6 +382,7 @@ dropdown button {
         lbl_project_name,
         lbl_mcu_family,
         lbl_mcu_name,
+        lbl_build_traceability,
         lbl_periph_header,
         lbl_region_header,
         list_peripherals,
@@ -656,6 +658,7 @@ dropdown button {
     let widgets_ref_ports = Rc::clone(&widgets);
     widgets.btn_refresh_ports.connect_clicked(move |_| {
         refresh_serial_ports(&state_ref_ports, &widgets_ref_ports);
+        update_traceability_ui(&state_ref_ports, &widgets_ref_ports);
     });
 
     let state_cp = Rc::clone(&state);
@@ -976,15 +979,78 @@ fn execute_build_pipeline(
     });
 }
 
+fn apply_traceability_status_to_label(
+    label: &gtk4::Label,
+    status: &toolchain::traceability::TraceabilityStatus,
+) {
+    label.remove_css_class("status-ready");
+    label.remove_css_class("status-active");
+    label.remove_css_class("status-error");
+    label.remove_css_class("status-idle");
+    label.remove_css_class("dim-label");
+
+    match status {
+        toolchain::traceability::TraceabilityStatus::Unknown => {
+            label.set_text("BUILD: Unknown");
+            label.add_css_class("dim-label");
+            label.set_tooltip_text(Some(
+                "Firmware build unknown (not flashed with traceability enabled, or haven't reconnected since)",
+            ));
+        }
+        toolchain::traceability::TraceabilityStatus::Dirty { base_hash } => {
+            label.set_text(&format!("BUILD: {}-dirty", base_hash));
+            label.add_css_class("status-active");
+            label.set_tooltip_text(Some(&format!(
+                "Board was flashed from an uncommitted working tree near {} - exact source unknown",
+                base_hash
+            )));
+        }
+        toolchain::traceability::TraceabilityStatus::MatchesWorkingTree { hash } => {
+            label.set_text(&format!("BUILD: {} (Matches working tree)", hash));
+            label.add_css_class("status-ready");
+            label.set_tooltip_text(Some("Board matches working tree"));
+        }
+        toolchain::traceability::TraceabilityStatus::BehindWorkingTree { hash, count } => {
+            let commit_str = if *count == 1 {
+                "1 commit".to_string()
+            } else {
+                format!("{} commits", count)
+            };
+            label.set_text(&format!("BUILD: {} ({} behind)", hash, commit_str));
+            label.add_css_class("status-active");
+            label.set_tooltip_text(Some(&format!(
+                "Board is {} behind working tree",
+                commit_str
+            )));
+        }
+        toolchain::traceability::TraceabilityStatus::Diverged { hash } => {
+            label.set_text(&format!("BUILD: {} (Diverged)", hash));
+            label.add_css_class("status-error");
+            label.set_tooltip_text(Some(
+                "Board's build doesn't match this branch's history",
+            ));
+        }
+    }
+}
+
 fn update_traceability_ui(state: &Rc<RefCell<AppState>>, widgets: &Rc<AppWidgets>) {
-    let (project_dir, main_c_path, build_in_progress) = {
+    let (project_dir, main_c_path, build_in_progress, captured_hash) = {
         let st = state.borrow();
         (
             st.project_dir.clone(),
             st.discovered_main_c.clone(),
             st.build_in_progress,
+            st.captured_build_hash.clone(),
         )
     };
+
+    let status = match (&project_dir, &captured_hash) {
+        (Some(dir), Some(hash)) => {
+            toolchain::traceability::compare_build_hash_to_head(dir, hash)
+        }
+        _ => toolchain::traceability::TraceabilityStatus::Unknown,
+    };
+    apply_traceability_status_to_label(&widgets.lbl_build_traceability, &status);
 
     match (project_dir, main_c_path) {
         (Some(dir), Some(main_c)) => {
@@ -1578,6 +1644,7 @@ fn attach_serial_rx_pump(
                             &widgets_timer.build_log_view,
                             &format!("[TRACE] Captured running build hash from serial: {}", hash),
                         );
+                        update_traceability_ui(&state_timer, &widgets_timer);
                     }
                 }
                 crate::toolchain::serial::SerialRxEvent::Error(err) => {
@@ -2031,6 +2098,7 @@ printf("BOOT\r\n");
             lbl_project_name: gtk4::Label::new(None),
             lbl_mcu_family: gtk4::Label::new(None),
             lbl_mcu_name: gtk4::Label::new(None),
+            lbl_build_traceability: gtk4::Label::new(None),
             lbl_periph_header: gtk4::Label::new(None),
             lbl_region_header: gtk4::Label::new(None),
             list_peripherals: gtk4::ListBox::new(),
@@ -2060,21 +2128,91 @@ printf("BOOT\r\n");
             box_quick_commands: gtk4::Box::new(gtk4::Orientation::Horizontal, 0),
         });
 
-        // 1. Non-git repo: should be disabled
+        // 1. Non-git repo: should be disabled and Unknown status
         update_traceability_ui(&state, &widgets);
         assert!(!widgets.btn_enable_traceability.is_sensitive());
+        assert_eq!(widgets.lbl_build_traceability.text(), "BUILD: Unknown");
+        assert!(widgets.lbl_build_traceability.has_css_class("dim-label"));
 
-        // 2. Initialize git repository
+        // 2. Initialize git repository and create a commit
         std::process::Command::new("git")
             .arg("-C")
             .arg(&temp_dir)
             .arg("init")
             .output()
             .unwrap();
+        std::process::Command::new("git")
+            .arg("-C")
+            .arg(&temp_dir)
+            .arg("config")
+            .arg("user.name")
+            .arg("Test")
+            .output()
+            .unwrap();
+        std::process::Command::new("git")
+            .arg("-C")
+            .arg(&temp_dir)
+            .arg("config")
+            .arg("user.email")
+            .arg("t@example.com")
+            .output()
+            .unwrap();
+        std::process::Command::new("git")
+            .arg("-C")
+            .arg(&temp_dir)
+            .arg("add")
+            .arg(".")
+            .output()
+            .unwrap();
+        std::process::Command::new("git")
+            .arg("-C")
+            .arg(&temp_dir)
+            .arg("commit")
+            .arg("-m")
+            .arg("init")
+            .output()
+            .unwrap();
+
+        let head_out = std::process::Command::new("git")
+            .arg("-C")
+            .arg(&temp_dir)
+            .arg("rev-parse")
+            .arg("--short")
+            .arg("HEAD")
+            .output()
+            .unwrap();
+        let head = String::from_utf8_lossy(&head_out.stdout).trim().to_string();
 
         // Now inside git repo, not yet enabled: should be sensitive
         update_traceability_ui(&state, &widgets);
         assert!(widgets.btn_enable_traceability.is_sensitive());
+
+        // Test matched hash status chip
+        state.borrow_mut().captured_build_hash = Some(head.clone());
+        update_traceability_ui(&state, &widgets);
+        assert_eq!(
+            widgets.lbl_build_traceability.text(),
+            format!("BUILD: {} (Matches working tree)", head)
+        );
+        assert!(widgets.lbl_build_traceability.has_css_class("status-ready"));
+
+        // Test dirty hash status chip
+        state.borrow_mut().captured_build_hash = Some(format!("{}-dirty", head));
+        update_traceability_ui(&state, &widgets);
+        assert_eq!(
+            widgets.lbl_build_traceability.text(),
+            format!("BUILD: {}-dirty", head)
+        );
+        assert!(widgets.lbl_build_traceability.has_css_class("status-active"));
+
+        // Test diverged hash status chip
+        state.borrow_mut().captured_build_hash = Some("deadbeef".to_string());
+        update_traceability_ui(&state, &widgets);
+        assert_eq!(widgets.lbl_build_traceability.text(), "BUILD: deadbeef (Diverged)");
+        assert!(widgets.lbl_build_traceability.has_css_class("status-error"));
+
+        // Reset captured hash
+        state.borrow_mut().captured_build_hash = None;
 
         // 3. Insert traceability into source
         let res = toolchain::traceability::insert_traceability_into_source(&main_c_path, &temp_dir);

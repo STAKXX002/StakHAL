@@ -287,6 +287,73 @@ pub fn parse_build_banner_line(line: &str) -> Option<(String, bool)> {
     None
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TraceabilityStatus {
+    /// No captured hash yet (or not connected / not a git repo)
+    Unknown,
+    /// Flashed from uncommitted working tree near base_hash
+    Dirty { base_hash: String },
+    /// Matches current HEAD (0 commits behind)
+    MatchesWorkingTree { hash: String },
+    /// Behind HEAD by count commits
+    BehindWorkingTree { hash: String, count: usize },
+    /// Captured hash is not an ancestor of current HEAD (different branch or history)
+    Diverged { hash: String },
+}
+
+/// Compare a captured build hash against project Git repository's HEAD.
+pub fn compare_build_hash_to_head(project_dir: &Path, captured_hash: &str) -> TraceabilityStatus {
+    let trimmed = captured_hash.trim();
+    if trimmed.is_empty() || trimmed == "unknown" {
+        return TraceabilityStatus::Unknown;
+    }
+
+    if let Some(base) = trimmed.strip_suffix("-dirty") {
+        return TraceabilityStatus::Dirty {
+            base_hash: base.to_string(),
+        };
+    }
+
+    if !is_git_repository(project_dir) {
+        return TraceabilityStatus::Unknown;
+    }
+
+    // Run `git rev-list --count <captured_hash>..HEAD`
+    let range = format!("{}..HEAD", trimmed);
+    let output = Command::new("git")
+        .arg("-C")
+        .arg(project_dir)
+        .arg("rev-list")
+        .arg("--count")
+        .arg(&range)
+        .output();
+
+    match output {
+        Ok(out) if out.status.success() => {
+            let count_str = String::from_utf8_lossy(&out.stdout).trim().to_string();
+            if let Ok(count) = count_str.parse::<usize>() {
+                if count == 0 {
+                    TraceabilityStatus::MatchesWorkingTree {
+                        hash: trimmed.to_string(),
+                    }
+                } else {
+                    TraceabilityStatus::BehindWorkingTree {
+                        hash: trimmed.to_string(),
+                        count,
+                    }
+                }
+            } else {
+                TraceabilityStatus::Diverged {
+                    hash: trimmed.to_string(),
+                }
+            }
+        }
+        _ => TraceabilityStatus::Diverged {
+            hash: trimmed.to_string(),
+        },
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -536,5 +603,89 @@ printf("BOOT\r\n");
         assert_eq!(parse_build_banner_line("READY\r\nCAL REQUIRED\r\n"), None);
         assert_eq!(parse_build_banner_line("STAKHAL_BUILD: \r\n"), None);
         assert_eq!(parse_build_banner_line(""), None);
+    }
+
+    #[test]
+    fn test_compare_build_hash_to_head() {
+        let temp_dir = std::env::temp_dir().join(format!("stakhal_test_cmp_{}", std::process::id()));
+        let _ = fs::remove_dir_all(&temp_dir);
+        fs::create_dir_all(&temp_dir).unwrap();
+
+        // Non-git
+        assert_eq!(
+            compare_build_hash_to_head(&temp_dir, "unknown"),
+            TraceabilityStatus::Unknown
+        );
+        assert_eq!(
+            compare_build_hash_to_head(&temp_dir, "a1b2c3d-dirty"),
+            TraceabilityStatus::Dirty {
+                base_hash: "a1b2c3d".to_string()
+            }
+        );
+        assert_eq!(
+            compare_build_hash_to_head(&temp_dir, "a1b2c3d"),
+            TraceabilityStatus::Unknown
+        );
+
+        // Init git repo
+        Command::new("git").arg("-C").arg(&temp_dir).arg("init").output().unwrap();
+        Command::new("git").arg("-C").arg(&temp_dir).arg("config").arg("user.name").arg("Test").output().unwrap();
+        Command::new("git").arg("-C").arg(&temp_dir).arg("config").arg("user.email").arg("t@example.com").output().unwrap();
+
+        // Commit 1
+        let f1 = temp_dir.join("f1.txt");
+        fs::write(&f1, "1").unwrap();
+        Command::new("git").arg("-C").arg(&temp_dir).arg("add").arg("f1.txt").output().unwrap();
+        Command::new("git").arg("-C").arg(&temp_dir).arg("commit").arg("-m").arg("c1").output().unwrap();
+        let c1_out = Command::new("git").arg("-C").arg(&temp_dir).arg("rev-parse").arg("--short").arg("HEAD").output().unwrap();
+        let c1 = String::from_utf8_lossy(&c1_out.stdout).trim().to_string();
+
+        // Commit 2
+        let f2 = temp_dir.join("f2.txt");
+        fs::write(&f2, "2").unwrap();
+        Command::new("git").arg("-C").arg(&temp_dir).arg("add").arg("f2.txt").output().unwrap();
+        Command::new("git").arg("-C").arg(&temp_dir).arg("commit").arg("-m").arg("c2").output().unwrap();
+        let c2_out = Command::new("git").arg("-C").arg(&temp_dir).arg("rev-parse").arg("--short").arg("HEAD").output().unwrap();
+        let c2 = String::from_utf8_lossy(&c2_out.stdout).trim().to_string();
+
+        // Commit 3 (HEAD)
+        let f3 = temp_dir.join("f3.txt");
+        fs::write(&f3, "3").unwrap();
+        Command::new("git").arg("-C").arg(&temp_dir).arg("add").arg("f3.txt").output().unwrap();
+        Command::new("git").arg("-C").arg(&temp_dir).arg("commit").arg("-m").arg("c3").output().unwrap();
+        let c3_out = Command::new("git").arg("-C").arg(&temp_dir).arg("rev-parse").arg("--short").arg("HEAD").output().unwrap();
+        let c3 = String::from_utf8_lossy(&c3_out.stdout).trim().to_string();
+
+        // Compare HEAD (c3) -> 0 commits behind
+        assert_eq!(
+            compare_build_hash_to_head(&temp_dir, &c3),
+            TraceabilityStatus::MatchesWorkingTree { hash: c3.clone() }
+        );
+
+        // Compare c2 -> 1 commit behind
+        assert_eq!(
+            compare_build_hash_to_head(&temp_dir, &c2),
+            TraceabilityStatus::BehindWorkingTree { hash: c2.clone(), count: 1 }
+        );
+
+        // Compare c1 -> 2 commits behind
+        assert_eq!(
+            compare_build_hash_to_head(&temp_dir, &c1),
+            TraceabilityStatus::BehindWorkingTree { hash: c1.clone(), count: 2 }
+        );
+
+        // Dirty hash
+        assert_eq!(
+            compare_build_hash_to_head(&temp_dir, &format!("{}-dirty", c3)),
+            TraceabilityStatus::Dirty { base_hash: c3.clone() }
+        );
+
+        // Non-existent hash
+        assert_eq!(
+            compare_build_hash_to_head(&temp_dir, "0000000"),
+            TraceabilityStatus::Diverged { hash: "0000000".to_string() }
+        );
+
+        let _ = fs::remove_dir_all(&temp_dir);
     }
 }

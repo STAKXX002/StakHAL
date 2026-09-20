@@ -110,6 +110,7 @@ pub struct AppWidgets {
     pub lbl_project_name: gtk4::Label,
     pub lbl_mcu_family: gtk4::Label,
     pub lbl_mcu_name: gtk4::Label,
+    pub lbl_build_traceability: gtk4::Label,
     pub lbl_periph_header: gtk4::Label,
     pub lbl_region_header: gtk4::Label,
     pub list_peripherals: gtk4::ListBox,
