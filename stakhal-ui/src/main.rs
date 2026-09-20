@@ -1567,6 +1567,18 @@ fn attach_serial_rx_pump(
                         &widgets_timer.serial_scrolled,
                         &data,
                     );
+
+                    if let Some((hash, is_dirty)) = toolchain::traceability::parse_build_banner_line(&data) {
+                        {
+                            let mut st = state_timer.borrow_mut();
+                            st.captured_build_hash = Some(hash.clone());
+                            st.is_captured_hash_dirty = is_dirty;
+                        }
+                        append_log_text(
+                            &widgets_timer.build_log_view,
+                            &format!("[TRACE] Captured running build hash from serial: {}", hash),
+                        );
+                    }
                 }
                 crate::toolchain::serial::SerialRxEvent::Error(err) => {
                     append_serial_text(
@@ -1879,6 +1891,40 @@ mod tests {
             .expect("should detect console UART in aa_ns_stm_port");
         assert_eq!(uart_info.uart_instance, "huart2");
         assert_eq!(uart_info.baud_rate, 115200);
+    }
+
+    #[test]
+    fn test_serial_rx_captures_build_hash() {
+        let state = Rc::new(RefCell::new(AppState::default()));
+        assert_eq!(state.borrow().captured_build_hash, None);
+        assert!(!state.borrow().is_captured_hash_dirty);
+
+        let test_line = "STAKHAL_BUILD: a41f5f7-dirty\r\n";
+        if let Some((hash, is_dirty)) = toolchain::traceability::parse_build_banner_line(test_line) {
+            let mut st = state.borrow_mut();
+            st.captured_build_hash = Some(hash);
+            st.is_captured_hash_dirty = is_dirty;
+        }
+
+        assert_eq!(
+            state.borrow().captured_build_hash.as_deref(),
+            Some("a41f5f7-dirty")
+        );
+        assert!(state.borrow().is_captured_hash_dirty);
+
+        // Test clean hash
+        let clean_line = "STAKHAL_BUILD: a41f5f7\r\n";
+        if let Some((hash, is_dirty)) = toolchain::traceability::parse_build_banner_line(clean_line) {
+            let mut st = state.borrow_mut();
+            st.captured_build_hash = Some(hash);
+            st.is_captured_hash_dirty = is_dirty;
+        }
+
+        assert_eq!(
+            state.borrow().captured_build_hash.as_deref(),
+            Some("a41f5f7")
+        );
+        assert!(!state.borrow().is_captured_hash_dirty);
     }
 
     #[test]

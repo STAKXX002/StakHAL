@@ -50,6 +50,8 @@ pub struct AppState {
 
     // Traceability state
     pub is_traceability_enabled: bool,
+    pub captured_build_hash: Option<String>,
+    pub is_captured_hash_dirty: bool,
 }
 
 impl Default for AppState {
@@ -89,6 +91,8 @@ impl Default for AppState {
             serial_command_history: Vec::new(),
             serial_history_index: None,
             is_traceability_enabled: false,
+            captured_build_hash: None,
+            is_captured_hash_dirty: false,
         }
     }
 }

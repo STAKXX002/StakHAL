@@ -269,6 +269,24 @@ pub fn insert_traceability_into_source(main_c_path: &Path, project_dir: &Path) -
     Ok(())
 }
 
+/// Parse an incoming serial line for the STAKHAL_BUILD: banner.
+/// Returns Some((hash, is_dirty)) if matched.
+pub fn parse_build_banner_line(line: &str) -> Option<(String, bool)> {
+    let tag = "STAKHAL_BUILD:";
+    if let Some(idx) = line.find(tag) {
+        let after = &line[idx + tag.len()..];
+        let hash = after
+            .trim()
+            .trim_matches(|c: char| c == '\r' || c == '\n')
+            .to_string();
+        if !hash.is_empty() {
+            let is_dirty = hash.ends_with("-dirty");
+            return Some((hash, is_dirty));
+        }
+    }
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -495,5 +513,28 @@ printf("BOOT\r\n");
         assert!(res2.unwrap_err().contains("2"));
 
         let _ = fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn test_parse_build_banner_line() {
+        assert_eq!(
+            parse_build_banner_line("STAKHAL_BUILD: a41f5f7\r\n"),
+            Some(("a41f5f7".to_string(), false))
+        );
+        assert_eq!(
+            parse_build_banner_line("STAKHAL_BUILD: a41f5f7-dirty\r\n"),
+            Some(("a41f5f7-dirty".to_string(), true))
+        );
+        assert_eq!(
+            parse_build_banner_line("STAKHAL_BUILD: unknown\n"),
+            Some(("unknown".to_string(), false))
+        );
+        assert_eq!(
+            parse_build_banner_line("[BOOT] STAKHAL_BUILD: b65ad0d\r\n"),
+            Some(("b65ad0d".to_string(), false))
+        );
+        assert_eq!(parse_build_banner_line("READY\r\nCAL REQUIRED\r\n"), None);
+        assert_eq!(parse_build_banner_line("STAKHAL_BUILD: \r\n"), None);
+        assert_eq!(parse_build_banner_line(""), None);
     }
 }
