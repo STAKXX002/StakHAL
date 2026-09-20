@@ -1,6 +1,6 @@
 # StakHAL - Hardware Abstraction Inspector & Toolchain
 
-**StakHAL** is a modern, high-performance developer workbench for STM32 embedded firmware engineers. Built natively in **Rust**, **GTK4**, and **Libadwaita**, StakHAL inspects STM32CubeMX projects, visualizes application state machines and physical board pinouts, and provides an integrated, non-blocking **Build & Flash** toolchain.
+**StakHAL** is a desktop tool for inspecting and developing STM32CubeMX firmware projects. Written in **Rust**, **GTK4**, and **Libadwaita**, StakHAL parses CubeMX configurations, visualizes application state machines and Nucleo board pinouts, and includes an integrated build, flash, and serial monitoring workflow.
 
 > **Project Status & Limitations**: StakHAL's state-machine and command-table analysis is pattern-based and has been validated against a small number of real firmware projects so far. It may not correctly detect every C coding style or firmware architecture. Unresolved or ambiguous transitions are surfaced directly in the interface rather than guessed at.
 
@@ -20,7 +20,7 @@
 - **Multi-Hop Command Table Dispatch**: Traces serial command tables (`commandTable[]`) mapping CLI string tokens (`"GO"`, `"CAL"`, `"RET"`, `"OPEN"`, `"CLOSE"`) through handlers and query function guards (`alignment_is_idle()`) to state assignments (`alignment_go()`).
 - **Hub-Anchored Swimlane Layout**: Uses a customized Sugiyama algorithm (`rust-sugiyama`) anchored around high-degree hub states with dedicated parallel swimlanes for functional clusters.
 - **Human-Readable Transition Badges**: Prioritizes fault string literals, command triggers (`CMD: GO`, `CMD: RET`), timeout expressions, and clean boolean guards.
-- **Hardware-Accelerated Canvas**: Smooth 60fps pan, zoom, fit-to-view, and click-to-inspect transition details, optimized with batch dot-grid rendering and OpenGL acceleration for WSL2/WSLg.
+- **Interactive Canvas**: Pan, zoom, fit-to-view, and click-to-inspect transition details on a dot-grid canvas.
 
 ### 3. Nucleo Physical Pinout Visualizer
 - **Header & Pin Inspection**: Visual connector inspector for STM32 Nucleo boards (Morpho `CN7`/`CN10` and Arduino Uno `CN5`/`CN6`/`CN8`/`CN9` headers).
@@ -37,10 +37,10 @@
 - **Non-Blocking Streaming Console**: Live compiler and flasher output streamed line-by-line into an expandable bottom console drawer with status badges (`BUILDING...`, `PROBING...`, `FLASHING...`, `SUCCESS`).
 - Separate **`[ Build ]`** (compile only) and **`[ Build & Flash ]`** (compile + flash to `0x08000000` + hardware reset) actions.
 
-### 5. Real-Time Serial Monitor & Command Console
-- **Live UART Receive Display**: Background worker thread streams incoming serial bytes into a line-buffered terminal drawer with CRLF normalization, auto-scroll anchoring, and partial-line timeout flushing.
+### 5. Serial Monitor & Command Console
+- **Live UART Receive Display**: Streams incoming serial data into a line-buffered log panel with CRLF normalization, auto-scroll, and partial-line timeout flushing.
 - **Baud Rate Auto-Detection**: Traces `_write()` / `_io_putchar` printf retargeting to the active console UART (`huart2`, etc.) and automatically parses `huart<N>.Init.BaudRate = <value>;` from source, with manual dropdown override.
-- **Port Enumeration & Connection**: Discovers available ST-Link virtual COM ports (e.g. `/dev/ttyACM0`), auto-selects single connected boards, and provides real-time connection status badges (`CONNECTED`, `DISCONNECTED`, `RECONNECTING...`).
+- **Port Enumeration & Connection**: Discovers available ST-Link virtual COM ports (e.g. `/dev/ttyACM0`), auto-selects single connected boards, and provides connection status indicators (`CONNECTED`, `DISCONNECTED`, `RECONNECTING...`).
 - **Command Transmission with History**: Free-text command entry supporting click and Enter keypress, automatically appending `\r\n` line termination, with Up/Down arrow key history navigation across past commands.
 - **Dynamic Quick-Send Buttons**: Surfaces one-click action buttons generated directly from discovered firmware `commandTable` entries (`GO`, `CAL`, `STOP`, `RET`, etc.) when present.
 - **Build -> Flash -> Observe Loop**: Automatically switches to the Serial Monitor view on successful flash and retries port reconnection across target reset and USB re-enumeration.
@@ -60,7 +60,7 @@ sudo apt update
 sudo apt install -y ./stakhal_*_amd64.deb
 ```
 
-> **Windows 11 with WSLg**: When installed inside your Ubuntu WSL2 instance, WSLg automatically publishes StakHAL into the **Windows 11 Start Menu** under `StakHAL (Ubuntu 24.04)`. You can launch it directly from the Windows taskbar with native Wayland graphics acceleration!
+> **Windows 11 with WSLg**: When installed inside your Ubuntu WSL2 instance, WSLg automatically publishes StakHAL into the **Windows 11 Start Menu** under `StakHAL (Ubuntu 24.04)`. You can launch it directly from the Windows taskbar.
 
 #### 2. Building the `.deb` Package from Source
 To create your own standalone Debian package:
@@ -108,7 +108,7 @@ source "$HOME/.cargo/env"
 ### Windows 11 Setup
 
 #### Option A: WSL2 with WSLg (Recommended)
-Windows 11 natively runs GUI Linux applications with hardware acceleration via **WSLg**:
+Windows 11 supports graphical Linux applications via **WSLg**:
 1. In Windows PowerShell:
    ```powershell
    wsl --install -d Ubuntu-24.04
