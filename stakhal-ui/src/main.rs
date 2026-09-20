@@ -366,7 +366,7 @@ dropdown button {
     let state = Rc::new(RefCell::new(AppState::default()));
     let widgets = Rc::new(AppWidgets {
         window: window.clone(),
-        _stack: stack.clone(),
+        stack: stack.clone(),
         toast_overlay,
         lbl_discovered_dir,
         lbl_ioc_path,
@@ -1183,6 +1183,25 @@ fn run_flash_stage(
         return;
     }
 
+    // Phase 5: Disconnect any active serial session prior to flashing to avoid USB port contention
+    if state.borrow().is_serial_connected {
+        if let Some(session) = state.borrow_mut().serial_session.take() {
+            session
+                .tx_cmd
+                .send(crate::toolchain::serial::SerialTxCommand::Disconnect)
+                .ok();
+        }
+        let mut st = state.borrow_mut();
+        st.is_serial_connected = false;
+        widgets.btn_connect_serial.set_label("Connect");
+        widgets.btn_connect_serial.remove_css_class("destructive-action");
+        widgets.btn_connect_serial.add_css_class("suggested-action");
+        update_build_status(&widgets.lbl_serial_status, "DISCONNECTED", StatusKind::Idle);
+        widgets.combo_port.set_sensitive(true);
+        widgets.combo_baud.set_sensitive(true);
+        widgets.btn_refresh_ports.set_sensitive(true);
+    }
+
     let (cmd, args) = toolchain::flasher::build_flash_command(probe_serial.as_deref(), &artifact);
 
     update_build_status(&widgets.lbl_build_status, "FLASHING...", StatusKind::Active);
@@ -1222,6 +1241,10 @@ fn run_flash_stage(
                 append_log_text(&widgets_timer.build_log_view, "\n[FLASH SUCCESS] Firmware written to 0x08000000 and target MCU reset successfully!");
                 update_build_status(&widgets_timer.lbl_build_status, "SUCCESS", StatusKind::Ready);
                 widgets_timer.toast_overlay.add_toast(adw::Toast::new("[OK] Build and Flash Succeeded!"));
+
+                // Phase 5: Auto-switch to Serial Monitor tab and auto-reconnect
+                widgets_timer.stack.set_visible_child_full("serial_monitor", gtk4::StackTransitionType::SlideLeft);
+                auto_reconnect_serial_after_flash(&state_timer, &widgets_timer);
             } else {
                 let code_str = code.map(|c| c.to_string()).unwrap_or_else(|| "unknown".to_string());
                 append_log_text(&widgets_timer.build_log_view, &format!("\n[FLASH FAILED] st-flash exited with code {}.", code_str));
@@ -1287,6 +1310,179 @@ fn refresh_serial_ports(state: &Rc<RefCell<AppState>>, widgets: &Rc<AppWidgets>)
     }
 }
 
+fn attach_serial_rx_pump(
+    event_rx: std::sync::mpsc::Receiver<crate::toolchain::serial::SerialRxEvent>,
+    state: &Rc<RefCell<AppState>>,
+    widgets: &Rc<AppWidgets>,
+) {
+    let state_timer = Rc::clone(state);
+    let widgets_timer = Rc::clone(widgets);
+
+    glib::timeout_add_local(std::time::Duration::from_millis(20), move || {
+        let mut should_continue = true;
+
+        while let Ok(evt) = event_rx.try_recv() {
+            match evt {
+                crate::toolchain::serial::SerialRxEvent::Connected { port_name, baud_rate } => {
+                    append_serial_text(
+                        &widgets_timer.serial_log_view,
+                        &widgets_timer.serial_scrolled,
+                        &format!("\n[SERIAL] Connected to {} at {} baud (8N1).\n", port_name, baud_rate),
+                    );
+                }
+                crate::toolchain::serial::SerialRxEvent::Data(data) => {
+                    append_serial_text(
+                        &widgets_timer.serial_log_view,
+                        &widgets_timer.serial_scrolled,
+                        &data,
+                    );
+                }
+                crate::toolchain::serial::SerialRxEvent::Error(err) => {
+                    append_serial_text(
+                        &widgets_timer.serial_log_view,
+                        &widgets_timer.serial_scrolled,
+                        &format!("\n[SERIAL ERROR] {}\n", err),
+                    );
+                }
+                crate::toolchain::serial::SerialRxEvent::Disconnected => {
+                    append_serial_text(
+                        &widgets_timer.serial_log_view,
+                        &widgets_timer.serial_scrolled,
+                        "\n[SERIAL] Port disconnected.\n",
+                    );
+                    {
+                        let mut st = state_timer.borrow_mut();
+                        st.is_serial_connected = false;
+                        st.serial_session = None;
+                    }
+                    widgets_timer.btn_connect_serial.set_label("Connect");
+                    widgets_timer.btn_connect_serial.remove_css_class("destructive-action");
+                    widgets_timer.btn_connect_serial.add_css_class("suggested-action");
+                    widgets_timer
+                        .btn_connect_serial
+                        .set_sensitive(!state_timer.borrow().available_serial_ports.is_empty());
+                    update_build_status(&widgets_timer.lbl_serial_status, "DISCONNECTED", StatusKind::Idle);
+                    widgets_timer.combo_port.set_sensitive(true);
+                    widgets_timer.combo_baud.set_sensitive(true);
+                    widgets_timer.btn_refresh_ports.set_sensitive(true);
+                    should_continue = false;
+                    break;
+                }
+            }
+        }
+
+        if should_continue {
+            glib::ControlFlow::Continue
+        } else {
+            glib::ControlFlow::Break
+        }
+    });
+}
+
+fn auto_reconnect_serial_after_flash(state: &Rc<RefCell<AppState>>, widgets: &Rc<AppWidgets>) {
+    if let Some(session) = state.borrow_mut().serial_session.take() {
+        session
+            .tx_cmd
+            .send(crate::toolchain::serial::SerialTxCommand::Disconnect)
+            .ok();
+    }
+    state.borrow_mut().is_serial_connected = false;
+
+    update_build_status(&widgets.lbl_serial_status, "RECONNECTING...", StatusKind::Active);
+    widgets.btn_connect_serial.set_label("Connecting...");
+    widgets.btn_connect_serial.set_sensitive(false);
+    widgets.combo_port.set_sensitive(false);
+    widgets.combo_baud.set_sensitive(false);
+    widgets.btn_refresh_ports.set_sensitive(false);
+
+    append_serial_text(
+        &widgets.serial_log_view,
+        &widgets.serial_scrolled,
+        "\n[SERIAL] Flash completed. Waiting for target USB re-enumeration...\n",
+    );
+
+    let state_retry = Rc::clone(state);
+    let widgets_retry = Rc::clone(widgets);
+    let mut attempt = 0;
+    const MAX_ATTEMPTS: u32 = 8; // ~2.4s total at 300ms intervals
+
+    glib::timeout_add_local(std::time::Duration::from_millis(300), move || {
+        if state_retry.borrow().is_serial_connected {
+            return glib::ControlFlow::Break;
+        }
+
+        attempt += 1;
+
+        // Refresh ports on each attempt as device re-enumerates
+        refresh_serial_ports(&state_retry, &widgets_retry);
+
+        let (target_port, baud_rate) = {
+            let st = state_retry.borrow();
+            let port = st.selected_serial_port.clone();
+            let baud = st.selected_serial_baud;
+            (port, baud)
+        };
+
+        if let Some(port_name) = target_port {
+            match crate::toolchain::serial::spawn_serial_connection(port_name.clone(), baud_rate) {
+                Ok((session, event_rx)) => {
+                    {
+                        let mut st = state_retry.borrow_mut();
+                        st.is_serial_connected = true;
+                        st.serial_session = Some(session);
+                    }
+
+                    widgets_retry.btn_connect_serial.set_label("Disconnect");
+                    widgets_retry.btn_connect_serial.remove_css_class("suggested-action");
+                    widgets_retry.btn_connect_serial.add_css_class("destructive-action");
+                    widgets_retry.btn_connect_serial.set_sensitive(true);
+                    update_build_status(&widgets_retry.lbl_serial_status, "CONNECTED", StatusKind::Ready);
+                    widgets_retry.combo_port.set_sensitive(false);
+                    widgets_retry.combo_baud.set_sensitive(false);
+                    widgets_retry.btn_refresh_ports.set_sensitive(false);
+
+                    attach_serial_rx_pump(event_rx, &state_retry, &widgets_retry);
+
+                    append_serial_text(
+                        &widgets_retry.serial_log_view,
+                        &widgets_retry.serial_scrolled,
+                        &format!("[SERIAL] Connected to {} at {} baud (8N1).\n", port_name, baud_rate),
+                    );
+                    widgets_retry
+                        .toast_overlay
+                        .add_toast(adw::Toast::new(&format!("Serial connected: {}", port_name)));
+
+                    return glib::ControlFlow::Break;
+                }
+                Err(_err) => {
+                    // Port might still be re-initializing or resetting, continue retrying
+                }
+            }
+        }
+
+        if attempt >= MAX_ATTEMPTS {
+            append_serial_text(
+                &widgets_retry.serial_log_view,
+                &widgets_retry.serial_scrolled,
+                "[SERIAL] Auto-reconnect timed out. Click Connect to manually establish connection.\n",
+            );
+            update_build_status(&widgets_retry.lbl_serial_status, "DISCONNECTED", StatusKind::Idle);
+            widgets_retry.btn_connect_serial.set_label("Connect");
+            widgets_retry.btn_connect_serial.remove_css_class("destructive-action");
+            widgets_retry.btn_connect_serial.add_css_class("suggested-action");
+            widgets_retry
+                .btn_connect_serial
+                .set_sensitive(!state_retry.borrow().available_serial_ports.is_empty());
+            widgets_retry.combo_port.set_sensitive(true);
+            widgets_retry.combo_baud.set_sensitive(true);
+            widgets_retry.btn_refresh_ports.set_sensitive(true);
+            return glib::ControlFlow::Break;
+        }
+
+        glib::ControlFlow::Continue
+    });
+}
+
 fn toggle_serial_connection(state: &Rc<RefCell<AppState>>, widgets: &Rc<AppWidgets>) {
     let is_connected = state.borrow().is_serial_connected;
 
@@ -1331,65 +1527,7 @@ fn toggle_serial_connection(state: &Rc<RefCell<AppState>>, widgets: &Rc<AppWidge
                 widgets.combo_baud.set_sensitive(false);
                 widgets.btn_refresh_ports.set_sensitive(false);
 
-                let state_timer = Rc::clone(state);
-                let widgets_timer = Rc::clone(widgets);
-
-                glib::timeout_add_local(std::time::Duration::from_millis(20), move || {
-                    let mut should_continue = true;
-
-                    while let Ok(evt) = event_rx.try_recv() {
-                        match evt {
-                            crate::toolchain::serial::SerialRxEvent::Connected { port_name, baud_rate } => {
-                                append_serial_text(
-                                    &widgets_timer.serial_log_view,
-                                    &widgets_timer.serial_scrolled,
-                                    &format!("\n[SERIAL] Connected to {} at {} baud (8N1).\n", port_name, baud_rate),
-                                );
-                            }
-                            crate::toolchain::serial::SerialRxEvent::Data(data) => {
-                                append_serial_text(
-                                    &widgets_timer.serial_log_view,
-                                    &widgets_timer.serial_scrolled,
-                                    &data,
-                                );
-                            }
-                            crate::toolchain::serial::SerialRxEvent::Error(err) => {
-                                append_serial_text(
-                                    &widgets_timer.serial_log_view,
-                                    &widgets_timer.serial_scrolled,
-                                    &format!("\n[SERIAL ERROR] {}\n", err),
-                                );
-                            }
-                            crate::toolchain::serial::SerialRxEvent::Disconnected => {
-                                append_serial_text(
-                                    &widgets_timer.serial_log_view,
-                                    &widgets_timer.serial_scrolled,
-                                    "\n[SERIAL] Port disconnected.\n",
-                                );
-                                {
-                                    let mut st = state_timer.borrow_mut();
-                                    st.is_serial_connected = false;
-                                    st.serial_session = None;
-                                }
-                                widgets_timer.btn_connect_serial.set_label("Connect");
-                                widgets_timer.btn_connect_serial.remove_css_class("destructive-action");
-                                widgets_timer.btn_connect_serial.add_css_class("suggested-action");
-                                update_build_status(&widgets_timer.lbl_serial_status, "DISCONNECTED", StatusKind::Idle);
-                                widgets_timer.combo_port.set_sensitive(true);
-                                widgets_timer.combo_baud.set_sensitive(true);
-                                widgets_timer.btn_refresh_ports.set_sensitive(true);
-                                should_continue = false;
-                                break;
-                            }
-                        }
-                    }
-
-                    if should_continue {
-                        glib::ControlFlow::Continue
-                    } else {
-                        glib::ControlFlow::Break
-                    }
-                });
+                attach_serial_rx_pump(event_rx, state, widgets);
             }
             Err(err) => {
                 append_serial_text(

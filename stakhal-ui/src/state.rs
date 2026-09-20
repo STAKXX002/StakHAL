@@ -91,7 +91,7 @@ impl Default for AppState {
 
 pub struct AppWidgets {
     pub window: adw::ApplicationWindow,
-    pub _stack: gtk4::Stack,
+    pub stack: gtk4::Stack,
     pub toast_overlay: adw::ToastOverlay,
     pub lbl_discovered_dir: gtk4::Label,
     pub lbl_ioc_path: gtk4::Label,
