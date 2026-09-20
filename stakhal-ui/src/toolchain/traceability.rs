@@ -130,6 +130,145 @@ pub fn generate_build_info_header(project_dir: &Path) -> Result<String, std::io:
     Ok(hash)
 }
 
+/// Check if build traceability symbols are already present in main.c.
+pub fn is_traceability_enabled_in_source(main_c_path: &Path) -> bool {
+    if !main_c_path.is_file() {
+        return false;
+    }
+    match fs::read_to_string(main_c_path) {
+        Ok(content) => {
+            content.contains("stakhal_build_info.h") && content.contains("STAKHAL_BUILD_HASH")
+        }
+        Err(_) => false,
+    }
+}
+
+/// Generate a diff preview showing what will be inserted into main.c.
+pub fn generate_traceability_diff_preview(main_c_path: &Path) -> String {
+    let filename = main_c_path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("main.c");
+
+    format!(
+        "--- {file}\n\
+         +++ {file}\n\n\
+         /* USER CODE BEGIN Includes */\n\
+         +#include \"stakhal_build_info.h\"\n\
+         /* USER CODE END Includes */\n\n\
+         /* USER CODE BEGIN 2 */\n\
+         +  printf(\"STAKHAL_BUILD: %s\\r\\n\", STAKHAL_BUILD_HASH);\n\
+         /* USER CODE END 2 */\n",
+        file = filename
+    )
+}
+
+fn detect_region_indentation(content: &str) -> &'static str {
+    for line in content.lines().rev() {
+        let trimmed = line.trim();
+        if !trimmed.is_empty() && !trimmed.starts_with("/*") && !trimmed.starts_with('*') {
+            let leading = line.len() - line.trim_start().len();
+            if leading >= 4 {
+                return "    ";
+            } else if leading >= 2 {
+                return "  ";
+            }
+        }
+    }
+    "  "
+}
+
+/// Insert build traceability #include and boot banner printf into main.c.
+pub fn insert_traceability_into_source(main_c_path: &Path, project_dir: &Path) -> Result<(), String> {
+    if !main_c_path.is_file() {
+        return Err(format!("Source file not found: {}", main_c_path.display()));
+    }
+
+    if is_traceability_enabled_in_source(main_c_path) {
+        let _ = generate_build_info_header(project_dir);
+        return Ok(());
+    }
+
+    // Verify required USER CODE regions exist before making any edits
+    let initial_regions = stakhal_core::source::marker_scan::scan_file(main_c_path)
+        .map_err(|e| format!("Failed to parse USER CODE markers in {}: {}", main_c_path.display(), e))?;
+
+    let has_includes = initial_regions.iter().any(|r| r.tag == "Includes");
+    let has_post_init = initial_regions.iter().any(|r| r.tag == "2");
+
+    if !has_includes {
+        return Err("USER CODE region 'Includes' not found in main.c".to_string());
+    }
+    if !has_post_init {
+        return Err("USER CODE region '2' not found in main.c".to_string());
+    }
+
+    // Step 1: Insert into "Includes" if not already present
+    let content = fs::read_to_string(main_c_path)
+        .map_err(|e| format!("Failed to read {}: {}", main_c_path.display(), e))?;
+
+    let inc_region = initial_regions
+        .iter()
+        .find(|r| r.tag == "Includes")
+        .expect("Includes region verified above");
+
+    let inc_content = &content[inc_region.byte_range.0..inc_region.byte_range.1];
+    if !inc_content.contains("stakhal_build_info.h") {
+        let mut new_inc = inc_content.to_string();
+        if new_inc.is_empty() {
+            new_inc.push('\n');
+        } else if !new_inc.ends_with('\n') {
+            new_inc.push('\n');
+        }
+        new_inc.push_str("#include \"stakhal_build_info.h\"\n");
+
+        stakhal_core::source::writeback::write_region(main_c_path, inc_region, &new_inc)
+            .map_err(|e| format!("Failed to write to Includes region: {}", e))?;
+    }
+
+    // Step 2: Re-scan file since byte ranges have shifted after the first write
+    let fresh_regions = stakhal_core::source::marker_scan::scan_file(main_c_path)
+        .map_err(|e| format!("Failed to re-scan markers in {}: {}", main_c_path.display(), e))?;
+
+    let post_init_region = fresh_regions
+        .iter()
+        .find(|r| r.tag == "2")
+        .ok_or_else(|| "USER CODE region '2' not found after re-scan".to_string())?;
+
+    let fresh_content = fs::read_to_string(main_c_path)
+        .map_err(|e| format!("Failed to re-read {}: {}", main_c_path.display(), e))?;
+
+    let post_init_content = &fresh_content[post_init_region.byte_range.0..post_init_region.byte_range.1];
+    if !post_init_content.contains("STAKHAL_BUILD_HASH") {
+        let indent = detect_region_indentation(post_init_content);
+        let trailing_ws = post_init_content
+            .chars()
+            .rev()
+            .take_while(|c| *c == ' ' || *c == '\t')
+            .collect::<String>();
+
+        let trimmed_content = &post_init_content[..post_init_content.len() - trailing_ws.len()];
+        let mut new_post_init = trimmed_content.to_string();
+        if new_post_init.is_empty() {
+            new_post_init.push('\n');
+        } else if !new_post_init.ends_with('\n') {
+            new_post_init.push('\n');
+        }
+        new_post_init.push_str(&format!(
+            "{}printf(\"STAKHAL_BUILD: %s\\r\\n\", STAKHAL_BUILD_HASH);\n{}",
+            indent, trailing_ws
+        ));
+
+        stakhal_core::source::writeback::write_region(main_c_path, post_init_region, &new_post_init)
+            .map_err(|e| format!("Failed to write to USER CODE 2 region: {}", e))?;
+    }
+
+    // Step 3: Ensure build info header and .gitignore entry exist
+    let _ = generate_build_info_header(project_dir);
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -255,6 +394,105 @@ mod tests {
         // Running again should not duplicate
         let added_again = ensure_gitignore_ignores_build_info(&temp_dir).unwrap();
         assert!(!added_again);
+
+        let _ = fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn test_insert_traceability_into_source_lifecycle() {
+        let temp_dir = std::env::temp_dir().join(format!("stakhal_test_trace_src_{}", std::process::id()));
+        let _ = fs::remove_dir_all(&temp_dir);
+        fs::create_dir_all(temp_dir.join("Core/Src")).unwrap();
+        fs::create_dir_all(temp_dir.join("Core/Inc")).unwrap();
+
+        let main_c_path = temp_dir.join("Core/Src/main.c");
+        let initial_main_c = r#"/* USER CODE BEGIN Header */
+/* USER CODE END Header */
+
+/* USER CODE BEGIN Includes */
+#include <stdio.h>
+#include "commands.h"
+/* USER CODE END Includes */
+
+int main(void)
+{
+  HAL_Init();
+
+  /* USER CODE BEGIN 2 */
+  commands_init();
+  printf("BOOTING\r\n");
+  /* USER CODE END 2 */
+
+  while (1)
+  {
+  }
+}
+"#;
+        fs::write(&main_c_path, initial_main_c).unwrap();
+
+        assert!(!is_traceability_enabled_in_source(&main_c_path));
+
+        let diff_preview = generate_traceability_diff_preview(&main_c_path);
+        assert!(diff_preview.contains("#include \"stakhal_build_info.h\""));
+        assert!(diff_preview.contains("printf(\"STAKHAL_BUILD: %s\\r\\n\", STAKHAL_BUILD_HASH);"));
+
+        let res = insert_traceability_into_source(&main_c_path, &temp_dir);
+        assert!(res.is_ok(), "Insertion failed: {:?}", res);
+
+        assert!(is_traceability_enabled_in_source(&main_c_path));
+
+        let modified_c = fs::read_to_string(&main_c_path).unwrap();
+        assert!(modified_c.contains("#include \"stakhal_build_info.h\""));
+        assert!(modified_c.contains("printf(\"STAKHAL_BUILD: %s\\r\\n\", STAKHAL_BUILD_HASH);"));
+
+        // Verify generated header
+        let header_path = temp_dir.join("Core/Inc/stakhal_build_info.h");
+        assert!(header_path.is_file());
+
+        // Test idempotency: calling again should succeed without duplicating lines
+        let res2 = insert_traceability_into_source(&main_c_path, &temp_dir);
+        assert!(res2.is_ok());
+
+        let modified_again = fs::read_to_string(&main_c_path).unwrap();
+        assert_eq!(modified_c, modified_again);
+
+        // Verify counts of inserted lines
+        let inc_count = modified_again.matches("#include \"stakhal_build_info.h\"").count();
+        let print_count = modified_again.matches("printf(\"STAKHAL_BUILD: %s\\r\\n\", STAKHAL_BUILD_HASH);").count();
+        assert_eq!(inc_count, 1);
+        assert_eq!(print_count, 1);
+
+        let _ = fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn test_insert_traceability_missing_regions() {
+        let temp_dir = std::env::temp_dir().join(format!("stakhal_test_missing_reg_{}", std::process::id()));
+        let _ = fs::remove_dir_all(&temp_dir);
+        fs::create_dir_all(temp_dir.join("Core/Src")).unwrap();
+
+        let main_c_path = temp_dir.join("Core/Src/main.c");
+        // Missing "Includes" region
+        let no_includes = r#"/* USER CODE BEGIN 2 */
+printf("BOOT\r\n");
+/* USER CODE END 2 */
+"#;
+        fs::write(&main_c_path, no_includes).unwrap();
+
+        let res = insert_traceability_into_source(&main_c_path, &temp_dir);
+        assert!(res.is_err());
+        assert!(res.unwrap_err().contains("Includes"));
+
+        // Missing "2" region
+        let no_post_init = r#"/* USER CODE BEGIN Includes */
+#include <stdio.h>
+/* USER CODE END Includes */
+"#;
+        fs::write(&main_c_path, no_post_init).unwrap();
+
+        let res2 = insert_traceability_into_source(&main_c_path, &temp_dir);
+        assert!(res2.is_err());
+        assert!(res2.unwrap_err().contains("2"));
 
         let _ = fs::remove_dir_all(&temp_dir);
     }

@@ -9,6 +9,7 @@ pub struct MainPanelWidgets {
     pub btn_load: gtk4::Button,
     pub btn_build: gtk4::Button,
     pub btn_build_flash: gtk4::Button,
+    pub btn_enable_traceability: gtk4::Button,
     pub btn_call_graph: gtk4::Button,
     pub btn_nucleo_pinout: gtk4::Button,
     pub lbl_discovered_dir: gtk4::Label,
@@ -74,6 +75,14 @@ pub fn build_main_panel() -> MainPanelWidgets {
         .build();
     btn_build_flash.set_cursor_from_name(Some("pointer"));
 
+    let btn_enable_traceability = gtk4::Button::builder()
+        .label("Enable Build Traceability")
+        .css_classes(vec!["stakhal-btn".to_string(), "flat".to_string()])
+        .sensitive(false)
+        .tooltip_text("Enable build traceability by inserting version banner into main.c")
+        .build();
+    btn_enable_traceability.set_cursor_from_name(Some("pointer"));
+
     let btn_call_graph = gtk4::Button::builder()
         .label("State Machine Graph")
         .css_classes(vec!["stakhal-btn".to_string(), "flat".to_string()])
@@ -126,6 +135,7 @@ pub fn build_main_panel() -> MainPanelWidgets {
     toolbar_box.append(&btn_load);
     toolbar_box.append(&btn_build);
     toolbar_box.append(&btn_build_flash);
+    toolbar_box.append(&btn_enable_traceability);
     toolbar_box.append(&btn_call_graph);
     toolbar_box.append(&btn_nucleo_pinout);
     toolbar_box.append(&btn_serial_monitor);
@@ -270,6 +280,7 @@ pub fn build_main_panel() -> MainPanelWidgets {
         btn_load,
         btn_build,
         btn_build_flash,
+        btn_enable_traceability,
         btn_call_graph,
         btn_nucleo_pinout,
         lbl_discovered_dir,

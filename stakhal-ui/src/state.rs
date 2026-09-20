@@ -47,6 +47,9 @@ pub struct AppState {
     pub serial_session: Option<crate::toolchain::serial::ActiveSerialSession>,
     pub serial_command_history: Vec<String>,
     pub serial_history_index: Option<usize>,
+
+    // Traceability state
+    pub is_traceability_enabled: bool,
 }
 
 impl Default for AppState {
@@ -85,6 +88,7 @@ impl Default for AppState {
             serial_session: None,
             serial_command_history: Vec::new(),
             serial_history_index: None,
+            is_traceability_enabled: false,
         }
     }
 }
@@ -110,6 +114,7 @@ pub struct AppWidgets {
     // Build & flash widgets
     pub btn_build: gtk4::Button,
     pub btn_build_flash: gtk4::Button,
+    pub btn_enable_traceability: gtk4::Button,
     pub build_log_view: gtk4::TextView,
     pub lbl_build_status: gtk4::Label,
     pub btn_clear_log: gtk4::Button,

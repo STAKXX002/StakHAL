@@ -281,6 +281,7 @@ dropdown button {
         btn_load,
         btn_build,
         btn_build_flash,
+        btn_enable_traceability,
         btn_call_graph,
         btn_nucleo_pinout,
         lbl_discovered_dir,
@@ -374,6 +375,7 @@ dropdown button {
         btn_load,
         btn_build: btn_build.clone(),
         btn_build_flash: btn_build_flash.clone(),
+        btn_enable_traceability: btn_enable_traceability.clone(),
         btn_call_graph: btn_call_graph.clone(),
         btn_nucleo_pinout: btn_nucleo_pinout.clone(),
         lbl_project_name,
@@ -557,6 +559,98 @@ dropdown button {
         execute_build_pipeline(true, &state_bf, &widgets_bf);
     });
 
+    // Connect Enable Build Traceability Button
+    let state_trace = Rc::clone(&state);
+    let widgets_trace = Rc::clone(&widgets);
+    widgets.btn_enable_traceability.connect_clicked(move |_| {
+        let (project_dir, main_c_path) = {
+            let st = state_trace.borrow();
+            match (&st.project_dir, &st.discovered_main_c) {
+                (Some(d), Some(m)) => (d.clone(), m.clone()),
+                _ => return,
+            }
+        };
+
+        if !toolchain::traceability::is_git_repository(&project_dir) {
+            widgets_trace
+                .toast_overlay
+                .add_toast(adw::Toast::new("Cannot enable traceability: project is not inside a Git repository"));
+            return;
+        }
+
+        if toolchain::traceability::is_traceability_enabled_in_source(&main_c_path) {
+            widgets_trace
+                .toast_overlay
+                .add_toast(adw::Toast::new("Build traceability is already enabled in main.c"));
+            return;
+        }
+
+        let diff_preview = toolchain::traceability::generate_traceability_diff_preview(&main_c_path);
+
+        let dialog = adw::MessageDialog::builder()
+            .heading("Enable Build Traceability")
+            .body("StakHAL can insert the build-info header include and boot banner printf into CubeMX user code regions in main.c.\n\nReview the exact changes below before applying:")
+            .transient_for(&widgets_trace.window)
+            .build();
+
+        let preview_view = gtk4::TextView::builder()
+            .editable(false)
+            .cursor_visible(false)
+            .monospace(true)
+            .top_margin(8)
+            .bottom_margin(8)
+            .left_margin(12)
+            .right_margin(12)
+            .build();
+        preview_view.buffer().set_text(&diff_preview);
+
+        let preview_scrolled = gtk4::ScrolledWindow::builder()
+            .min_content_height(140)
+            .max_content_height(240)
+            .child(&preview_view)
+            .css_classes(vec!["card".to_string()])
+            .build();
+
+        dialog.set_extra_child(Some(&preview_scrolled));
+
+        dialog.add_response("cancel", "Cancel");
+        dialog.add_response("confirm", "Enable & Insert");
+        dialog.set_response_appearance("confirm", adw::ResponseAppearance::Suggested);
+
+        let state_dlg = Rc::clone(&state_trace);
+        let widgets_dlg = Rc::clone(&widgets_trace);
+        let dir_clone = project_dir.clone();
+        let main_c_clone = main_c_path.clone();
+
+        dialog.connect_response(None, move |_, resp| {
+            if resp == "confirm" {
+                match toolchain::traceability::insert_traceability_into_source(&main_c_clone, &dir_clone) {
+                    Ok(()) => {
+                        append_log_text(
+                            &widgets_dlg.build_log_view,
+                            &format!("[TRACEABILITY] Successfully inserted build info into {}", main_c_clone.display()),
+                        );
+                        widgets_dlg.toast_overlay.add_toast(
+                            adw::Toast::new("Build traceability enabled in main.c")
+                        );
+                        update_traceability_ui(&state_dlg, &widgets_dlg);
+                    }
+                    Err(err) => {
+                        append_log_text(
+                            &widgets_dlg.build_log_view,
+                            &format!("[TRACEABILITY ERROR] Failed to insert build info: {}", err),
+                        );
+                        widgets_dlg.toast_overlay.add_toast(
+                            adw::Toast::new(&format!("Error: {}", err))
+                        );
+                    }
+                }
+            }
+        });
+
+        dialog.present();
+    });
+
     // Connect Serial Monitor Controls
     let state_ref_ports = Rc::clone(&state);
     let widgets_ref_ports = Rc::clone(&widgets);
@@ -696,6 +790,7 @@ fn execute_build_pipeline(
 
     widgets.btn_build.set_sensitive(false);
     widgets.btn_build_flash.set_sensitive(false);
+    widgets.btn_enable_traceability.set_sensitive(false);
     update_build_status(&widgets.lbl_build_status, "BUILDING...", StatusKind::Active);
 
     let build_cmd_res = toolchain::builder::get_build_command(&build_sys, &dir);
@@ -711,6 +806,7 @@ fn execute_build_pipeline(
             };
             widgets.btn_build.set_sensitive(has_build_system);
             widgets.btn_build_flash.set_sensitive(has_build_system);
+            update_traceability_ui(state, widgets);
             return;
         }
     };
@@ -784,6 +880,7 @@ fn execute_build_pipeline(
                             };
                             widgets_timer.btn_build.set_sensitive(has_build_system);
                             widgets_timer.btn_build_flash.set_sensitive(has_build_system);
+                            update_traceability_ui(&state_timer, &widgets_timer);
                         }
                     }
                     toolchain::makefile::ArtifactResolution::MultipleCandidates(candidates) => {
@@ -827,6 +924,7 @@ fn execute_build_pipeline(
                                 };
                                 widgets_dlg.btn_build.set_sensitive(has_build_system);
                                 widgets_dlg.btn_build_flash.set_sensitive(has_build_system);
+                                update_traceability_ui(&state_dlg, &widgets_dlg);
                             });
                             dialog.present();
                         } else {
@@ -839,6 +937,7 @@ fn execute_build_pipeline(
                             };
                             widgets_timer.btn_build.set_sensitive(has_build_system);
                             widgets_timer.btn_build_flash.set_sensitive(has_build_system);
+                            update_traceability_ui(&state_timer, &widgets_timer);
                         }
                     }
                     toolchain::makefile::ArtifactResolution::NoneFound(expected) => {
@@ -851,6 +950,7 @@ fn execute_build_pipeline(
                         };
                         widgets_timer.btn_build.set_sensitive(has_build_system);
                         widgets_timer.btn_build_flash.set_sensitive(has_build_system);
+                        update_traceability_ui(&state_timer, &widgets_timer);
                     }
                 }
             } else {
@@ -865,6 +965,7 @@ fn execute_build_pipeline(
                 };
                 widgets_timer.btn_build.set_sensitive(has_build_system);
                 widgets_timer.btn_build_flash.set_sensitive(has_build_system);
+                update_traceability_ui(&state_timer, &widgets_timer);
             }
 
             return glib::ControlFlow::Break;
@@ -873,6 +974,57 @@ fn execute_build_pipeline(
 
         glib::ControlFlow::Continue
     });
+}
+
+fn update_traceability_ui(state: &Rc<RefCell<AppState>>, widgets: &Rc<AppWidgets>) {
+    let (project_dir, main_c_path, build_in_progress) = {
+        let st = state.borrow();
+        (
+            st.project_dir.clone(),
+            st.discovered_main_c.clone(),
+            st.build_in_progress,
+        )
+    };
+
+    match (project_dir, main_c_path) {
+        (Some(dir), Some(main_c)) => {
+            let is_git = toolchain::traceability::is_git_repository(&dir);
+            let is_enabled = toolchain::traceability::is_traceability_enabled_in_source(&main_c);
+
+            {
+                let mut st = state.borrow_mut();
+                st.is_traceability_enabled = is_enabled;
+            }
+
+            if !is_git {
+                widgets.btn_enable_traceability.set_sensitive(false);
+                widgets
+                    .btn_enable_traceability
+                    .set_tooltip_text(Some("Build traceability requires a Git repository"));
+            } else if is_enabled {
+                widgets.btn_enable_traceability.set_sensitive(false);
+                widgets
+                    .btn_enable_traceability
+                    .set_tooltip_text(Some("Build traceability already enabled in main.c"));
+            } else if build_in_progress {
+                widgets.btn_enable_traceability.set_sensitive(false);
+                widgets
+                    .btn_enable_traceability
+                    .set_tooltip_text(Some("Build in progress..."));
+            } else {
+                widgets.btn_enable_traceability.set_sensitive(true);
+                widgets.btn_enable_traceability.set_tooltip_text(Some(
+                    "Enable build traceability by inserting version banner into main.c",
+                ));
+            }
+        }
+        _ => {
+            widgets.btn_enable_traceability.set_sensitive(false);
+            widgets
+                .btn_enable_traceability
+                .set_tooltip_text(Some("Load a project to enable build traceability"));
+        }
+    }
 }
 
 fn try_discover_folder(dir: &Path, state: &Rc<RefCell<AppState>>, widgets: &Rc<AppWidgets>) {
@@ -920,6 +1072,8 @@ fn try_discover_folder(dir: &Path, state: &Rc<RefCell<AppState>>, widgets: &Rc<A
             widgets.btn_load.set_sensitive(false);
         }
     }
+
+    update_traceability_ui(state, widgets);
 }
 
 
@@ -1132,6 +1286,8 @@ fn do_load_project(state: &Rc<RefCell<AppState>>, widgets: &Rc<AppWidgets>) {
             widgets.toast_overlay.add_toast(adw::Toast::new(&format!("[ERROR] Load Error: {}", err)));
         }
     }
+
+    update_traceability_ui(state, widgets);
 }
 
 fn run_probe_detection_and_flash(
@@ -1193,6 +1349,7 @@ fn run_probe_detection_and_flash(
                     };
                     widgets_dlg.btn_build.set_sensitive(has_build_system);
                     widgets_dlg.btn_build_flash.set_sensitive(has_build_system);
+                    update_traceability_ui(&state_dlg, &widgets_dlg);
                 });
                 dialog.present();
             }
@@ -1213,6 +1370,7 @@ fn run_probe_detection_and_flash(
             };
             widgets.btn_build.set_sensitive(has_build_system);
             widgets.btn_build_flash.set_sensitive(has_build_system);
+            update_traceability_ui(state, widgets);
         }
     }
 }
@@ -1236,6 +1394,7 @@ fn run_flash_stage(
         };
         widgets.btn_build.set_sensitive(has_build_system);
         widgets.btn_build_flash.set_sensitive(has_build_system);
+        update_traceability_ui(state, widgets);
         return;
     }
 
@@ -1299,6 +1458,7 @@ fn run_flash_stage(
             };
             widgets_timer.btn_build.set_sensitive(has_build_system);
             widgets_timer.btn_build_flash.set_sensitive(has_build_system);
+            update_traceability_ui(&state_timer, &widgets_timer);
 
             if success {
                 append_log_text(&widgets_timer.build_log_view, "\n[FLASH SUCCESS] Firmware written to 0x08000000 and target MCU reset successfully!");
@@ -1770,6 +1930,120 @@ mod tests {
             panic_res.is_ok(),
             "Expected borrow to be dropped cleanly so auto-reconnect can borrow state mutably"
         );
+    }
+
+    #[test]
+    fn test_traceability_ui_state_and_button_sensitivity() {
+        if let Err(err) = gtk4::init() {
+            eprintln!("GTK display not available, skipping test: {}", err);
+            return;
+        }
+        let _ = adw::init();
+
+        let temp_dir = std::env::temp_dir().join(format!("stakhal_test_ui_trace_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&temp_dir);
+        std::fs::create_dir_all(temp_dir.join("Core/Src")).unwrap();
+        std::fs::create_dir_all(temp_dir.join("Core/Inc")).unwrap();
+
+        let main_c_path = temp_dir.join("Core/Src/main.c");
+        let initial_c = r#"/* USER CODE BEGIN Includes */
+#include <stdio.h>
+/* USER CODE END Includes */
+
+/* USER CODE BEGIN 2 */
+printf("BOOT\r\n");
+/* USER CODE END 2 */
+"#;
+        std::fs::write(&main_c_path, initial_c).unwrap();
+
+        let btn_enable = gtk4::Button::new();
+        let state = Rc::new(RefCell::new(AppState::default()));
+        state.borrow_mut().project_dir = Some(temp_dir.clone());
+        state.borrow_mut().discovered_main_c = Some(main_c_path.clone());
+
+        let app = adw::Application::builder()
+            .application_id(format!("com.stakhal.ui.trace_test_{}", std::process::id()))
+            .flags(gio::ApplicationFlags::NON_UNIQUE)
+            .build();
+        let window = adw::ApplicationWindow::new(&app);
+        let stack = gtk4::Stack::new();
+        let toast_overlay = adw::ToastOverlay::new();
+
+        let widgets = Rc::new(AppWidgets {
+            window,
+            stack,
+            toast_overlay,
+            lbl_discovered_dir: gtk4::Label::new(None),
+            lbl_ioc_path: gtk4::Label::new(None),
+            lbl_main_c_path: gtk4::Label::new(None),
+            btn_load: gtk4::Button::new(),
+            btn_build: gtk4::Button::new(),
+            btn_build_flash: gtk4::Button::new(),
+            btn_enable_traceability: btn_enable.clone(),
+            btn_call_graph: gtk4::Button::new(),
+            btn_nucleo_pinout: gtk4::Button::new(),
+            lbl_project_name: gtk4::Label::new(None),
+            lbl_mcu_family: gtk4::Label::new(None),
+            lbl_mcu_name: gtk4::Label::new(None),
+            lbl_periph_header: gtk4::Label::new(None),
+            lbl_region_header: gtk4::Label::new(None),
+            list_peripherals: gtk4::ListBox::new(),
+            list_user_regions: gtk4::ListBox::new(),
+            build_log_view: gtk4::TextView::new(),
+            lbl_build_status: gtk4::Label::new(None),
+            btn_clear_log: gtk4::Button::new(),
+            diagram_drawing_area: gtk4::DrawingArea::new(),
+            btn_fit_to_view: gtk4::Button::new(),
+            diagram_scrolled: gtk4::ScrolledWindow::new(),
+            combo_state_machine: gtk4::DropDown::builder().build(),
+            lbl_selected_info: gtk4::Label::new(None),
+            pinout_drawing_area: gtk4::DrawingArea::new(),
+            _pinout_scrolled: gtk4::ScrolledWindow::new(),
+            combo_pinout_module: gtk4::DropDown::builder().build(),
+            btn_serial_monitor: gtk4::Button::new(),
+            combo_port: gtk4::DropDown::builder().build(),
+            btn_refresh_ports: gtk4::Button::new(),
+            combo_baud: gtk4::DropDown::builder().build(),
+            btn_connect_serial: gtk4::Button::new(),
+            lbl_serial_status: gtk4::Label::new(None),
+            btn_clear_serial: gtk4::Button::new(),
+            serial_log_view: gtk4::TextView::new(),
+            serial_scrolled: gtk4::ScrolledWindow::new(),
+            entry_command: gtk4::Entry::new(),
+            btn_send_command: gtk4::Button::new(),
+            box_quick_commands: gtk4::Box::new(gtk4::Orientation::Horizontal, 0),
+        });
+
+        // 1. Non-git repo: should be disabled
+        update_traceability_ui(&state, &widgets);
+        assert!(!widgets.btn_enable_traceability.is_sensitive());
+
+        // 2. Initialize git repository
+        std::process::Command::new("git")
+            .arg("-C")
+            .arg(&temp_dir)
+            .arg("init")
+            .output()
+            .unwrap();
+
+        // Now inside git repo, not yet enabled: should be sensitive
+        update_traceability_ui(&state, &widgets);
+        assert!(widgets.btn_enable_traceability.is_sensitive());
+
+        // 3. Insert traceability into source
+        let res = toolchain::traceability::insert_traceability_into_source(&main_c_path, &temp_dir);
+        assert!(res.is_ok());
+
+        // Once enabled: should be insensitive
+        update_traceability_ui(&state, &widgets);
+        assert!(!widgets.btn_enable_traceability.is_sensitive());
+
+        // 4. User manually removes line: should re-enable
+        std::fs::write(&main_c_path, initial_c).unwrap();
+        update_traceability_ui(&state, &widgets);
+        assert!(widgets.btn_enable_traceability.is_sensitive());
+
+        let _ = std::fs::remove_dir_all(&temp_dir);
     }
 
     #[test]
