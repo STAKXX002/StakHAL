@@ -715,9 +715,26 @@ fn execute_build_pipeline(
         }
     };
 
+    // Generate build-info header before invoking compiler
+    match toolchain::traceability::generate_build_info_header(&dir) {
+        Ok(hash) => {
+            append_log_text(
+                &widgets.build_log_view,
+                &format!("[TRACE] Generated Core/Inc/stakhal_build_info.h (STAKHAL_BUILD_HASH: \"{}\")", hash),
+            );
+        }
+        Err(err) => {
+            append_log_text(
+                &widgets.build_log_view,
+                &format!("[TRACE WARNING] Failed to generate build info header: {}", err),
+            );
+        }
+    }
+
     append_log_text(&widgets.build_log_view, "============================================================");
     append_log_text(&widgets.build_log_view, &format!("[BUILD] [{}] Running `{} {}` in {}", build_sys.display_name(), cmd, args.join(" "), exec_dir.display()));
     append_log_text(&widgets.build_log_view, "============================================================");
+
 
     let rx = toolchain::runner::spawn_streaming_process(
         cmd.clone(),
