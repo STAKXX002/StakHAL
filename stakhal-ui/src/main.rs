@@ -269,11 +269,13 @@ dropdown button {
 "#);
 
 
-    gtk4::style_context_add_provider_for_display(
-        &gdk::Display::default().expect("Could not connect to a display."),
-        &css_provider,
-        gtk4::STYLE_PROVIDER_PRIORITY_APPLICATION,
-    );
+    if let Some(display) = gdk::Display::default() {
+        gtk4::style_context_add_provider_for_display(
+            &display,
+            &css_provider,
+            gtk4::STYLE_PROVIDER_PRIORITY_APPLICATION,
+        );
+    }
 
     let MainPanelWidgets {
         overview_box,
@@ -2051,6 +2053,10 @@ mod tests {
             eprintln!("GTK display not available, skipping test: {}", err);
             return;
         }
+        if gdk::Display::default().is_none() {
+            eprintln!("GDK default display not available, skipping test");
+            return;
+        }
         let _ = adw::init();
 
         let temp_dir = std::env::temp_dir().join(format!("stakhal_test_ui_trace_{}", std::process::id()));
@@ -2234,6 +2240,10 @@ printf("BOOT\r\n");
     fn test_ui_build_smoke() {
         if let Err(err) = gtk4::init() {
             eprintln!("GTK display not available, skipping UI smoke test: {}", err);
+            return;
+        }
+        if gdk::Display::default().is_none() {
+            eprintln!("GDK default display not available, skipping UI smoke test");
             return;
         }
         let _ = adw::init();

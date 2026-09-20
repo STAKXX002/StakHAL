@@ -26,4 +26,6 @@ jobs:
         run: cargo test -p stakhal-core
 
       - name: Run stakhal-ui smoke tests
-        run: xvfb-run cargo test -p stakhal-ui
+        run: xvfb-run -a -s "-screen 0 1920x1080x24" cargo test -p stakhal-ui -- --test-threads=1
+        env:
+          GDK_BACKEND: x11
