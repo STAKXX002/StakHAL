@@ -208,18 +208,22 @@ pub fn discover_state_machines_in_file(path: &Path) -> Result<Vec<StateMachineCa
     let mut variables = Vec::new();
     collect_variables(root, source_bytes, &path_str, None, &enum_map, &mut variables);
 
-    // 3. Match each variable to its enum definition
+    // 3. Match each variable to its enum definition (qualifying only variables with guarded dispatch)
     let mut candidates = Vec::new();
     for var in variables {
         if let Some(enum_def) = enum_map.get(&var.enum_type) {
-            let id = format!("{}_{}", var.enum_type, var.name);
-            let display_name = format!("{} ({})", var.enum_type, var.name);
-            candidates.push(StateMachineCandidate {
-                id,
-                display_name,
-                enum_def: enum_def.clone(),
-                var,
-            });
+            let known_variants: HashSet<String> = enum_def.variants.iter().cloned().collect();
+            let helpers = collect_helper_functions(root, source_bytes, &var.name, &known_variants);
+            if has_guarded_dispatch_assigning_var(root, source_bytes, &var.name, enum_def, &helpers) {
+                let id = format!("{}_{}", var.enum_type, var.name);
+                let display_name = format!("{} ({})", var.enum_type, var.name);
+                candidates.push(StateMachineCandidate {
+                    id,
+                    display_name,
+                    enum_def: enum_def.clone(),
+                    var,
+                });
+            }
         }
     }
 
@@ -326,20 +330,176 @@ pub fn discover_state_machines_in_project(main_c_path: &Path) -> Result<Vec<Stat
         if let Some(enum_def) = enum_map.get(&var.enum_type) {
             let key = (enum_def.name.clone(), var.name.clone(), var.file_path.clone());
             if seen.insert(key) {
-                let id = format!("{}_{}", var.enum_type, var.name);
-                let display_name = format!("{} ({})", var.enum_type, var.name);
-                candidates.push(StateMachineCandidate {
-                    id,
-                    display_name,
-                    enum_def: enum_def.clone(),
-                    var,
-                });
+                let known_variants: HashSet<String> = enum_def.variants.iter().cloned().collect();
+                let mut qualifies = false;
+                for c_path in &c_files {
+                    if let Ok(source) = fs::read_to_string(c_path) {
+                        if let Some(tree) = parser.parse(&source, None) {
+                            let root = tree.root_node();
+                            let s_bytes = source.as_bytes();
+                            let helpers = collect_helper_functions(root, s_bytes, &var.name, &known_variants);
+                            if has_guarded_dispatch_assigning_var(root, s_bytes, &var.name, enum_def, &helpers) {
+                                qualifies = true;
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                if qualifies {
+                    let id = format!("{}_{}", var.enum_type, var.name);
+                    let display_name = format!("{} ({})", var.enum_type, var.name);
+                    candidates.push(StateMachineCandidate {
+                        id,
+                        display_name,
+                        enum_def: enum_def.clone(),
+                        var,
+                    });
+                }
             }
         }
     }
 
     candidates.sort_by(|a, b| a.display_name.cmp(&b.display_name));
     Ok(candidates)
+}
+
+/// Determine whether a candidate variable qualifies as its own state machine.
+/// A variable only qualifies if it is itself the subject of guarded dispatch logic
+/// (a switch(var) or an if/else-if chain comparing var against its own enum constants)
+/// where at least one branch assigns a new value back to var.
+fn has_guarded_dispatch_assigning_var(
+    node: Node,
+    source_bytes: &[u8],
+    var_name: &str,
+    enum_def: &EnumDefinition,
+    helpers: &HashMap<String, HelperFunctionInfo>,
+) -> bool {
+    let known_variants: HashSet<String> = enum_def.variants.iter().cloned().collect();
+    check_guarded_dispatch_recursive(node, source_bytes, var_name, &known_variants, helpers)
+}
+
+fn check_guarded_dispatch_recursive(
+    node: Node,
+    source_bytes: &[u8],
+    var_name: &str,
+    known_variants: &HashSet<String>,
+    helpers: &HashMap<String, HelperFunctionInfo>,
+) -> bool {
+    match node.kind() {
+        "switch_statement" => {
+            if let Some(cond) = node.child_by_field_name("condition") {
+                let cond_text = clean_guard_text(&node_text(cond, source_bytes));
+                if cond_text == var_name {
+                    if let Some(body) = node.child_by_field_name("body") {
+                        if block_assigns_var(body, source_bytes, var_name, helpers) {
+                            return true;
+                        }
+                    }
+                }
+            }
+        }
+        "if_statement" => {
+            if let Some(cond) = node.child_by_field_name("condition") {
+                if condition_compares_var_to_variants(cond, source_bytes, var_name, known_variants) {
+                    if let Some(consequence) = node.child_by_field_name("consequence") {
+                        if block_assigns_var(consequence, source_bytes, var_name, helpers) {
+                            return true;
+                        }
+                    }
+                    if let Some(alternative) = node.child_by_field_name("alternative") {
+                        if block_assigns_var(alternative, source_bytes, var_name, helpers) {
+                            return true;
+                        }
+                    }
+                }
+            }
+        }
+        _ => {}
+    }
+
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        if check_guarded_dispatch_recursive(child, source_bytes, var_name, known_variants, helpers) {
+            return true;
+        }
+    }
+    false
+}
+
+fn block_assigns_var(
+    node: Node,
+    source_bytes: &[u8],
+    var_name: &str,
+    helpers: &HashMap<String, HelperFunctionInfo>,
+) -> bool {
+    if node.kind() == "assignment_expression" {
+        if let Some(left) = node.child_by_field_name("left") {
+            if extract_target_ident(left, source_bytes).as_deref() == Some(var_name) {
+                return true;
+            }
+        }
+    } else if node.kind() == "call_expression" {
+        if let Some(fn_child) = node.child_by_field_name("function") {
+            let fn_name = node_text(fn_child, source_bytes);
+            if helpers.contains_key(&fn_name) {
+                return true;
+            }
+        }
+    }
+
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        if block_assigns_var(child, source_bytes, var_name, helpers) {
+            return true;
+        }
+    }
+    false
+}
+
+fn condition_compares_var_to_variants(
+    node: Node,
+    source_bytes: &[u8],
+    var_name: &str,
+    known_variants: &HashSet<String>,
+) -> bool {
+    match node.kind() {
+        "parenthesized_expression" => {
+            let mut cursor = node.walk();
+            for child in node.children(&mut cursor) {
+                if child.kind() != "(" && child.kind() != ")" && child.kind() != "comment" {
+                    if condition_compares_var_to_variants(child, source_bytes, var_name, known_variants) {
+                        return true;
+                    }
+                }
+            }
+            false
+        }
+        "binary_expression" => {
+            let op = node.child_by_field_name("operator").map(|n| node_text(n, source_bytes));
+            let left = node.child_by_field_name("left");
+            let right = node.child_by_field_name("right");
+            if let (Some(op), Some(left), Some(right)) = (op, left, right) {
+                if op == "==" || op == "!=" {
+                    let left_txt = extract_target_ident(left, source_bytes).unwrap_or_default();
+                    let right_variant = extract_variant_ident(right, source_bytes, known_variants);
+                    if left_txt == var_name && right_variant.is_some() {
+                        return true;
+                    }
+                    let right_txt = extract_target_ident(right, source_bytes).unwrap_or_default();
+                    let left_variant = extract_variant_ident(left, source_bytes, known_variants);
+                    if right_txt == var_name && left_variant.is_some() {
+                        return true;
+                    }
+                } else if op == "&&" || op == "||" {
+                    return condition_compares_var_to_variants(left, source_bytes, var_name, known_variants)
+                        || condition_compares_var_to_variants(right, source_bytes, var_name, known_variants);
+                }
+            }
+            false
+        }
+        _ => false,
+    }
 }
 
 /// Extract all transitions (direct and event-triggered) and ambiguous assignments for a state machine candidate.
@@ -1289,13 +1449,13 @@ fn collect_helper_functions(
     let mut fn_nodes = Vec::new();
     collect_functions(root, &mut fn_nodes);
 
-    for fn_node in fn_nodes {
-        if let Some(fn_name) = extract_function_name(fn_node, source_bytes) {
-            if fn_name == "main" || has_switch_on_var(fn_node, source_bytes, var_name) {
+    for fn_node in &fn_nodes {
+        if let Some(fn_name) = extract_function_name(*fn_node, source_bytes) {
+            if fn_name == "main" || has_switch_on_var(*fn_node, source_bytes, var_name) {
                 continue;
             }
             let mut targets = Vec::new();
-            collect_assignments_to_var(fn_node, source_bytes, var_name, known_variants, &mut targets);
+            collect_assignments_to_var(*fn_node, source_bytes, var_name, known_variants, &mut targets);
             if !targets.is_empty() {
                 helpers.insert(
                     fn_name.clone(),
@@ -1307,7 +1467,63 @@ fn collect_helper_functions(
             }
         }
     }
+
+    // Delegating helper propagation: if function A has no direct assignments and calls helper B,
+    // function A acts as a delegating helper and inherits B's target states.
+    let mut changed = true;
+    while changed {
+        changed = false;
+        for fn_node in &fn_nodes {
+            if let Some(fn_name) = extract_function_name(*fn_node, source_bytes) {
+                if fn_name == "main" || has_switch_on_var(*fn_node, source_bytes, var_name) {
+                    continue;
+                }
+                if let Some(existing) = helpers.get(&fn_name) {
+                    if !existing.target_states.is_empty() {
+                        continue;
+                    }
+                }
+                let mut called_helpers = Vec::new();
+                collect_called_helpers(*fn_node, source_bytes, &helpers, &mut called_helpers);
+                for h_name in called_helpers {
+                    if let Some(h_info) = helpers.get(&h_name).cloned() {
+                        let entry = helpers.entry(fn_name.clone()).or_insert_with(|| HelperFunctionInfo {
+                            name: fn_name.clone(),
+                            target_states: Vec::new(),
+                        });
+                        for t in h_info.target_states {
+                            if !entry.target_states.contains(&t) {
+                                entry.target_states.push(t);
+                                changed = true;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     helpers
+}
+
+fn collect_called_helpers(
+    node: Node,
+    source_bytes: &[u8],
+    helpers: &HashMap<String, HelperFunctionInfo>,
+    out: &mut Vec<String>,
+) {
+    if node.kind() == "call_expression" {
+        if let Some(fn_child) = node.child_by_field_name("function") {
+            let fn_name = node_text(fn_child, source_bytes);
+            if helpers.contains_key(&fn_name) && !out.contains(&fn_name) {
+                out.push(fn_name);
+            }
+        }
+    }
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        collect_called_helpers(child, source_bytes, helpers, out);
+    }
 }
 
 fn has_switch_on_var(node: Node, source_bytes: &[u8], var_name: &str) -> bool {
@@ -1806,9 +2022,171 @@ fn check_assignment(
                         note: format!("Assignment to {} with no enclosing state check", var_name),
                     });
                 }
+            } else if let Some(right_ident) = extract_target_ident(right, source_bytes) {
+                if right_ident != var_name {
+                    resolve_variable_assignment(
+                        node,
+                        ctx,
+                        source_bytes,
+                        var_name,
+                        &right_ident,
+                        known_variants,
+                        direct_transitions,
+                    );
+                }
             }
         }
     }
+}
+
+fn resolve_variable_assignment(
+    node: Node,
+    ctx: &ASTContext,
+    source_bytes: &[u8],
+    _var_name: &str,
+    staging_var: &str,
+    known_variants: &HashSet<String>,
+    direct_transitions: &mut Vec<AppTransition>,
+) {
+    let active_states = match &ctx.active_states {
+        Some(st) if !st.is_empty() => st.clone(),
+        _ => return,
+    };
+
+    let mut resolved_branches: Vec<(String, String, String)> = Vec::new();
+
+    let mut curr = node.parent();
+    while let Some(parent_node) = curr {
+        if parent_node.kind() == "compound_statement" || parent_node.kind() == "case_statement" {
+            find_staging_branches(parent_node, source_bytes, staging_var, known_variants, &active_states, &mut resolved_branches);
+            if !resolved_branches.is_empty() {
+                break;
+            }
+        }
+        if parent_node.kind() == "function_definition" {
+            break;
+        }
+        curr = parent_node.parent();
+    }
+
+    let line = node.start_position().row + 1;
+    for from_state in &active_states {
+        for (target, guard, label) in &resolved_branches {
+            if !direct_transitions.iter().any(|t| &t.from == from_state && &t.to == target && &t.label == label) {
+                direct_transitions.push(AppTransition {
+                    from: from_state.clone(),
+                    to: target.clone(),
+                    guard: guard.clone(),
+                    label: label.clone(),
+                    is_fault: false,
+                    transition_type: TransitionType::Direct,
+                    line,
+                });
+            }
+        }
+    }
+}
+
+fn find_staging_branches(
+    block_node: Node,
+    source_bytes: &[u8],
+    staging_var: &str,
+    known_variants: &HashSet<String>,
+    active_states: &[String],
+    out: &mut Vec<(String, String, String)>,
+) {
+    let mut cursor = block_node.walk();
+    for child in block_node.children(&mut cursor) {
+        if child.kind() == "if_statement" {
+            if let Some(cond) = child.child_by_field_name("condition") {
+                if let Some(tested_variant) = extract_tested_variant(cond, source_bytes, staging_var, known_variants) {
+                    let stripped_tested = strip_variant_prefix(&tested_variant).unwrap_or_else(|| tested_variant.clone());
+                    let tested_guard = format!("{} == {}", staging_var, tested_variant);
+                    let tested_label = format!("{} is {}", staging_var, stripped_tested);
+                    out.push((tested_variant.clone(), tested_guard, tested_label));
+
+                    if let Some(alt) = child.child_by_field_name("alternative") {
+                        let mut chained_if = None;
+                        if alt.kind() == "if_statement" {
+                            chained_if = Some(alt);
+                        } else {
+                            let mut c = alt.walk();
+                            for ch in alt.children(&mut c) {
+                                if ch.kind() == "if_statement" {
+                                    chained_if = Some(ch);
+                                    break;
+                                }
+                            }
+                        }
+
+                        if let Some(else_if_node) = chained_if {
+                            find_staging_branches(else_if_node, source_bytes, staging_var, known_variants, active_states, out);
+                        } else {
+                            let mut remaining: Vec<String> = known_variants
+                                .iter()
+                                .filter(|v| *v != &tested_variant && !active_states.contains(v) && !is_initial_variant(v) && !is_fault_state(v))
+                                .cloned()
+                                .collect();
+                            remaining.sort();
+                            if let Some(other_var) = remaining.first() {
+                                let stripped_other = strip_variant_prefix(other_var).unwrap_or_else(|| other_var.clone());
+                                let other_guard = format!("{} == {}", staging_var, other_var);
+                                let other_label = format!("{} is {}", staging_var, stripped_other);
+                                out.push((other_var.clone(), other_guard, other_label));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn extract_tested_variant(
+    cond: Node,
+    source_bytes: &[u8],
+    staging_var: &str,
+    known_variants: &HashSet<String>,
+) -> Option<String> {
+    match cond.kind() {
+        "parenthesized_expression" => {
+            let mut cursor = cond.walk();
+            for child in cond.children(&mut cursor) {
+                if child.kind() != "(" && child.kind() != ")" && child.kind() != "comment" {
+                    if let Some(v) = extract_tested_variant(child, source_bytes, staging_var, known_variants) {
+                        return Some(v);
+                    }
+                }
+            }
+            None
+        }
+        "binary_expression" => {
+            let op = cond.child_by_field_name("operator").map(|n| node_text(n, source_bytes));
+            let left = cond.child_by_field_name("left");
+            let right = cond.child_by_field_name("right");
+            if let (Some(op), Some(left), Some(right)) = (op, left, right) {
+                if op == "==" {
+                    let left_txt = extract_target_ident(left, source_bytes).unwrap_or_default();
+                    let right_variant = extract_variant_ident(right, source_bytes, known_variants);
+                    if left_txt == staging_var && right_variant.is_some() {
+                        return right_variant;
+                    }
+                    let right_txt = extract_target_ident(right, source_bytes).unwrap_or_default();
+                    let left_variant = extract_variant_ident(left, source_bytes, known_variants);
+                    if right_txt == staging_var && left_variant.is_some() {
+                        return left_variant;
+                    }
+                }
+            }
+            None
+        }
+        _ => None,
+    }
+}
+
+fn is_initial_variant(v: &str) -> bool {
+    let lower = v.to_lowercase();
+    lower.contains("idle") || lower.contains("init") || lower.contains("boot") || lower.contains("reset")
 }
 
 #[derive(Debug, Clone, Default)]
@@ -2230,14 +2608,22 @@ pub fn prettify_guard(raw_guard: &str) -> String {
         return String::new();
     }
 
-    // 1. Timeout pattern
+    // 1. If there is an equality discriminator like pendingState == HATCH_OPENING,
+    // prioritize the discriminator label even if a timeout condition is present in the conjunction.
+    if s.contains("==") {
+        if let Some(term) = s.split("&&").map(|p| p.trim()).find(|p| p.contains("==")) {
+            return prettify_single_term(term);
+        }
+    }
+
+    // 2. Timeout pattern
     if s.contains("now") && s.contains("stateStart") {
         if let Some(timeout_label) = extract_timeout_pattern(s) {
             return timeout_label;
         }
     }
 
-    // 2. Split by ||
+    // 3. Split by ||
     if s.contains("||") {
         let parts: Vec<String> = s
             .split("||")
@@ -2247,7 +2633,7 @@ pub fn prettify_guard(raw_guard: &str) -> String {
         return parts.join(" or ");
     }
 
-    // 3. Conjunctive clause
+    // 4. Conjunctive clause
     prettify_conjunctive_clause(s)
 }
 
@@ -2290,6 +2676,27 @@ fn prettify_conjunctive_clause(clause: &str) -> String {
     parts.join(" and ")
 }
 
+fn is_camel_case_ident(s: &str) -> bool {
+    let clean = s.trim();
+    if clean.is_empty() || clean.contains(' ') || clean.contains('[') || clean.contains('(') {
+        return false;
+    }
+    let first = clean.chars().next().unwrap();
+    first.is_ascii_lowercase() && clean.chars().any(|c| c.is_ascii_uppercase())
+}
+
+fn strip_variant_prefix(s: &str) -> Option<String> {
+    let clean = s.trim();
+    if clean.contains('_') && clean.chars().all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == '_') {
+        let idx = clean.find('_')?;
+        let stripped = &clean[idx + 1..];
+        if !stripped.is_empty() {
+            return Some(stripped.to_string());
+        }
+    }
+    None
+}
+
 fn prettify_single_term(term: &str) -> String {
     let mut s = term.trim();
     while s.starts_with('(') && s.ends_with(')') && has_matching_outer_parens(s) {
@@ -2303,8 +2710,21 @@ fn prettify_single_term(term: &str) -> String {
     if s.contains("==") {
         let parts: Vec<&str> = s.split("==").collect();
         if parts.len() == 2 {
-            let left = prettify_operand(parts[0].trim());
-            let right = prettify_operand(parts[1].trim());
+            let left_raw = parts[0].trim();
+            let right_raw = parts[1].trim();
+
+            let left = if is_camel_case_ident(left_raw) {
+                left_raw.to_string()
+            } else {
+                prettify_operand(left_raw)
+            };
+
+            let right = if let Some(stripped) = strip_variant_prefix(right_raw) {
+                stripped
+            } else {
+                prettify_operand(right_raw)
+            };
+
             return format!("{} is {}", left, right);
         }
     }
@@ -3672,6 +4092,80 @@ mod tests {
         assert!(
             hatch_sm.transitions.iter().any(|t| t.from == "(any state)" && t.to == "HATCH_IDLE" && t.label == "CMD: STOP"),
             "CMD: STOP transition from (any state) to HATCH_IDLE must exist"
+        );
+    }
+
+    #[test]
+    fn test_hatch_deadtime_fixture() {
+        let fixture_main_c = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/fixtures/hatch_deadtime/Core/Src/main.c");
+        let candidates = discover_state_machines_in_project(&fixture_main_c)
+            .expect("discovery across hatch_deadtime project files should succeed");
+
+        // Ground Truth 1: exactly ONE selectable machine for HatchState (pendingState excluded)
+        assert_eq!(candidates.len(), 1, "Expected exactly 1 state machine (hatchState), pendingState must be excluded");
+        let cand = &candidates[0];
+        assert_eq!(cand.enum_def.name, "HatchState");
+        assert_eq!(cand.var.name, "hatchState");
+        assert_eq!(cand.display_name, "HatchState (hatchState)");
+        assert_eq!(cand.enum_def.variants.len(), 4);
+
+        // Extract transitions
+        let hatch_file = Path::new(&cand.var.file_path);
+        let sm = extract_state_machine_transitions(cand, hatch_file)
+            .expect("HatchState transitions extraction should succeed");
+
+        // Verify states: IDLE, DEADTIME, OPENING, CLOSING
+        assert_eq!(sm.states.len(), 4);
+        assert!(sm.states.contains(&"HATCH_IDLE".to_string()));
+        assert!(sm.states.contains(&"HATCH_DEADTIME".to_string()));
+        assert!(sm.states.contains(&"HATCH_OPENING".to_string()));
+        assert!(sm.states.contains(&"HATCH_CLOSING".to_string()));
+
+        // Verify HATCH_IDLE -> HATCH_DEADTIME (via commands)
+        assert!(
+            sm.transitions.iter().any(|t| t.from == "HATCH_IDLE" && t.to == "HATCH_DEADTIME"),
+            "Expected transition from HATCH_IDLE to HATCH_DEADTIME"
+        );
+
+        // Verify HATCH_DEADTIME -> HATCH_OPENING guarded by pendingState is OPENING
+        let deadtime_to_opening = sm.transitions.iter().find(|t| t.from == "HATCH_DEADTIME" && t.to == "HATCH_OPENING")
+            .expect("Expected transition from HATCH_DEADTIME to HATCH_OPENING");
+        assert!(
+            deadtime_to_opening.label == "pendingState is OPENING" || deadtime_to_opening.guard.contains("pendingState"),
+            "Expected guard on DEADTIME -> OPENING to be 'pendingState is OPENING', got label: {}, guard: {}",
+            deadtime_to_opening.label,
+            deadtime_to_opening.guard
+        );
+
+        // Verify HATCH_DEADTIME -> HATCH_CLOSING guarded by pendingState is CLOSING
+        let deadtime_to_closing = sm.transitions.iter().find(|t| t.from == "HATCH_DEADTIME" && t.to == "HATCH_CLOSING")
+            .expect("Expected transition from HATCH_DEADTIME to HATCH_CLOSING");
+        assert!(
+            deadtime_to_closing.label == "pendingState is CLOSING" || deadtime_to_closing.guard.contains("pendingState"),
+            "Expected guard on DEADTIME -> CLOSING to be 'pendingState is CLOSING', got label: {}, guard: {}",
+            deadtime_to_closing.label,
+            deadtime_to_closing.guard
+        );
+
+        // Verify HATCH_OPENING -> HATCH_IDLE and HATCH_CLOSING -> HATCH_IDLE
+        assert!(
+            sm.transitions.iter().any(|t| t.from == "HATCH_OPENING" && t.to == "HATCH_IDLE"),
+            "Expected transition from HATCH_OPENING to HATCH_IDLE"
+        );
+        assert!(
+            sm.transitions.iter().any(|t| t.from == "HATCH_CLOSING" && t.to == "HATCH_IDLE"),
+            "Expected transition from HATCH_CLOSING to HATCH_IDLE"
+        );
+
+        // Verify NO self-loops on refresh branches
+        assert!(
+            !sm.transitions.iter().any(|t| t.from == "HATCH_OPENING" && t.to == "HATCH_OPENING"),
+            "Spurious self-loop HATCH_OPENING -> HATCH_OPENING must not exist"
+        );
+        assert!(
+            !sm.transitions.iter().any(|t| t.from == "HATCH_CLOSING" && t.to == "HATCH_CLOSING"),
+            "Spurious self-loop HATCH_CLOSING -> HATCH_CLOSING must not exist"
         );
     }
 }
