@@ -6,7 +6,7 @@ pub mod render_model;
 pub mod usage_finder;
 pub mod writeback;
 
-pub use console_uart::{detect_console_uart, ConsoleUartInfo};
+pub use console_uart::{detect_console_uart, extract_project_command_names, ConsoleUartInfo};
 pub use marker_scan::{
     find_loop_body_gap, is_byte_in_user_region, scan_file, scan_source, ScanError, UserRegion,
 };

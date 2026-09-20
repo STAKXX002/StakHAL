@@ -45,6 +45,8 @@ pub struct AppState {
     pub selected_serial_baud: u32,
     pub is_serial_connected: bool,
     pub serial_session: Option<crate::toolchain::serial::ActiveSerialSession>,
+    pub serial_command_history: Vec<String>,
+    pub serial_history_index: Option<usize>,
 }
 
 impl Default for AppState {
@@ -81,6 +83,8 @@ impl Default for AppState {
             selected_serial_baud: 115200,
             is_serial_connected: false,
             serial_session: None,
+            serial_command_history: Vec::new(),
+            serial_history_index: None,
         }
     }
 }

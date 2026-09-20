@@ -610,6 +610,51 @@ dropdown button {
         entry.set_text("");
     });
 
+    let state_keys = Rc::clone(&state);
+    let entry_keys = widgets.entry_command.clone();
+    let key_controller = gtk4::EventControllerKey::new();
+    key_controller.connect_key_pressed(move |_, key, _, _| {
+        let mut st = state_keys.borrow_mut();
+        if st.serial_command_history.is_empty() {
+            return glib::Propagation::Proceed;
+        }
+
+        match key {
+            gdk::Key::Up => {
+                let new_idx = match st.serial_history_index {
+                    None => st.serial_command_history.len().saturating_sub(1),
+                    Some(idx) => idx.saturating_sub(1),
+                };
+                st.serial_history_index = Some(new_idx);
+                if let Some(cmd) = st.serial_command_history.get(new_idx) {
+                    entry_keys.set_text(cmd);
+                    entry_keys.set_position(-1);
+                }
+                glib::Propagation::Stop
+            }
+            gdk::Key::Down => {
+                if let Some(idx) = st.serial_history_index {
+                    if idx + 1 < st.serial_command_history.len() {
+                        let new_idx = idx + 1;
+                        st.serial_history_index = Some(new_idx);
+                        if let Some(cmd) = st.serial_command_history.get(new_idx) {
+                            entry_keys.set_text(cmd);
+                            entry_keys.set_position(-1);
+                        }
+                    } else {
+                        st.serial_history_index = None;
+                        entry_keys.set_text("");
+                    }
+                    glib::Propagation::Stop
+                } else {
+                    glib::Propagation::Proceed
+                }
+            }
+            _ => glib::Propagation::Proceed,
+        }
+    });
+    widgets.entry_command.add_controller(key_controller);
+
     refresh_serial_ports(&state, &widgets);
 
     window.present();
@@ -1024,6 +1069,7 @@ fn do_load_project(state: &Rc<RefCell<AppState>>, widgets: &Rc<AppWidgets>) {
                     st.selected_serial_baud = uart_info.baud_rate;
                     st.detected_console_uart = Some(uart_info);
                 }
+                update_quick_send_buttons(main_c, state, widgets);
             }
 
             widgets.toast_overlay.add_toast(adw::Toast::new("[OK] Project loaded successfully"));
@@ -1365,6 +1411,30 @@ fn send_serial_command(text: &str, state: &Rc<RefCell<AppState>>, widgets: &Rc<A
     if text.is_empty() {
         return;
     }
+    let is_connected = state.borrow().is_serial_connected;
+    if !is_connected {
+        widgets
+            .toast_overlay
+            .add_toast(adw::Toast::new("Serial port is not currently connected"));
+        return;
+    }
+
+    // Echo sent command to serial console
+    append_serial_text(
+        &widgets.serial_log_view,
+        &widgets.serial_scrolled,
+        &format!("> {}\n", text),
+    );
+
+    // Record in history
+    {
+        let mut st = state.borrow_mut();
+        if st.serial_command_history.last().map(|s| s.as_str()) != Some(text) {
+            st.serial_command_history.push(text.to_string());
+        }
+        st.serial_history_index = None;
+    }
+
     let st = state.borrow();
     if let Some(ref session) = st.serial_session {
         let payload = format!("{}\r\n", text);
@@ -1372,10 +1442,46 @@ fn send_serial_command(text: &str, state: &Rc<RefCell<AppState>>, widgets: &Rc<A
             .tx_cmd
             .send(crate::toolchain::serial::SerialTxCommand::Send(payload))
             .ok();
-    } else {
-        widgets
-            .toast_overlay
-            .add_toast(adw::Toast::new("Serial port is not currently connected"));
+    }
+}
+
+fn clear_box_children(bx: &gtk4::Box) {
+    while let Some(child) = bx.first_child() {
+        bx.remove(&child);
+    }
+}
+
+fn update_quick_send_buttons(main_c_path: &Path, state: &Rc<RefCell<AppState>>, widgets: &Rc<AppWidgets>) {
+    clear_box_children(&widgets.box_quick_commands);
+
+    let commands = stakhal_core::source::extract_project_command_names(main_c_path);
+    if commands.is_empty() {
+        return;
+    }
+
+    let lbl_quick = gtk4::Label::builder()
+        .label("QUICK:")
+        .css_classes(vec!["caption".to_string(), "dim-label".to_string(), "data-mono".to_string()])
+        .valign(gtk4::Align::Center)
+        .build();
+    widgets.box_quick_commands.append(&lbl_quick);
+
+    for cmd in commands {
+        let btn = gtk4::Button::builder()
+            .label(&cmd)
+            .css_classes(vec!["stakhal-btn".to_string(), "flat".to_string(), "caption".to_string()])
+            .tooltip_text(&format!("Send command: {}", cmd))
+            .build();
+        btn.set_cursor_from_name(Some("pointer"));
+
+        let state_btn = Rc::clone(state);
+        let widgets_btn = Rc::clone(widgets);
+        let cmd_clone = cmd.clone();
+        btn.connect_clicked(move |_| {
+            send_serial_command(&cmd_clone, &state_btn, &widgets_btn);
+        });
+
+        widgets.box_quick_commands.append(&btn);
     }
 }
 

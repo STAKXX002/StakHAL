@@ -280,6 +280,61 @@ fn find_any_uart_baud_rate(content: &str) -> Option<(String, u32)> {
     None
 }
 
+/// Extracts command names from commandTable or Command arrays across project C files.
+pub fn extract_project_command_names(main_c_path: &Path) -> Vec<String> {
+    let c_files = collect_c_source_files(main_c_path);
+    let mut commands = Vec::new();
+
+    for file_path in &c_files {
+        if let Ok(content) = fs::read_to_string(file_path) {
+            let extracted = parse_command_table_entries(&content);
+            for cmd in extracted {
+                if !commands.contains(&cmd) {
+                    commands.push(cmd);
+                }
+            }
+        }
+    }
+
+    commands
+}
+
+/// Parses entries like { "GO", cmd_go }, { "CAL", cmd_cal } from C source.
+fn parse_command_table_entries(content: &str) -> Vec<String> {
+    let mut commands = Vec::new();
+
+    let mut search_from = 0;
+    while let Some(pos) = content[search_from..].find('{') {
+        let abs_pos = search_from + pos;
+        if let Some(close_pos) = content[abs_pos..].find('}') {
+            let block = &content[abs_pos..abs_pos + close_pos + 1];
+            if let Some(str_start) = block.find('"') {
+                if let Some(str_end) = block[str_start + 1..].find('"') {
+                    let cmd_str = &block[str_start + 1..str_start + 1 + str_end];
+                    let after_str = &block[str_start + 1 + str_end + 1..];
+                    if let Some(comma_pos) = after_str.find(',') {
+                        let after_comma = after_str[comma_pos + 1..].trim();
+                        let ident: String = after_comma
+                            .chars()
+                            .take_while(|c| c.is_alphanumeric() || *c == '_')
+                            .collect();
+                        if !ident.is_empty() && !cmd_str.is_empty() && cmd_str.len() <= 16 {
+                            if cmd_str.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-') {
+                                commands.push(cmd_str.to_string());
+                            }
+                        }
+                    }
+                }
+            }
+            search_from = abs_pos + close_pos + 1;
+        } else {
+            break;
+        }
+    }
+
+    commands
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -300,5 +355,21 @@ mod tests {
         let info = detect_console_uart(&fixture_main_c).expect("should detect console uart in docking_firmware_v2");
         assert_eq!(info.uart_instance, "huart2");
         assert_eq!(info.baud_rate, 115200);
+    }
+
+    #[test]
+    fn test_extract_project_command_names_aa_ns_stm_port() {
+        let fixture_main_c = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/fixtures/aa_ns_stm_port/Core/Src/main.c");
+        let commands = extract_project_command_names(&fixture_main_c);
+        let expected = ["CAL", "GO", "RET", "RST", "OPEN", "CLOSE", "STOP", "ON", "OFF"];
+        for exp in &expected {
+            assert!(
+                commands.iter().any(|c| c == exp),
+                "Expected command '{}' in extracted commands: {:?}",
+                exp,
+                commands
+            );
+        }
     }
 }
