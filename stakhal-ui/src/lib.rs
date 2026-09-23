@@ -2102,6 +2102,87 @@ mod tests {
         );
     }
 
+    #[test]
+    fn test_rapid_project_reload_during_active_flash_is_structurally_immune() {
+        let state = Rc::new(RefCell::new(AppState::default()));
+
+        // Simulate active background flash holding or updating BuildTraceState
+        let bt_cell = Rc::clone(&state.borrow().build_trace);
+        let mut bt_guard = bt_cell.borrow_mut();
+        bt_guard.build_in_progress = true;
+
+        // While flash has build_trace actively borrowed, user triggers rapid project reload:
+        let reload_res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            // 1. Mutate ProjectState
+            {
+                let proj_cell = Rc::clone(&state.borrow().project);
+                let mut proj = proj_cell.borrow_mut();
+                proj.project_dir = Some(PathBuf::from("/fake/path"));
+            }
+
+            // 2. Mutate DiagramCanvasState via helper
+            state.borrow().with_canvas_state_mut(|canvas| {
+                canvas.selected_state_machine = 1;
+                canvas.diagram_zoom = 1.5;
+                canvas.diagram_needs_fit = true;
+            });
+
+            // 3. Read back ProjectState
+            let loaded_dir = state.borrow().project.borrow().project_dir.clone();
+            assert_eq!(loaded_dir, Some(PathBuf::from("/fake/path")));
+        }));
+
+        assert!(
+            reload_res.is_ok(),
+            "Rapid project reload during active flash must succeed without RefCell collision"
+        );
+
+        // Flash concludes and releases build_trace
+        bt_guard.build_in_progress = false;
+        drop(bt_guard);
+        assert!(!state.borrow().build_trace.borrow().build_in_progress);
+    }
+
+    #[test]
+    fn test_successful_flash_serial_auto_reconnect_structural_independence() {
+        let state = Rc::new(RefCell::new(AppState::default()));
+        let finished = Some((true, Some(0)));
+        let bt_cell = Rc::clone(&state.borrow().build_trace);
+
+        // Pre-configure serial state
+        state.borrow().serial.borrow_mut().selected_serial_baud = 115200;
+        state.borrow().serial.borrow_mut().is_serial_connected = true;
+
+        let panic_res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            if let Some((success, _code)) = finished {
+                // Simulate holding bt alive across the reconnect boundary (the exact prior bug)
+                let mut bt = bt_cell.borrow_mut();
+                bt.build_in_progress = false;
+                let _has_bs = bt.has_build_system;
+
+                if success {
+                    // Under monolithic AppState, this crashed because bt was held alive.
+                    // Under the domain split, serial is a separate cell, so this is structurally immune.
+                    let ser_cell = Rc::clone(&state.borrow().serial);
+                    let mut ser = ser_cell.borrow_mut();
+                    ser.is_serial_connected = false;
+                    let _session = ser.serial_session.take();
+                    ser.selected_serial_port = Some("/dev/ttyACM0".to_string());
+                }
+            }
+        }));
+
+        assert!(
+            panic_res.is_ok(),
+            "Flash stage triggering serial auto-reconnect must never collide because cells are split"
+        );
+        assert!(!state.borrow().serial.borrow().is_serial_connected);
+        assert_eq!(
+            state.borrow().serial.borrow().selected_serial_port.as_deref(),
+            Some("/dev/ttyACM0")
+        );
+    }
+
 
 
 
