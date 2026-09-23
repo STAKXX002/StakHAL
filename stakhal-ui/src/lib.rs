@@ -462,13 +462,15 @@ dropdown button {
     let lbl_info_combo = lbl_selected_info.clone();
     combo_state_machine.connect_selected_notify(move |cb| {
         let idx = cb.selected() as usize;
-        let mut st = state_combo.borrow_mut();
-        st.selected_state_machine = idx;
-        st.selected_state_node = None;
-        st.state_diagram_layout = None; // trigger layout recompute for selected machine
-        st.diagram_needs_fit = true;
+        state_combo.borrow().with_canvas_state_mut(|st| {
+            st.selected_state_machine = idx;
+            st.selected_state_node = None;
+            st.state_diagram_layout = None; // trigger layout recompute for selected machine
+            st.diagram_needs_fit = true;
+        });
         {
-            let proj_guard = st.project.borrow();
+            let proj = Rc::clone(&state_combo.borrow().project);
+            let proj_guard = proj.borrow();
             if let Some(ref p) = proj_guard.loaded_project {
                 if idx < p.state_machines.len() {
                     let sm = &p.state_machines[idx];
@@ -489,7 +491,6 @@ dropdown button {
                 }
             }
         }
-        drop(st);
         area_combo.queue_draw();
     });
 
@@ -508,7 +509,9 @@ dropdown button {
             Some(s) => Some(s.to_string()),
         };
 
-        state_mod_combo.borrow_mut().selected_pinout_module = mod_filter;
+        state_mod_combo.borrow().with_canvas_state_mut(|c| {
+            c.selected_pinout_module = mod_filter;
+        });
         area_pinout_combo.queue_draw();
     });
 
@@ -1262,18 +1265,19 @@ fn do_load_project(state: &Rc<RefCell<AppState>>, widgets: &Rc<AppWidgets>) {
                 let h = layout.height as i32;
 
                 {
-                    let mut st = state.borrow_mut();
-                    st.selected_state_machine = 0;
-                    st.selected_state_node = None;
-                    st.diagram_bounds = (w, h);
-                    let mut pos = std::collections::HashMap::new();
-                    for (id, n) in &layout.nodes {
-                        pos.insert(id.clone(), (n.x, n.y));
-                    }
-                    st.state_node_positions = pos;
-                    st.state_diagram_layout = Some(layout);
-                    st.diagram_needs_fit = true;
-                    st.project.borrow_mut().loaded_project = Some(project);
+                    state.borrow().with_canvas_state_mut(|st| {
+                        st.selected_state_machine = 0;
+                        st.selected_state_node = None;
+                        st.diagram_bounds = (w, h);
+                        let mut pos = std::collections::HashMap::new();
+                        for (id, n) in &layout.nodes {
+                            pos.insert(id.clone(), (n.x, n.y));
+                        }
+                        st.state_node_positions = pos;
+                        st.state_diagram_layout = Some(layout);
+                        st.diagram_needs_fit = true;
+                    });
+                    state.borrow().project.borrow_mut().loaded_project = Some(project);
                 }
 
                 widgets.diagram_drawing_area.set_content_width(w);
@@ -1299,9 +1303,10 @@ fn do_load_project(state: &Rc<RefCell<AppState>>, widgets: &Rc<AppWidgets>) {
                 widgets.diagram_drawing_area.queue_draw();
             } else {
                 {
-                    let mut st = state.borrow_mut();
-                    st.state_diagram_layout = None;
-                    st.project.borrow_mut().loaded_project = Some(project);
+                    state.borrow().with_canvas_state_mut(|st| {
+                        st.state_diagram_layout = None;
+                    });
+                    state.borrow().project.borrow_mut().loaded_project = Some(project);
                 }
                 widgets.btn_call_graph.set_sensitive(false);
                 widgets
@@ -1325,7 +1330,9 @@ fn do_load_project(state: &Rc<RefCell<AppState>>, widgets: &Rc<AppWidgets>) {
                 widgets.combo_pinout_module.set_selected(0);
                 widgets.combo_pinout_module.set_sensitive(project_modules.len() > 1);
 
-                state.borrow_mut().selected_pinout_module = None;
+                state.borrow().with_canvas_state_mut(|c| {
+                    c.selected_pinout_module = None;
+                });
             } else {
                 widgets.btn_nucleo_pinout.set_sensitive(false);
                 widgets
@@ -1335,7 +1342,9 @@ fn do_load_project(state: &Rc<RefCell<AppState>>, widgets: &Rc<AppWidgets>) {
                 widgets.combo_pinout_module.set_model(Some(&mod_string_list));
                 widgets.combo_pinout_module.set_selected(0);
                 widgets.combo_pinout_module.set_sensitive(false);
-                state.borrow_mut().selected_pinout_module = None;
+                state.borrow().with_canvas_state_mut(|c| {
+                    c.selected_pinout_module = None;
+                });
             }
             widgets.pinout_drawing_area.queue_draw();
 
@@ -1373,7 +1382,9 @@ fn do_load_project(state: &Rc<RefCell<AppState>>, widgets: &Rc<AppWidgets>) {
             widgets.combo_pinout_module.set_model(Some(&mod_string_list));
             widgets.combo_pinout_module.set_selected(0);
             widgets.combo_pinout_module.set_sensitive(false);
-            state.borrow_mut().selected_pinout_module = None;
+            state.borrow().with_canvas_state_mut(|c| {
+                c.selected_pinout_module = None;
+            });
             widgets.toast_overlay.add_toast(adw::Toast::new(&format!("[ERROR] Load Error: {}", err)));
         }
     }
@@ -2155,7 +2166,9 @@ mod tests {
         let main_c_path = fixture_dir.join("Core/Src/main.c");
         if let Ok(project) = load_project(&ioc_path, &main_c_path) {
             state_sm.borrow().project.borrow_mut().loaded_project = Some(project);
-            state_sm.borrow_mut().selected_state_node = Some("GOING".to_string());
+            state_sm.borrow().with_canvas_state_mut(|c| {
+                c.selected_state_node = Some("GOING".to_string());
+            });
             ui::state_diagram::draw::draw_state_diagram(&cr_sm, 1400.0, 900.0, &state_sm);
             surface_sm.flush();
         }
@@ -2170,8 +2183,10 @@ mod tests {
         let f446_main = f446_dir.join("Core/Src/main.c");
         if let Ok(project) = load_project(&f446_ioc, &f446_main) {
             state_pin.borrow().project.borrow_mut().loaded_project = Some(project);
-            state_pin.borrow_mut().hovered_pinout_pin = Some(("CN10".to_string(), 11));
-            state_pin.borrow_mut().hovered_pinout_mouse = Some((600.0, 300.0));
+            state_pin.borrow().with_canvas_state_mut(|c| {
+                c.hovered_pinout_pin = Some(("CN10".to_string(), 11));
+                c.hovered_pinout_mouse = Some((600.0, 300.0));
+            });
             ui::nucleo_pinout::draw::draw_nucleo_pinout(&cr_pin, 1400.0, 850.0, &state_pin);
             surface_pin.flush();
         }
@@ -2187,10 +2202,10 @@ mod tests {
             // All modules
             let surf_all = gtk4::cairo::ImageSurface::create(gtk4::cairo::Format::ARgb32, 1400, 850).expect("surface");
             let cr_all = gtk4::cairo::Context::new(&surf_all).expect("cr");
-            let st_all = Rc::new(RefCell::new(AppState {
-                selected_pinout_module: None,
-                ..AppState::default()
-            }));
+            let st_all = Rc::new(RefCell::new(AppState::default()));
+            st_all.borrow().with_canvas_state_mut(|c| {
+                c.selected_pinout_module = None;
+            });
             st_all.borrow().project.borrow_mut().loaded_project = Some(project.clone());
             ui::nucleo_pinout::draw::draw_nucleo_pinout(&cr_all, 1400.0, 850.0, &st_all);
             surf_all.flush();
@@ -2203,12 +2218,12 @@ mod tests {
             // Hatch module
             let surf_hatch = gtk4::cairo::ImageSurface::create(gtk4::cairo::Format::ARgb32, 1400, 850).expect("surface");
             let cr_hatch = gtk4::cairo::Context::new(&surf_hatch).expect("cr");
-            let st_hatch = Rc::new(RefCell::new(AppState {
-                selected_pinout_module: Some("hatch".to_string()),
-                hovered_pinout_pin: Some(("CN10".to_string(), 16)), // GRIP_IN1
-                hovered_pinout_mouse: Some((850.0, 320.0)),
-                ..AppState::default()
-            }));
+            let st_hatch = Rc::new(RefCell::new(AppState::default()));
+            st_hatch.borrow().with_canvas_state_mut(|c| {
+                c.selected_pinout_module = Some("hatch".to_string());
+                c.hovered_pinout_pin = Some(("CN10".to_string(), 16)); // GRIP_IN1
+                c.hovered_pinout_mouse = Some((850.0, 320.0));
+            });
             st_hatch.borrow().project.borrow_mut().loaded_project = Some(project.clone());
             ui::nucleo_pinout::draw::draw_nucleo_pinout(&cr_hatch, 1400.0, 850.0, &st_hatch);
             surf_hatch.flush();
@@ -2227,15 +2242,15 @@ mod tests {
 
                 let surf_dock = gtk4::cairo::ImageSurface::create(gtk4::cairo::Format::ARgb32, w, h).expect("surf");
                 let cr_dock = gtk4::cairo::Context::new(&surf_dock).expect("cr");
-                let st_dock = Rc::new(RefCell::new(AppState {
-                    state_diagram_layout: Some(layout.clone()),
-                    diagram_bounds: (w, h),
-                    diagram_zoom: 1.0,
-                    diagram_pan_x: 40.0,
-                    diagram_pan_y: 40.0,
-                    selected_state_node: None,
-                    ..AppState::default()
-                }));
+                let st_dock = Rc::new(RefCell::new(AppState::default()));
+                st_dock.borrow().with_canvas_state_mut(|c| {
+                    c.state_diagram_layout = Some(layout.clone());
+                    c.diagram_bounds = (w, h);
+                    c.diagram_zoom = 1.0;
+                    c.diagram_pan_x = 40.0;
+                    c.diagram_pan_y = 40.0;
+                    c.selected_state_node = None;
+                });
                 st_dock.borrow().project.borrow_mut().loaded_project = Some(dock_proj.clone());
                 ui::state_diagram::draw::draw_state_diagram(&cr_dock, w as f64, h as f64, &st_dock);
                 surf_dock.flush();
@@ -2248,15 +2263,15 @@ mod tests {
                 // Docking with GOING selected
                 let surf_dock_sel = gtk4::cairo::ImageSurface::create(gtk4::cairo::Format::ARgb32, w, h).expect("surf");
                 let cr_dock_sel = gtk4::cairo::Context::new(&surf_dock_sel).expect("cr");
-                let st_dock_sel = Rc::new(RefCell::new(AppState {
-                    state_diagram_layout: Some(layout),
-                    diagram_bounds: (w, h),
-                    diagram_zoom: 1.0,
-                    diagram_pan_x: 40.0,
-                    diagram_pan_y: 40.0,
-                    selected_state_node: Some("GOING".to_string()),
-                    ..AppState::default()
-                }));
+                let st_dock_sel = Rc::new(RefCell::new(AppState::default()));
+                st_dock_sel.borrow().with_canvas_state_mut(|c| {
+                    c.state_diagram_layout = Some(layout);
+                    c.diagram_bounds = (w, h);
+                    c.diagram_zoom = 1.0;
+                    c.diagram_pan_x = 40.0;
+                    c.diagram_pan_y = 40.0;
+                    c.selected_state_node = Some("GOING".to_string());
+                });
                 st_dock_sel.borrow().project.borrow_mut().loaded_project = Some(dock_proj);
                 ui::state_diagram::draw::draw_state_diagram(&cr_dock_sel, w as f64, h as f64, &st_dock_sel);
                 surf_dock_sel.flush();
@@ -2276,15 +2291,15 @@ mod tests {
 
                 let surf_align = gtk4::cairo::ImageSurface::create(gtk4::cairo::Format::ARgb32, w, h).expect("surf");
                 let cr_align = gtk4::cairo::Context::new(&surf_align).expect("cr");
-                let st_align = Rc::new(RefCell::new(AppState {
-                    state_diagram_layout: Some(layout_align.clone()),
-                    diagram_bounds: (w, h),
-                    diagram_zoom: 1.0,
-                    diagram_pan_x: 40.0,
-                    diagram_pan_y: 40.0,
-                    selected_state_node: None,
-                    ..AppState::default()
-                }));
+                let st_align = Rc::new(RefCell::new(AppState::default()));
+                st_align.borrow().with_canvas_state_mut(|c| {
+                    c.state_diagram_layout = Some(layout_align.clone());
+                    c.diagram_bounds = (w, h);
+                    c.diagram_zoom = 1.0;
+                    c.diagram_pan_x = 40.0;
+                    c.diagram_pan_y = 40.0;
+                    c.selected_state_node = None;
+                });
                 st_align.borrow().project.borrow_mut().loaded_project = Some(project.clone());
                 ui::state_diagram::draw::draw_state_diagram(&cr_align, w as f64, h as f64, &st_align);
                 surf_align.flush();
@@ -2297,15 +2312,15 @@ mod tests {
                 // AlignState with RETURNING selected (shows RETURNING -> RECOVERY cross-lane edge)
                 let surf_align_ret = gtk4::cairo::ImageSurface::create(gtk4::cairo::Format::ARgb32, w, h).expect("surf");
                 let cr_align_ret = gtk4::cairo::Context::new(&surf_align_ret).expect("cr");
-                let st_align_ret = Rc::new(RefCell::new(AppState {
-                    state_diagram_layout: Some(layout_align),
-                    diagram_bounds: (w, h),
-                    diagram_zoom: 1.0,
-                    diagram_pan_x: 40.0,
-                    diagram_pan_y: 40.0,
-                    selected_state_node: Some("RETURNING".to_string()),
-                    ..AppState::default()
-                }));
+                let st_align_ret = Rc::new(RefCell::new(AppState::default()));
+                st_align_ret.borrow().with_canvas_state_mut(|c| {
+                    c.state_diagram_layout = Some(layout_align);
+                    c.diagram_bounds = (w, h);
+                    c.diagram_zoom = 1.0;
+                    c.diagram_pan_x = 40.0;
+                    c.diagram_pan_y = 40.0;
+                    c.selected_state_node = Some("RETURNING".to_string());
+                });
                 st_align_ret.borrow().project.borrow_mut().loaded_project = Some(project);
                 ui::state_diagram::draw::draw_state_diagram(&cr_align_ret, w as f64, h as f64, &st_align_ret);
                 surf_align_ret.flush();

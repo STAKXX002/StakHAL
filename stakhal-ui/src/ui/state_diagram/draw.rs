@@ -53,42 +53,52 @@ pub fn draw_state_diagram(
 ) {
     // 1. Ensure state diagram layout is computed and view is fitted if needed
     {
-        let mut st = state.borrow_mut();
-        if st.state_diagram_layout.is_none() {
-            let loaded_project = st.project.borrow().loaded_project.clone();
-            if let Some(ref p) = loaded_project {
-                if !p.state_machines.is_empty() {
-                    let idx = st.selected_state_machine.min(p.state_machines.len() - 1);
-                    let sm = p.state_machines[idx].clone();
-                    let layout = compute_state_machine_layout(&sm);
-                    st.selected_state_machine = idx;
-                    st.diagram_bounds = (layout.width as i32, layout.height as i32);
-                    let mut pos = std::collections::HashMap::new();
-                    for (id, n) in &layout.nodes {
-                        pos.insert(id.clone(), (n.x, n.y));
+        let loaded_project = state.borrow().project.borrow().loaded_project.clone();
+        state.borrow().with_canvas_state_mut(|st| {
+            if st.state_diagram_layout.is_none() {
+                if let Some(ref p) = loaded_project {
+                    if !p.state_machines.is_empty() {
+                        let idx = st.selected_state_machine.min(p.state_machines.len() - 1);
+                        let sm = p.state_machines[idx].clone();
+                        let layout = compute_state_machine_layout(&sm);
+                        st.selected_state_machine = idx;
+                        st.diagram_bounds = (layout.width as i32, layout.height as i32);
+                        let mut pos = std::collections::HashMap::new();
+                        for (id, n) in &layout.nodes {
+                            pos.insert(id.clone(), (n.x, n.y));
+                        }
+                        st.state_node_positions = pos;
+                        st.state_diagram_layout = Some(layout);
+                        st.diagram_needs_fit = true;
                     }
-                    st.state_node_positions = pos;
-                    st.state_diagram_layout = Some(layout);
-                    st.diagram_needs_fit = true;
                 }
             }
-        }
 
-        if st.diagram_needs_fit && width > 100.0 && height > 100.0 {
-            if let Some((lw, lh)) = st.state_diagram_layout.as_ref().map(|l| (l.width, l.height)) {
-                let avail_w = (width - 40.0).max(100.0);
-                let avail_h = (height - 40.0).max(100.0);
-                let fit_zoom = (avail_w / lw).min(avail_h / lh).min(1.0).max(0.2);
-                st.diagram_zoom = fit_zoom;
-                st.diagram_pan_x = ((width - lw * fit_zoom) * 0.5).max(20.0);
-                st.diagram_pan_y = ((height - lh * fit_zoom) * 0.5).max(20.0);
-                st.diagram_needs_fit = false;
+            if st.diagram_needs_fit && width > 100.0 && height > 100.0 {
+                if let Some((lw, lh)) = st.state_diagram_layout.as_ref().map(|l| (l.width, l.height)) {
+                    let avail_w = (width - 40.0).max(100.0);
+                    let avail_h = (height - 40.0).max(100.0);
+                    let fit_zoom = (avail_w / lw).min(avail_h / lh).min(1.0).max(0.2);
+                    st.diagram_zoom = fit_zoom;
+                    st.diagram_pan_x = ((width - lw * fit_zoom) * 0.5).max(20.0);
+                    st.diagram_pan_y = ((height - lh * fit_zoom) * 0.5).max(20.0);
+                    st.diagram_needs_fit = false;
+                }
             }
-        }
+        });
     }
 
-    let st = state.borrow();
-    let layout = match &st.state_diagram_layout {
+    let (layout_opt, zoom, pan_x, pan_y, selected_node, hovered_node) = state.borrow().with_canvas_state(|st| {
+        (
+            st.state_diagram_layout.clone(),
+            st.diagram_zoom,
+            st.diagram_pan_x,
+            st.diagram_pan_y,
+            st.selected_state_node.clone(),
+            st.hovered_state_node.clone(),
+        )
+    });
+    let layout = match &layout_opt {
         Some(l) => l,
         None => {
             // Draw empty placeholder message
@@ -105,11 +115,8 @@ pub fn draw_state_diagram(
         }
     };
 
-    let zoom = st.diagram_zoom;
-    let pan_x = st.diagram_pan_x;
-    let pan_y = st.diagram_pan_y;
-    let selected_node = st.selected_state_node.as_deref();
-    let hovered_node = st.hovered_state_node.as_deref();
+    let selected_node = selected_node.as_deref();
+    let hovered_node = hovered_node.as_deref();
 
     // Fill canvas background
     cr.set_source_rgb(COLOR_CANVAS_BG.0, COLOR_CANVAS_BG.1, COLOR_CANVAS_BG.2);
@@ -323,7 +330,7 @@ pub fn draw_state_diagram(
         if !node.is_fault {
             for (idx, target) in node.collapsed_out_badges.iter().enumerate() {
                 let is_fault_target = is_fault_state(target);
-                let badge_label = if is_fault_target { "[FAULT]" } else { target.as_str() };
+                let badge_label = if is_fault_target { "[FAULT]" } else { target.as_ref() };
                 let bx = node.x + node.width - 56.0 - idx as f64 * 58.0;
                 let by = node.y + node.height - 15.0;
                 draw_node_badge(cr, bx, by, badge_label, is_fault_target, is_dimmed_node);
@@ -613,8 +620,8 @@ mod tests {
         surface.flush();
 
         // Verify layout was computed
-        assert!(state.borrow().state_diagram_layout.is_some());
-        let layout = state.borrow().state_diagram_layout.clone().unwrap();
+        assert!(state.borrow().with_canvas_state(|c| c.state_diagram_layout.is_some()));
+        let layout = state.borrow().with_canvas_state(|c| c.state_diagram_layout.clone()).unwrap();
         assert_eq!(layout.nodes.len(), 14);
         assert_eq!(layout.edges.len(), 31);
         assert!(!layout.lanes.is_empty());
@@ -622,23 +629,25 @@ mod tests {
         assert!(layout.lanes.iter().any(|l| l.name == "FAULT"));
 
         // 2. Select GOING node (expand outgoing edges including to FAULT)
-        state.borrow_mut().selected_state_node = Some("GOING".to_string());
+        state.borrow().with_canvas_state_mut(|c| c.selected_state_node = Some("GOING".to_string()));
         draw_state_diagram(&cr, 1200.0, 800.0, &state);
         surface.flush();
 
         // 3. Select FAULT node (expand all 12 fault triggers)
-        state.borrow_mut().selected_state_node = Some("FAULT".to_string());
+        state.borrow().with_canvas_state_mut(|c| c.selected_state_node = Some("FAULT".to_string()));
         draw_state_diagram(&cr, 1200.0, 800.0, &state);
         surface.flush();
 
         // 4. Hover CALIBRATING node while FAULT is selected
-        state.borrow_mut().hovered_state_node = Some("CALIBRATING".to_string());
+        state.borrow().with_canvas_state_mut(|c| c.hovered_state_node = Some("CALIBRATING".to_string()));
         draw_state_diagram(&cr, 1200.0, 800.0, &state);
         surface.flush();
 
         // 5. Deselect (click background -> return to low clutter collapsed view)
-        state.borrow_mut().selected_state_node = None;
-        state.borrow_mut().hovered_state_node = None;
+        state.borrow().with_canvas_state_mut(|c| {
+            c.selected_state_node = None;
+            c.hovered_state_node = None;
+        });
         draw_state_diagram(&cr, 1200.0, 800.0, &state);
         surface.flush();
     }

@@ -26,38 +26,40 @@ pub fn setup_state_diagram_drawing_and_gestures(
     let info_click = lbl_selected_info.clone();
 
     click_gesture.connect_pressed(move |_, _, x, y| {
-        let mut st = state_click.borrow_mut();
-        let zoom = st.diagram_zoom;
-        let pan_x = st.diagram_pan_x;
-        let pan_y = st.diagram_pan_y;
+        let (current_sel, selected_sm_idx) = state_click.borrow().with_canvas_state_mut(|st| {
+            let zoom = st.diagram_zoom;
+            let pan_x = st.diagram_pan_x;
+            let pan_y = st.diagram_pan_y;
 
-        let gx = (x - pan_x) / zoom;
-        let gy = (y - pan_y) / zoom;
+            let gx = (x - pan_x) / zoom;
+            let gy = (y - pan_y) / zoom;
 
-        let mut hit_node = None;
-        if let Some(ref layout) = st.state_diagram_layout {
-            for (id, node) in &layout.nodes {
-                if gx >= node.x && gx <= node.x + node.width && gy >= node.y && gy <= node.y + node.height {
-                    hit_node = Some(id.clone());
-                    break;
+            let mut hit_node = None;
+            if let Some(ref layout) = st.state_diagram_layout {
+                for (id, node) in &layout.nodes {
+                    if gx >= node.x && gx <= node.x + node.width && gy >= node.y && gy <= node.y + node.height {
+                        hit_node = Some(id.clone());
+                        break;
+                    }
                 }
             }
-        }
 
-        // Toggle selection off if clicking the already selected node, or collapse if clicking background
-        if hit_node.is_none() || st.selected_state_node == hit_node {
-            st.selected_state_node = None;
-        } else {
-            st.selected_state_node = hit_node.clone();
-        }
+            // Toggle selection off if clicking the already selected node, or collapse if clicking background
+            if hit_node.is_none() || st.selected_state_node == hit_node {
+                st.selected_state_node = None;
+            } else {
+                st.selected_state_node = hit_node.clone();
+            }
 
-        let current_sel = st.selected_state_node.clone();
+            (st.selected_state_node.clone(), st.selected_state_machine)
+        });
 
         // Update selected info label
         if let Some(ref sel) = current_sel {
-            let proj_guard = st.project.borrow();
+            let proj = Rc::clone(&state_click.borrow().project);
+            let proj_guard = proj.borrow();
             if let Some(ref p) = proj_guard.loaded_project {
-                if let Some(sm) = p.state_machines.get(st.selected_state_machine) {
+                if let Some(sm) = p.state_machines.get(selected_sm_idx) {
                     let outgoing: Vec<_> = sm.transitions.iter().filter(|t| &t.from == sel).collect();
                     let incoming: Vec<_> = sm.transitions.iter().filter(|t| &t.to == sel).collect();
 
@@ -93,41 +95,49 @@ pub fn setup_state_diagram_drawing_and_gestures(
     let area_motion = drawing_area.clone();
 
     motion_controller.connect_motion(move |_, x, y| {
-        let mut st = state_motion.borrow_mut();
-        st.diagram_mouse_pos = Some((x, y));
-        let zoom = st.diagram_zoom;
-        let pan_x = st.diagram_pan_x;
-        let pan_y = st.diagram_pan_y;
+        let mut needs_draw = false;
+        state_motion.borrow().with_canvas_state_mut(|st| {
+            st.diagram_mouse_pos = Some((x, y));
+            let zoom = st.diagram_zoom;
+            let pan_x = st.diagram_pan_x;
+            let pan_y = st.diagram_pan_y;
 
-        let gx = (x - pan_x) / zoom;
-        let gy = (y - pan_y) / zoom;
+            let gx = (x - pan_x) / zoom;
+            let gy = (y - pan_y) / zoom;
 
-        let mut hovered = None;
-        if let Some(ref layout) = st.state_diagram_layout {
-            for (id, node) in &layout.nodes {
-                if gx >= node.x && gx <= node.x + node.width && gy >= node.y && gy <= node.y + node.height {
-                    hovered = Some(id.clone());
-                    break;
+            let mut hovered = None;
+            if let Some(ref layout) = st.state_diagram_layout {
+                for (id, node) in &layout.nodes {
+                    if gx >= node.x && gx <= node.x + node.width && gy >= node.y && gy <= node.y + node.height {
+                        hovered = Some(id.clone());
+                        break;
+                    }
                 }
             }
-        }
 
-        if st.hovered_state_node != hovered {
-            st.hovered_state_node = hovered;
+            if st.hovered_state_node != hovered {
+                st.hovered_state_node = hovered;
+                needs_draw = true;
+            }
+        });
+
+        if needs_draw {
             area_motion.queue_draw();
         }
     });
 
     let state_enter = Rc::clone(&state);
     motion_controller.connect_enter(move |_, x, y| {
-        let mut st = state_enter.borrow_mut();
-        st.diagram_mouse_pos = Some((x, y));
+        state_enter.borrow().with_canvas_state_mut(|st| {
+            st.diagram_mouse_pos = Some((x, y));
+        });
     });
 
     let state_leave = Rc::clone(&state);
     motion_controller.connect_leave(move |_| {
-        let mut st = state_leave.borrow_mut();
-        st.diagram_mouse_pos = None;
+        state_leave.borrow().with_canvas_state_mut(|st| {
+            st.diagram_mouse_pos = None;
+        });
     });
 
     drawing_area.add_controller(motion_controller);
@@ -138,18 +148,20 @@ pub fn setup_state_diagram_drawing_and_gestures(
 
     let state_drag_begin = Rc::clone(&state);
     drag_gesture.connect_drag_begin(move |_, x, y| {
-        let mut st = state_drag_begin.borrow_mut();
-        st.drag_start_click_pos = (x, y);
-        st.drag_start_pan_pos = (st.diagram_pan_x, st.diagram_pan_y);
+        state_drag_begin.borrow().with_canvas_state_mut(|st| {
+            st.drag_start_click_pos = (x, y);
+            st.drag_start_pan_pos = (st.diagram_pan_x, st.diagram_pan_y);
+        });
     });
 
     let state_drag_update = Rc::clone(&state);
     let area_drag = drawing_area.clone();
     drag_gesture.connect_drag_update(move |_, offset_x, offset_y| {
         if offset_x.abs() > 2.0 || offset_y.abs() > 2.0 {
-            let mut st = state_drag_update.borrow_mut();
-            st.diagram_pan_x = st.drag_start_pan_pos.0 + offset_x;
-            st.diagram_pan_y = st.drag_start_pan_pos.1 + offset_y;
+            state_drag_update.borrow().with_canvas_state_mut(|st| {
+                st.diagram_pan_x = st.drag_start_pan_pos.0 + offset_x;
+                st.diagram_pan_y = st.drag_start_pan_pos.1 + offset_y;
+            });
             area_drag.queue_draw();
         }
     });
@@ -166,32 +178,32 @@ pub fn setup_state_diagram_drawing_and_gestures(
     let state_scroll = Rc::clone(&state);
     let area_scroll = drawing_area.clone();
     scroll_controller.connect_scroll(move |controller, _, dy| {
-        let mut st = state_scroll.borrow_mut();
+        state_scroll.borrow().with_canvas_state_mut(|st| {
+            // 1. Get mouse position in canvas/widget coordinates
+            let (cursor_x, cursor_y) = st
+                .diagram_mouse_pos
+                .or_else(|| controller.current_event().and_then(|e| e.position()))
+                .unwrap_or_else(|| {
+                    (area_scroll.width().max(800) as f64 * 0.5, area_scroll.height().max(600) as f64 * 0.5)
+                });
 
-        // 1. Get mouse position in canvas/widget coordinates
-        let (cursor_x, cursor_y) = st
-            .diagram_mouse_pos
-            .or_else(|| controller.current_event().and_then(|e| e.position()))
-            .unwrap_or_else(|| {
-                (area_scroll.width().max(800) as f64 * 0.5, area_scroll.height().max(600) as f64 * 0.5)
-            });
+            // 2. Apply new zoom scale and pan offset anchored to cursor
+            let factor = if dy < 0.0 { 1.15 } else { 1.0 / 1.15 };
+            let (new_zoom, new_pan_x, new_pan_y) = calculate_zoom_at_cursor(
+                st.diagram_zoom,
+                st.diagram_pan_x,
+                st.diagram_pan_y,
+                cursor_x,
+                cursor_y,
+                factor,
+                0.2,
+                3.5,
+            );
 
-        // 2. Apply new zoom scale and pan offset anchored to cursor
-        let factor = if dy < 0.0 { 1.15 } else { 1.0 / 1.15 };
-        let (new_zoom, new_pan_x, new_pan_y) = calculate_zoom_at_cursor(
-            st.diagram_zoom,
-            st.diagram_pan_x,
-            st.diagram_pan_y,
-            cursor_x,
-            cursor_y,
-            factor,
-            0.2,
-            3.5,
-        );
-
-        st.diagram_zoom = new_zoom;
-        st.diagram_pan_x = new_pan_x;
-        st.diagram_pan_y = new_pan_y;
+            st.diagram_zoom = new_zoom;
+            st.diagram_pan_x = new_pan_x;
+            st.diagram_pan_y = new_pan_y;
+        });
 
         area_scroll.queue_draw();
         glib::Propagation::Stop
@@ -203,8 +215,9 @@ pub fn setup_state_diagram_drawing_and_gestures(
     let state_fit = Rc::clone(&state);
     let area_fit = drawing_area.clone();
     btn_fit_to_view.connect_clicked(move |_| {
-        let mut st = state_fit.borrow_mut();
-        st.diagram_needs_fit = true;
+        state_fit.borrow().with_canvas_state_mut(|st| {
+            st.diagram_needs_fit = true;
+        });
         area_fit.queue_draw();
     });
 }

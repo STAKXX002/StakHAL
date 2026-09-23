@@ -186,7 +186,8 @@ pub fn get_active_pin_highlights(state: &AppState) -> HashMap<(&'static str, u8)
         None => return map,
     };
 
-    let selected_mod = state.selected_pinout_module.as_deref();
+    let selected_mod = state.with_canvas_state(|c| c.selected_pinout_module.clone());
+    let selected_mod = selected_mod.as_deref();
 
     for pin_cfg in &project.pins {
         let mcu_pin = &pin_cfg.pin;
@@ -327,14 +328,16 @@ pub fn draw_nucleo_pinout(
     height: f64,
     state: &Rc<RefCell<AppState>>,
 ) {
-    let st = state.borrow();
-    let highlights = get_active_pin_highlights(&st);
-    let hovered_pin = st.hovered_pinout_pin.as_ref();
-    let hovered_mouse = st.hovered_pinout_mouse;
+    let (hovered_pin, hovered_mouse, is_filtering_module) = state.borrow().with_canvas_state(|c| {
+        (c.hovered_pinout_pin.clone(), c.hovered_pinout_mouse, c.selected_pinout_module.is_some())
+    });
+    let highlights = get_active_pin_highlights(&state.borrow());
+    let hovered_pin = hovered_pin.as_ref();
 
     let active_conflicts: Vec<(&'static str, &stakhal_core::nucleo_pinout::ReservedPin)> = {
         let mut list = Vec::new();
-        let proj_guard = st.project.borrow();
+        let proj = Rc::clone(&state.borrow().project);
+        let proj_guard = proj.borrow();
         if let Some(project) = &proj_guard.loaded_project {
             for pin_cfg in &project.pins {
                 if let Some(res) = stakhal_core::nucleo_pinout::check_reserved(&pin_cfg.pin) {
@@ -791,7 +794,6 @@ pub fn draw_nucleo_pinout(
     cr.set_font_size(10.0);
 
     let leg_x = board_x + (board_w * 0.02).max(16.0);
-    let is_filtering_module = st.selected_pinout_module.is_some();
 
     // Active Signal Legend
     cr.set_source_rgb(tokens::color::STATE_READY.0, tokens::color::STATE_READY.1, tokens::color::STATE_READY.2);
@@ -958,8 +960,6 @@ pub fn setup_nucleo_pinout_drawing_and_gestures(
     let widgets_motion = Rc::clone(widgets);
 
     motion.connect_motion(move |_, x, y| {
-        let st = state_motion.borrow();
-
         let area = &widgets_motion.pinout_drawing_area;
         let cw = area.width().max(800) as f64;
         let ch = area.height().max(600) as f64;
@@ -980,29 +980,34 @@ pub fn setup_nucleo_pinout_drawing_and_gestures(
             }
         }
 
-        drop(st);
-
         match hit_pin {
             Some((conn_name, pin_num, _mcu_pin, _default_label)) => {
-                let mut st_mut = state_motion.borrow_mut();
-                let current_hovered = st_mut.hovered_pinout_pin.clone();
-                let new_hovered = Some((conn_name.to_string(), pin_num));
+                let mut needs_draw = false;
+                state_motion.borrow().with_canvas_state_mut(|c| {
+                    let current_hovered = c.hovered_pinout_pin.clone();
+                    let new_hovered = Some((conn_name.to_string(), pin_num));
 
-                st_mut.hovered_pinout_mouse = Some((x, y));
+                    c.hovered_pinout_mouse = Some((x, y));
 
-                if current_hovered != new_hovered {
-                    st_mut.hovered_pinout_pin = new_hovered;
-                    area.queue_draw();
-                } else {
+                    if current_hovered != new_hovered {
+                        c.hovered_pinout_pin = new_hovered;
+                    }
+                    needs_draw = true;
+                });
+                if needs_draw {
                     area.queue_draw();
                 }
             }
             None => {
-                let mut st_mut = state_motion.borrow_mut();
-                let current_hovered = st_mut.hovered_pinout_pin.clone();
-                if current_hovered.is_some() || st_mut.hovered_pinout_mouse.is_some() {
-                    st_mut.hovered_pinout_pin = None;
-                    st_mut.hovered_pinout_mouse = None;
+                let mut needs_draw = false;
+                state_motion.borrow().with_canvas_state_mut(|c| {
+                    if c.hovered_pinout_pin.is_some() || c.hovered_pinout_mouse.is_some() {
+                        c.hovered_pinout_pin = None;
+                        c.hovered_pinout_mouse = None;
+                        needs_draw = true;
+                    }
+                });
+                if needs_draw {
                     area.queue_draw();
                 }
             }
@@ -1074,9 +1079,10 @@ mod tests {
                 modules: Vec::new(),
             });
             state.borrow().project.borrow_mut().loaded_project = Some(project);
-            let mut st = state.borrow_mut();
-            st.hovered_pinout_pin = Some(("CN7".to_string(), 13));
-            st.hovered_pinout_mouse = Some((100.0, 200.0));
+            state.borrow().with_canvas_state_mut(|c| {
+                c.hovered_pinout_pin = Some(("CN7".to_string(), 13));
+                c.hovered_pinout_mouse = Some((100.0, 200.0));
+            });
         }
 
         draw_nucleo_pinout(&cr, 1200.0, 750.0, &state);
@@ -1092,10 +1098,7 @@ mod tests {
         let project = stakhal_core::ir::schema::load_project(&ioc_path, &main_c_path)
             .expect("Failed to load aa_ns_stm_port");
 
-        let state = AppState {
-            selected_pinout_module: None,
-            ..AppState::default()
-        };
+        let state = AppState::default();
         state.project.borrow_mut().loaded_project = Some(project);
 
         // When selected_pinout_module is None ("All Modules"), no active pins are muted
@@ -1106,10 +1109,10 @@ mod tests {
         }
 
         // When selected_pinout_module is Some("hatch"), pins in hatch are active, other pins are muted
-        let hatch_state = AppState {
-            selected_pinout_module: Some("hatch".to_string()),
-            ..AppState::default()
-        };
+        let hatch_state = AppState::default();
+        hatch_state.with_canvas_state_mut(|c| {
+            c.selected_pinout_module = Some("hatch".to_string());
+        });
         hatch_state.project.borrow_mut().loaded_project = state.project.borrow().loaded_project.clone();
         let hatch_hl = get_active_pin_highlights(&hatch_state);
 

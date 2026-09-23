@@ -116,28 +116,6 @@ pub struct AppState {
     pub build_trace: Rc<RefCell<BuildTraceState>>,
     pub serial: Rc<RefCell<SerialState>>,
     pub canvas: Rc<RefCell<DiagramCanvasState>>,
-
-    // State machine diagram state
-    pub selected_state_machine: usize,
-    pub state_diagram_layout: Option<stakhal_core::graph::StateMachineLayout>,
-    pub diagram_zoom: f64,
-    pub diagram_pan_x: f64,
-    pub diagram_pan_y: f64,
-    pub diagram_mouse_pos: Option<(f64, f64)>,
-    pub diagram_needs_fit: bool,
-    pub selected_state_node: Option<String>,
-    pub hovered_state_node: Option<String>,
-    pub state_node_positions: std::collections::HashMap<String, (f64, f64)>,
-    pub diagram_bounds: (i32, i32),
-
-    pub drag_start_click_pos: (f64, f64),
-    pub drag_start_pan_pos: (f64, f64),
-
-    // Nucleo pinout state
-    pub hovered_pinout_pin: Option<(String, u8)>,
-    pub hovered_pinout_mouse: Option<(f64, f64)>,
-    pub selected_pinout_module: Option<String>,
-
 }
 
 impl AppState {
@@ -159,23 +137,6 @@ impl Default for AppState {
             build_trace: Rc::new(RefCell::new(BuildTraceState::default())),
             serial: Rc::new(RefCell::new(SerialState::default())),
             canvas: Rc::new(RefCell::new(DiagramCanvasState::default())),
-
-            selected_state_machine: 0,
-            state_diagram_layout: None,
-            diagram_zoom: 0.95,
-            diagram_pan_x: 40.0,
-            diagram_pan_y: 40.0,
-            diagram_mouse_pos: None,
-            diagram_needs_fit: true,
-            selected_state_node: None,
-            hovered_state_node: None,
-            state_node_positions: std::collections::HashMap::new(),
-            diagram_bounds: (1200, 800),
-            drag_start_click_pos: (0.0, 0.0),
-            drag_start_pan_pos: (40.0, 40.0),
-            hovered_pinout_pin: None,
-            hovered_pinout_mouse: None,
-            selected_pinout_module: None,
         }
     }
 }
