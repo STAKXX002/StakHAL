@@ -55,7 +55,8 @@ pub fn setup_state_diagram_drawing_and_gestures(
 
         // Update selected info label
         if let Some(ref sel) = current_sel {
-            if let Some(ref p) = st.loaded_project {
+            let proj_guard = st.project.borrow();
+            if let Some(ref p) = proj_guard.loaded_project {
                 if let Some(sm) = p.state_machines.get(st.selected_state_machine) {
                     let outgoing: Vec<_> = sm.transitions.iter().filter(|t| &t.from == sel).collect();
                     let incoming: Vec<_> = sm.transitions.iter().filter(|t| &t.to == sel).collect();

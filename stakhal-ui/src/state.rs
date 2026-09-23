@@ -117,12 +117,6 @@ pub struct AppState {
     pub serial: Rc<RefCell<SerialState>>,
     pub canvas: Rc<RefCell<DiagramCanvasState>>,
 
-    // Flat fields retained temporarily for cell-by-cell migration
-    pub project_dir: Option<PathBuf>,
-    pub discovered_ioc: Option<PathBuf>,
-    pub discovered_main_c: Option<PathBuf>,
-    pub loaded_project: Option<Project>,
-
     // State machine diagram state
     pub selected_state_machine: usize,
     pub state_diagram_layout: Option<stakhal_core::graph::StateMachineLayout>,
@@ -188,10 +182,6 @@ impl Default for AppState {
             serial: Rc::new(RefCell::new(SerialState::default())),
             canvas: Rc::new(RefCell::new(DiagramCanvasState::default())),
 
-            project_dir: None,
-            discovered_ioc: None,
-            discovered_main_c: None,
-            loaded_project: None,
             selected_state_machine: 0,
             state_diagram_layout: None,
             diagram_zoom: 0.95,

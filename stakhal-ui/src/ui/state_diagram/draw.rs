@@ -55,7 +55,8 @@ pub fn draw_state_diagram(
     {
         let mut st = state.borrow_mut();
         if st.state_diagram_layout.is_none() {
-            if let Some(ref p) = st.loaded_project {
+            let loaded_project = st.project.borrow().loaded_project.clone();
+            if let Some(ref p) = loaded_project {
                 if !p.state_machines.is_empty() {
                     let idx = st.selected_state_machine.min(p.state_machines.len() - 1);
                     let sm = p.state_machines[idx].clone();
@@ -605,7 +606,7 @@ mod tests {
             .expect("Failed to load docking firmware fixture");
         assert_eq!(project.state_machines.len(), 1);
 
-        state.borrow_mut().loaded_project = Some(project);
+        state.borrow().project.borrow_mut().loaded_project = Some(project);
 
         // 1. Initial draw (unselected default view - low clutter with collapsed badges)
         draw_state_diagram(&cr, 1200.0, 800.0, &state);

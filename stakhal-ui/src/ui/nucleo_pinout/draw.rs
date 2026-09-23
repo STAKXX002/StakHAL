@@ -180,7 +180,8 @@ pub struct PinHighlightInfo {
 
 pub fn get_active_pin_highlights(state: &AppState) -> HashMap<(&'static str, u8), PinHighlightInfo> {
     let mut map = HashMap::new();
-    let project = match &state.loaded_project {
+    let project_guard = state.project.borrow();
+    let project = match &project_guard.loaded_project {
         Some(p) => p,
         None => return map,
     };
@@ -333,7 +334,8 @@ pub fn draw_nucleo_pinout(
 
     let active_conflicts: Vec<(&'static str, &stakhal_core::nucleo_pinout::ReservedPin)> = {
         let mut list = Vec::new();
-        if let Some(project) = &st.loaded_project {
+        let proj_guard = st.project.borrow();
+        if let Some(project) = &proj_guard.loaded_project {
             for pin_cfg in &project.pins {
                 if let Some(res) = stakhal_core::nucleo_pinout::check_reserved(&pin_cfg.pin) {
                     if !list.iter().any(|(p, _)| *p == res.mcu_pin) {
@@ -1057,13 +1059,13 @@ mod tests {
         let ioc_path = fixture_dir.join("stakhal_blink_f446re.ioc");
         let main_c_path = fixture_dir.join("Core/Src/main.c");
         if let Ok(project) = stakhal_core::ir::schema::load_project(&ioc_path, &main_c_path) {
-            state.borrow_mut().loaded_project = Some(project);
+            state.borrow().project.borrow_mut().loaded_project = Some(project);
         }
 
         draw_nucleo_pinout(&cr, 1200.0, 750.0, &state);
         surface.flush();
 
-        let existing_project = state.borrow().loaded_project.clone();
+        let existing_project = state.borrow().project.borrow().loaded_project.clone();
         if let Some(mut project) = existing_project {
             project.pins.push(stakhal_core::ioc::parser::PinConfig {
                 pin: "PA13".to_string(),
@@ -1071,8 +1073,8 @@ mod tests {
                 label: Some("DBG_SWDIO".to_string()),
                 modules: Vec::new(),
             });
+            state.borrow().project.borrow_mut().loaded_project = Some(project);
             let mut st = state.borrow_mut();
-            st.loaded_project = Some(project);
             st.hovered_pinout_pin = Some(("CN7".to_string(), 13));
             st.hovered_pinout_mouse = Some((100.0, 200.0));
         }
@@ -1091,10 +1093,10 @@ mod tests {
             .expect("Failed to load aa_ns_stm_port");
 
         let state = AppState {
-            loaded_project: Some(project),
             selected_pinout_module: None,
             ..AppState::default()
         };
+        state.project.borrow_mut().loaded_project = Some(project);
 
         // When selected_pinout_module is None ("All Modules"), no active pins are muted
         let all_hl = get_active_pin_highlights(&state);
@@ -1105,10 +1107,10 @@ mod tests {
 
         // When selected_pinout_module is Some("hatch"), pins in hatch are active, other pins are muted
         let hatch_state = AppState {
-            loaded_project: state.loaded_project.clone(),
             selected_pinout_module: Some("hatch".to_string()),
             ..AppState::default()
         };
+        hatch_state.project.borrow_mut().loaded_project = state.project.borrow().loaded_project.clone();
         let hatch_hl = get_active_pin_highlights(&hatch_state);
 
         // Find GRIP_IN1

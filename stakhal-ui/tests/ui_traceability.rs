@@ -37,8 +37,8 @@ printf("BOOT\r\n");
 
     let btn_enable = gtk4::Button::new();
     let state = Rc::new(RefCell::new(AppState::default()));
-    state.borrow_mut().project_dir = Some(temp_dir.clone());
-    state.borrow_mut().discovered_main_c = Some(main_c_path.clone());
+    state.borrow().project.borrow_mut().project_dir = Some(temp_dir.clone());
+    state.borrow().project.borrow_mut().discovered_main_c = Some(main_c_path.clone());
 
     let window = adw::ApplicationWindow::builder().build();
     let stack = gtk4::Stack::new();

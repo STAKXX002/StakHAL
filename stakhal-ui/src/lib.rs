@@ -467,22 +467,25 @@ dropdown button {
         st.selected_state_node = None;
         st.state_diagram_layout = None; // trigger layout recompute for selected machine
         st.diagram_needs_fit = true;
-        if let Some(ref p) = st.loaded_project {
-            if idx < p.state_machines.len() {
-                let sm = &p.state_machines[idx];
-                if !sm.ambiguous_transitions.is_empty() {
-                    let notes: Vec<_> = sm
-                        .ambiguous_transitions
-                        .iter()
-                        .map(|a| format!("(any state) -> {} [{}]", a.target, a.guard))
-                        .collect();
-                    lbl_info_combo.set_text(&format!(
-                        "NOTE: {} Ambiguous Transition(s): {}",
-                        sm.ambiguous_transitions.len(),
-                        notes.join(", ")
-                    ));
-                } else {
-                    lbl_info_combo.set_text("Select a state node to inspect transitions and guard triggers.");
+        {
+            let proj_guard = st.project.borrow();
+            if let Some(ref p) = proj_guard.loaded_project {
+                if idx < p.state_machines.len() {
+                    let sm = &p.state_machines[idx];
+                    if !sm.ambiguous_transitions.is_empty() {
+                        let notes: Vec<_> = sm
+                            .ambiguous_transitions
+                            .iter()
+                            .map(|a| format!("(any state) -> {} [{}]", a.target, a.guard))
+                            .collect();
+                        lbl_info_combo.set_text(&format!(
+                            "NOTE: {} Ambiguous Transition(s): {}",
+                            sm.ambiguous_transitions.len(),
+                            notes.join(", ")
+                        ));
+                    } else {
+                        lbl_info_combo.set_text("Select a state node to inspect transitions and guard triggers.");
+                    }
                 }
             }
         }
@@ -569,7 +572,8 @@ dropdown button {
     widgets.btn_enable_traceability.connect_clicked(move |_| {
         let (project_dir, main_c_path) = {
             let st = state_trace.borrow();
-            match (&st.project_dir, &st.discovered_main_c) {
+            let proj = st.project.borrow();
+            match (&proj.project_dir, &proj.discovered_main_c) {
                 (Some(d), Some(m)) => (d.clone(), m.clone()),
                 _ => return,
             }
@@ -781,7 +785,7 @@ fn execute_build_pipeline(
             return;
         }
 
-        let dir = match &st.project_dir {
+        let dir = match &st.project.borrow().project_dir {
             Some(d) => d.clone(),
             None => return,
         };
@@ -1038,9 +1042,10 @@ fn apply_traceability_status_to_label(
 pub fn update_traceability_ui(state: &Rc<RefCell<AppState>>, widgets: &Rc<AppWidgets>) {
     let (project_dir, main_c_path, build_in_progress, captured_hash) = {
         let st = state.borrow();
+        let proj = st.project.borrow();
         (
-            st.project_dir.clone(),
-            st.discovered_main_c.clone(),
+            proj.project_dir.clone(),
+            proj.discovered_main_c.clone(),
             st.build_in_progress,
             st.captured_build_hash.clone(),
         )
@@ -1103,20 +1108,23 @@ fn try_discover_folder(dir: &Path, state: &Rc<RefCell<AppState>>, widgets: &Rc<A
 
     {
         let mut st = state.borrow_mut();
-        st.project_dir = Some(dir.to_path_buf());
+        {
+            let mut proj = st.project.borrow_mut();
+            proj.project_dir = Some(dir.to_path_buf());
+            match &discovery_res {
+                Ok((ioc_path, main_c_path)) => {
+                    proj.discovered_ioc = Some(ioc_path.clone());
+                    proj.discovered_main_c = Some(main_c_path.clone());
+                }
+                Err(_) => {
+                    proj.discovered_ioc = None;
+                    proj.discovered_main_c = None;
+                }
+            }
+        }
         st.has_makefile = has_makefile;
         st.has_build_system = has_build_sys;
         st.detected_build_system = build_sys;
-        match &discovery_res {
-            Ok((ioc_path, main_c_path)) => {
-                st.discovered_ioc = Some(ioc_path.clone());
-                st.discovered_main_c = Some(main_c_path.clone());
-            }
-            Err(_) => {
-                st.discovered_ioc = None;
-                st.discovered_main_c = None;
-            }
-        }
     }
 
     widgets.lbl_discovered_dir.set_text(&dir.display().to_string());
@@ -1148,8 +1156,9 @@ fn try_discover_folder(dir: &Path, state: &Rc<RefCell<AppState>>, widgets: &Rc<A
 fn do_load_project(state: &Rc<RefCell<AppState>>, widgets: &Rc<AppWidgets>) {
     let (ioc_path, main_c_path, dir_path) = {
         let st = state.borrow();
+        let proj = st.project.borrow();
 
-        match (&st.discovered_ioc, &st.discovered_main_c, &st.project_dir) {
+        match (&proj.discovered_ioc, &proj.discovered_main_c, &proj.project_dir) {
             (Some(i), Some(m), Some(d)) => (i.clone(), m.clone(), d.clone()),
             _ => {
                 widgets.toast_overlay.add_toast(adw::Toast::new("[ERROR] Project files not selected"));
@@ -1253,7 +1262,7 @@ fn do_load_project(state: &Rc<RefCell<AppState>>, widgets: &Rc<AppWidgets>) {
                     st.state_node_positions = pos;
                     st.state_diagram_layout = Some(layout);
                     st.diagram_needs_fit = true;
-                    st.loaded_project = Some(project);
+                    st.project.borrow_mut().loaded_project = Some(project);
                 }
 
                 widgets.diagram_drawing_area.set_content_width(w);
@@ -1281,7 +1290,7 @@ fn do_load_project(state: &Rc<RefCell<AppState>>, widgets: &Rc<AppWidgets>) {
                 {
                     let mut st = state.borrow_mut();
                     st.state_diagram_layout = None;
-                    st.loaded_project = Some(project);
+                    st.project.borrow_mut().loaded_project = Some(project);
                 }
                 widgets.btn_call_graph.set_sensitive(false);
                 widgets
@@ -2110,7 +2119,7 @@ mod tests {
         let ioc_path = fixture_dir.join("docking_firmware_v2.ioc");
         let main_c_path = fixture_dir.join("Core/Src/main.c");
         if let Ok(project) = load_project(&ioc_path, &main_c_path) {
-            state_sm.borrow_mut().loaded_project = Some(project);
+            state_sm.borrow().project.borrow_mut().loaded_project = Some(project);
             state_sm.borrow_mut().selected_state_node = Some("GOING".to_string());
             ui::state_diagram::draw::draw_state_diagram(&cr_sm, 1400.0, 900.0, &state_sm);
             surface_sm.flush();
@@ -2125,7 +2134,7 @@ mod tests {
         let f446_ioc = f446_dir.join("stakhal_blink_f446re.ioc");
         let f446_main = f446_dir.join("Core/Src/main.c");
         if let Ok(project) = load_project(&f446_ioc, &f446_main) {
-            state_pin.borrow_mut().loaded_project = Some(project);
+            state_pin.borrow().project.borrow_mut().loaded_project = Some(project);
             state_pin.borrow_mut().hovered_pinout_pin = Some(("CN10".to_string(), 11));
             state_pin.borrow_mut().hovered_pinout_mouse = Some((600.0, 300.0));
             ui::nucleo_pinout::draw::draw_nucleo_pinout(&cr_pin, 1400.0, 850.0, &state_pin);
@@ -2144,10 +2153,10 @@ mod tests {
             let surf_all = gtk4::cairo::ImageSurface::create(gtk4::cairo::Format::ARgb32, 1400, 850).expect("surface");
             let cr_all = gtk4::cairo::Context::new(&surf_all).expect("cr");
             let st_all = Rc::new(RefCell::new(AppState {
-                loaded_project: Some(project.clone()),
                 selected_pinout_module: None,
                 ..AppState::default()
             }));
+            st_all.borrow().project.borrow_mut().loaded_project = Some(project.clone());
             ui::nucleo_pinout::draw::draw_nucleo_pinout(&cr_all, 1400.0, 850.0, &st_all);
             surf_all.flush();
             if artifact_dir.exists() {
@@ -2160,12 +2169,12 @@ mod tests {
             let surf_hatch = gtk4::cairo::ImageSurface::create(gtk4::cairo::Format::ARgb32, 1400, 850).expect("surface");
             let cr_hatch = gtk4::cairo::Context::new(&surf_hatch).expect("cr");
             let st_hatch = Rc::new(RefCell::new(AppState {
-                loaded_project: Some(project.clone()),
                 selected_pinout_module: Some("hatch".to_string()),
                 hovered_pinout_pin: Some(("CN10".to_string(), 16)), // GRIP_IN1
                 hovered_pinout_mouse: Some((850.0, 320.0)),
                 ..AppState::default()
             }));
+            st_hatch.borrow().project.borrow_mut().loaded_project = Some(project.clone());
             ui::nucleo_pinout::draw::draw_nucleo_pinout(&cr_hatch, 1400.0, 850.0, &st_hatch);
             surf_hatch.flush();
             if artifact_dir.exists() {
@@ -2184,7 +2193,6 @@ mod tests {
                 let surf_dock = gtk4::cairo::ImageSurface::create(gtk4::cairo::Format::ARgb32, w, h).expect("surf");
                 let cr_dock = gtk4::cairo::Context::new(&surf_dock).expect("cr");
                 let st_dock = Rc::new(RefCell::new(AppState {
-                    loaded_project: Some(dock_proj.clone()),
                     state_diagram_layout: Some(layout.clone()),
                     diagram_bounds: (w, h),
                     diagram_zoom: 1.0,
@@ -2193,6 +2201,7 @@ mod tests {
                     selected_state_node: None,
                     ..AppState::default()
                 }));
+                st_dock.borrow().project.borrow_mut().loaded_project = Some(dock_proj.clone());
                 ui::state_diagram::draw::draw_state_diagram(&cr_dock, w as f64, h as f64, &st_dock);
                 surf_dock.flush();
                 if artifact_dir.exists() {
@@ -2205,7 +2214,6 @@ mod tests {
                 let surf_dock_sel = gtk4::cairo::ImageSurface::create(gtk4::cairo::Format::ARgb32, w, h).expect("surf");
                 let cr_dock_sel = gtk4::cairo::Context::new(&surf_dock_sel).expect("cr");
                 let st_dock_sel = Rc::new(RefCell::new(AppState {
-                    loaded_project: Some(dock_proj),
                     state_diagram_layout: Some(layout),
                     diagram_bounds: (w, h),
                     diagram_zoom: 1.0,
@@ -2214,6 +2222,7 @@ mod tests {
                     selected_state_node: Some("GOING".to_string()),
                     ..AppState::default()
                 }));
+                st_dock_sel.borrow().project.borrow_mut().loaded_project = Some(dock_proj);
                 ui::state_diagram::draw::draw_state_diagram(&cr_dock_sel, w as f64, h as f64, &st_dock_sel);
                 surf_dock_sel.flush();
                 if artifact_dir.exists() {
@@ -2233,7 +2242,6 @@ mod tests {
                 let surf_align = gtk4::cairo::ImageSurface::create(gtk4::cairo::Format::ARgb32, w, h).expect("surf");
                 let cr_align = gtk4::cairo::Context::new(&surf_align).expect("cr");
                 let st_align = Rc::new(RefCell::new(AppState {
-                    loaded_project: Some(project.clone()),
                     state_diagram_layout: Some(layout_align.clone()),
                     diagram_bounds: (w, h),
                     diagram_zoom: 1.0,
@@ -2242,6 +2250,7 @@ mod tests {
                     selected_state_node: None,
                     ..AppState::default()
                 }));
+                st_align.borrow().project.borrow_mut().loaded_project = Some(project.clone());
                 ui::state_diagram::draw::draw_state_diagram(&cr_align, w as f64, h as f64, &st_align);
                 surf_align.flush();
                 if artifact_dir.exists() {
@@ -2254,7 +2263,6 @@ mod tests {
                 let surf_align_ret = gtk4::cairo::ImageSurface::create(gtk4::cairo::Format::ARgb32, w, h).expect("surf");
                 let cr_align_ret = gtk4::cairo::Context::new(&surf_align_ret).expect("cr");
                 let st_align_ret = Rc::new(RefCell::new(AppState {
-                    loaded_project: Some(project),
                     state_diagram_layout: Some(layout_align),
                     diagram_bounds: (w, h),
                     diagram_zoom: 1.0,
@@ -2263,6 +2271,7 @@ mod tests {
                     selected_state_node: Some("RETURNING".to_string()),
                     ..AppState::default()
                 }));
+                st_align_ret.borrow().project.borrow_mut().loaded_project = Some(project);
                 ui::state_diagram::draw::draw_state_diagram(&cr_align_ret, w as f64, h as f64, &st_align_ret);
                 surf_align_ret.flush();
                 if artifact_dir.exists() {
