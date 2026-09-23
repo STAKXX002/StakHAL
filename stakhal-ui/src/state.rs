@@ -138,15 +138,6 @@ pub struct AppState {
     pub hovered_pinout_mouse: Option<(f64, f64)>,
     pub selected_pinout_module: Option<String>,
 
-    // Serial monitor state
-    pub detected_console_uart: Option<stakhal_core::source::ConsoleUartInfo>,
-    pub available_serial_ports: Vec<crate::toolchain::serial::SerialPortInfo>,
-    pub selected_serial_port: Option<String>,
-    pub selected_serial_baud: u32,
-    pub is_serial_connected: bool,
-    pub serial_session: Option<crate::toolchain::serial::ActiveSerialSession>,
-    pub serial_command_history: Vec<String>,
-    pub serial_history_index: Option<usize>,
 }
 
 impl AppState {
@@ -185,14 +176,6 @@ impl Default for AppState {
             hovered_pinout_pin: None,
             hovered_pinout_mouse: None,
             selected_pinout_module: None,
-            detected_console_uart: None,
-            available_serial_ports: Vec::new(),
-            selected_serial_port: None,
-            selected_serial_baud: 115200,
-            is_serial_connected: false,
-            serial_session: None,
-            serial_command_history: Vec::new(),
-            serial_history_index: None,
         }
     }
 }

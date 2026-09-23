@@ -670,9 +670,10 @@ dropdown button {
     let state_cp = Rc::clone(&state);
     widgets.combo_port.connect_selected_notify(move |cb| {
         let idx = cb.selected() as usize;
-        let mut st = state_cp.borrow_mut();
-        if idx < st.available_serial_ports.len() {
-            st.selected_serial_port = Some(st.available_serial_ports[idx].port_name.clone());
+        let st = state_cp.borrow();
+        let mut ser = st.serial.borrow_mut();
+        if idx < ser.available_serial_ports.len() {
+            ser.selected_serial_port = Some(ser.available_serial_ports[idx].port_name.clone());
         }
     });
 
@@ -681,7 +682,7 @@ dropdown button {
         let idx = cb.selected() as usize;
         if idx < crate::toolchain::serial::COMMON_BAUD_RATES.len() {
             let baud = crate::toolchain::serial::COMMON_BAUD_RATES[idx];
-            state_cb.borrow_mut().selected_serial_baud = baud;
+            state_cb.borrow().serial.borrow_mut().selected_serial_baud = baud;
         }
     });
 
@@ -717,35 +718,36 @@ dropdown button {
     let entry_keys = widgets.entry_command.clone();
     let key_controller = gtk4::EventControllerKey::new();
     key_controller.connect_key_pressed(move |_, key, _, _| {
-        let mut st = state_keys.borrow_mut();
-        if st.serial_command_history.is_empty() {
+        let st = state_keys.borrow();
+        let mut ser = st.serial.borrow_mut();
+        if ser.serial_command_history.is_empty() {
             return glib::Propagation::Proceed;
         }
 
         match key {
             gdk::Key::Up => {
-                let new_idx = match st.serial_history_index {
-                    None => st.serial_command_history.len().saturating_sub(1),
+                let new_idx = match ser.serial_history_index {
+                    None => ser.serial_command_history.len().saturating_sub(1),
                     Some(idx) => idx.saturating_sub(1),
                 };
-                st.serial_history_index = Some(new_idx);
-                if let Some(cmd) = st.serial_command_history.get(new_idx) {
+                ser.serial_history_index = Some(new_idx);
+                if let Some(cmd) = ser.serial_command_history.get(new_idx) {
                     entry_keys.set_text(cmd);
                     entry_keys.set_position(-1);
                 }
                 glib::Propagation::Stop
             }
             gdk::Key::Down => {
-                if let Some(idx) = st.serial_history_index {
-                    if idx + 1 < st.serial_command_history.len() {
+                if let Some(idx) = ser.serial_history_index {
+                    if idx + 1 < ser.serial_command_history.len() {
                         let new_idx = idx + 1;
-                        st.serial_history_index = Some(new_idx);
-                        if let Some(cmd) = st.serial_command_history.get(new_idx) {
+                        ser.serial_history_index = Some(new_idx);
+                        if let Some(cmd) = ser.serial_command_history.get(new_idx) {
                             entry_keys.set_text(cmd);
                             entry_keys.set_position(-1);
                         }
                     } else {
-                        st.serial_history_index = None;
+                        ser.serial_history_index = None;
                         entry_keys.set_text("");
                     }
                     glib::Propagation::Stop
@@ -1352,9 +1354,12 @@ fn do_load_project(state: &Rc<RefCell<AppState>>, widgets: &Rc<AppWidgets>) {
                 {
                     widgets.combo_baud.set_selected(pos as u32);
                 }
-                let mut st = state.borrow_mut();
-                st.selected_serial_baud = uart_info.baud_rate;
-                st.detected_console_uart = Some(uart_info);
+                {
+                    let st = state.borrow();
+                    let mut ser = st.serial.borrow_mut();
+                    ser.selected_serial_baud = uart_info.baud_rate;
+                    ser.detected_console_uart = Some(uart_info);
+                }
             }
             update_quick_send_buttons(&main_c_path, state, widgets);
 
@@ -1488,12 +1493,13 @@ fn run_flash_stage(
     }
 
     // Phase 5: Disconnect any active serial session prior to flashing to avoid USB port contention
-    let was_serial_connected = state.borrow().is_serial_connected;
+    let was_serial_connected = state.borrow().serial.borrow().is_serial_connected;
     if was_serial_connected {
         let session = {
-            let mut st = state.borrow_mut();
-            st.is_serial_connected = false;
-            st.serial_session.take()
+            let st = state.borrow();
+            let mut ser = st.serial.borrow_mut();
+            ser.is_serial_connected = false;
+            ser.serial_session.take()
         };
         if let Some(session) = session {
             session
@@ -1575,7 +1581,7 @@ fn run_flash_stage(
 
 fn refresh_serial_ports(state: &Rc<RefCell<AppState>>, widgets: &Rc<AppWidgets>) {
     let ports = crate::toolchain::serial::enumerate_serial_ports();
-    let is_connected = state.borrow().is_serial_connected;
+    let is_connected = state.borrow().serial.borrow().is_serial_connected;
 
     if ports.is_empty() {
         let empty_list = gtk4::StringList::new(&["No Ports Detected"]);
@@ -1586,9 +1592,10 @@ fn refresh_serial_ports(state: &Rc<RefCell<AppState>>, widgets: &Rc<AppWidgets>)
             widgets.btn_connect_serial.set_sensitive(false);
         }
         {
-            let mut st = state.borrow_mut();
-            st.available_serial_ports = Vec::new();
-            st.selected_serial_port = None;
+            let st = state.borrow();
+            let mut ser = st.serial.borrow_mut();
+            ser.available_serial_ports = Vec::new();
+            ser.selected_serial_port = None;
         }
     } else if ports.len() == 1 {
         let p = &ports[0];
@@ -1600,9 +1607,10 @@ fn refresh_serial_ports(state: &Rc<RefCell<AppState>>, widgets: &Rc<AppWidgets>)
             widgets.btn_connect_serial.set_sensitive(true);
         }
         {
-            let mut st = state.borrow_mut();
-            st.selected_serial_port = Some(p.port_name.clone());
-            st.available_serial_ports = ports;
+            let st = state.borrow();
+            let mut ser = st.serial.borrow_mut();
+            ser.selected_serial_port = Some(p.port_name.clone());
+            ser.available_serial_ports = ports;
         }
     } else {
         let display_names: Vec<String> = ports.iter().map(|p| p.display_name.clone()).collect();
@@ -1614,7 +1622,7 @@ fn refresh_serial_ports(state: &Rc<RefCell<AppState>>, widgets: &Rc<AppWidgets>)
             widgets.btn_connect_serial.set_sensitive(true);
         }
 
-        let current_sel = state.borrow().selected_serial_port.clone();
+        let current_sel = state.borrow().serial.borrow().selected_serial_port.clone();
         let mut select_idx = 0;
         if let Some(ref cur) = current_sel {
             if let Some(pos) = ports.iter().position(|p| &p.port_name == cur) {
@@ -1622,9 +1630,10 @@ fn refresh_serial_ports(state: &Rc<RefCell<AppState>>, widgets: &Rc<AppWidgets>)
             }
         }
         {
-            let mut st = state.borrow_mut();
-            st.selected_serial_port = Some(ports[select_idx].port_name.clone());
-            st.available_serial_ports = ports;
+            let st = state.borrow();
+            let mut ser = st.serial.borrow_mut();
+            ser.selected_serial_port = Some(ports[select_idx].port_name.clone());
+            ser.available_serial_ports = ports;
         }
         widgets.combo_port.set_selected(select_idx as u32);
     }
@@ -1686,10 +1695,11 @@ fn attach_serial_rx_pump(
                         "\n[SERIAL] Port disconnected.\n",
                     );
                     let has_ports = {
-                        let mut st = state_timer.borrow_mut();
-                        st.is_serial_connected = false;
-                        st.serial_session = None;
-                        !st.available_serial_ports.is_empty()
+                        let st = state_timer.borrow();
+                        let mut ser = st.serial.borrow_mut();
+                        ser.is_serial_connected = false;
+                        ser.serial_session = None;
+                        !ser.available_serial_ports.is_empty()
                     };
                     widgets_timer.btn_connect_serial.set_label("Connect");
                     widgets_timer.btn_connect_serial.remove_css_class("destructive-action");
@@ -1718,9 +1728,10 @@ fn attach_serial_rx_pump(
 
 fn auto_reconnect_serial_after_flash(state: &Rc<RefCell<AppState>>, widgets: &Rc<AppWidgets>) {
     let session = {
-        let mut st = state.borrow_mut();
-        st.is_serial_connected = false;
-        st.serial_session.take()
+        let st = state.borrow();
+        let mut ser = st.serial.borrow_mut();
+        ser.is_serial_connected = false;
+        ser.serial_session.take()
     };
     if let Some(session) = session {
         session
@@ -1749,7 +1760,7 @@ fn auto_reconnect_serial_after_flash(state: &Rc<RefCell<AppState>>, widgets: &Rc
     const MAX_ATTEMPTS: u32 = 8; // ~2.4s total at 300ms intervals
 
     glib::timeout_add_local(std::time::Duration::from_millis(300), move || {
-        if state_retry.borrow().is_serial_connected {
+        if state_retry.borrow().serial.borrow().is_serial_connected {
             return glib::ControlFlow::Break;
         }
 
@@ -1760,8 +1771,9 @@ fn auto_reconnect_serial_after_flash(state: &Rc<RefCell<AppState>>, widgets: &Rc
 
         let (target_port, baud_rate) = {
             let st = state_retry.borrow();
-            let port = st.selected_serial_port.clone();
-            let baud = st.selected_serial_baud;
+            let ser = st.serial.borrow();
+            let port = ser.selected_serial_port.clone();
+            let baud = ser.selected_serial_baud;
             (port, baud)
         };
 
@@ -1769,9 +1781,10 @@ fn auto_reconnect_serial_after_flash(state: &Rc<RefCell<AppState>>, widgets: &Rc
             match crate::toolchain::serial::spawn_serial_connection(port_name.clone(), baud_rate) {
                 Ok((session, event_rx)) => {
                     {
-                        let mut st = state_retry.borrow_mut();
-                        st.is_serial_connected = true;
-                        st.serial_session = Some(session);
+                        let st = state_retry.borrow();
+                        let mut ser = st.serial.borrow_mut();
+                        ser.is_serial_connected = true;
+                        ser.serial_session = Some(session);
                     }
 
                     widgets_retry.btn_connect_serial.set_label("Disconnect");
@@ -1814,7 +1827,7 @@ fn auto_reconnect_serial_after_flash(state: &Rc<RefCell<AppState>>, widgets: &Rc
             widgets_retry.btn_connect_serial.add_css_class("suggested-action");
             widgets_retry
                 .btn_connect_serial
-                .set_sensitive(!state_retry.borrow().available_serial_ports.is_empty());
+                .set_sensitive(!state_retry.borrow().serial.borrow().available_serial_ports.is_empty());
             widgets_retry.combo_port.set_sensitive(true);
             widgets_retry.combo_baud.set_sensitive(true);
             widgets_retry.btn_refresh_ports.set_sensitive(true);
@@ -1826,10 +1839,12 @@ fn auto_reconnect_serial_after_flash(state: &Rc<RefCell<AppState>>, widgets: &Rc
 }
 
 fn toggle_serial_connection(state: &Rc<RefCell<AppState>>, widgets: &Rc<AppWidgets>) {
-    let is_connected = state.borrow().is_serial_connected;
+    let is_connected = state.borrow().serial.borrow().is_serial_connected;
 
     if is_connected {
-        if let Some(ref session) = state.borrow().serial_session {
+        let st = state.borrow();
+        let ser = st.serial.borrow();
+        if let Some(ref session) = ser.serial_session {
             session
                 .tx_cmd
                 .send(crate::toolchain::serial::SerialTxCommand::Disconnect)
@@ -1838,7 +1853,8 @@ fn toggle_serial_connection(state: &Rc<RefCell<AppState>>, widgets: &Rc<AppWidge
     } else {
         let (port_name, baud_rate) = {
             let st = state.borrow();
-            let port = match &st.selected_serial_port {
+            let ser = st.serial.borrow();
+            let port = match &ser.selected_serial_port {
                 Some(p) => p.clone(),
                 None => {
                     widgets
@@ -1847,7 +1863,7 @@ fn toggle_serial_connection(state: &Rc<RefCell<AppState>>, widgets: &Rc<AppWidge
                     return;
                 }
             };
-            let baud = st.selected_serial_baud;
+            let baud = ser.selected_serial_baud;
             (port, baud)
         };
 
@@ -1856,9 +1872,10 @@ fn toggle_serial_connection(state: &Rc<RefCell<AppState>>, widgets: &Rc<AppWidge
         match crate::toolchain::serial::spawn_serial_connection(port_name.clone(), baud_rate) {
             Ok((session, event_rx)) => {
                 {
-                    let mut st = state.borrow_mut();
-                    st.is_serial_connected = true;
-                    st.serial_session = Some(session);
+                    let st = state.borrow();
+                    let mut ser = st.serial.borrow_mut();
+                    ser.is_serial_connected = true;
+                    ser.serial_session = Some(session);
                 }
 
                 widgets.btn_connect_serial.set_label("Disconnect");
@@ -1893,15 +1910,16 @@ fn send_serial_command(text: &str, state: &Rc<RefCell<AppState>>, widgets: &Rc<A
     }
 
     let tx_sender = {
-        let mut st = state.borrow_mut();
-        if !st.is_serial_connected {
+        let st = state.borrow();
+        let mut ser = st.serial.borrow_mut();
+        if !ser.is_serial_connected {
             None
         } else {
-            if st.serial_command_history.last().map(|s| s.as_str()) != Some(text) {
-                st.serial_command_history.push(text.to_string());
+            if ser.serial_command_history.last().map(|s| s.as_str()) != Some(text) {
+                ser.serial_command_history.push(text.to_string());
             }
-            st.serial_history_index = None;
-            st.serial_session.as_ref().map(|s| s.tx_cmd.clone())
+            ser.serial_history_index = None;
+            ser.serial_session.as_ref().map(|s| s.tx_cmd.clone())
         }
     };
 
@@ -2062,7 +2080,7 @@ mod tests {
 
                 if success {
                     // Simulates auto_reconnect_serial_after_flash(&state, ...):
-                    let _session = state.borrow_mut().serial_session.take();
+                    let _session = state.borrow().serial.borrow_mut().serial_session.take();
                 }
             }
         }));
