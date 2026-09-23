@@ -780,8 +780,9 @@ fn execute_build_pipeline(
     widgets: &Rc<AppWidgets>,
 ) {
     let (dir, build_sys) = {
-        let mut st = state.borrow_mut();
-        if st.build_in_progress {
+        let st = state.borrow();
+        let mut bt = st.build_trace.borrow_mut();
+        if bt.build_in_progress {
             return;
         }
 
@@ -789,11 +790,11 @@ fn execute_build_pipeline(
             Some(d) => d.clone(),
             None => return,
         };
-        let build_sys = match &st.detected_build_system {
+        let build_sys = match &bt.detected_build_system {
             Some(bs) => bs.clone(),
             None => return,
         };
-        st.build_in_progress = true;
+        bt.build_in_progress = true;
         (dir, build_sys)
     };
 
@@ -809,9 +810,10 @@ fn execute_build_pipeline(
             append_log_text(&widgets.build_log_view, &format!("[ERROR] {}", err));
             update_build_status(&widgets.lbl_build_status, "BUILD FAILED", StatusKind::Error);
             let has_build_system = {
-                let mut st = state.borrow_mut();
-                st.build_in_progress = false;
-                st.has_build_system
+                let st = state.borrow();
+                let mut bt = st.build_trace.borrow_mut();
+                bt.build_in_progress = false;
+                bt.has_build_system
             };
             widgets.btn_build.set_sensitive(has_build_system);
             widgets.btn_build_flash.set_sensitive(has_build_system);
@@ -883,9 +885,10 @@ fn execute_build_pipeline(
                             update_build_status(&widgets_timer.lbl_build_status, "SUCCESS", StatusKind::Ready);
                             widgets_timer.toast_overlay.add_toast(adw::Toast::new("[OK] Build succeeded"));
                             let has_build_system = {
-                                let mut st = state_timer.borrow_mut();
-                                st.build_in_progress = false;
-                                st.has_build_system
+                                let st = state_timer.borrow();
+                                let mut bt = st.build_trace.borrow_mut();
+                                bt.build_in_progress = false;
+                                bt.has_build_system
                             };
                             widgets_timer.btn_build.set_sensitive(has_build_system);
                             widgets_timer.btn_build_flash.set_sensitive(has_build_system);
@@ -927,9 +930,10 @@ fn execute_build_pipeline(
                                 append_log_text(&widgets_dlg.build_log_view, "[ARTIFACT] Operation cancelled by user.");
                                 update_build_status(&widgets_dlg.lbl_build_status, "CANCELLED", StatusKind::Idle);
                                 let has_build_system = {
-                                    let mut st = state_dlg.borrow_mut();
-                                    st.build_in_progress = false;
-                                    st.has_build_system
+                                    let st = state_dlg.borrow();
+                                    let mut bt = st.build_trace.borrow_mut();
+                                    bt.build_in_progress = false;
+                                    bt.has_build_system
                                 };
                                 widgets_dlg.btn_build.set_sensitive(has_build_system);
                                 widgets_dlg.btn_build_flash.set_sensitive(has_build_system);
@@ -940,9 +944,10 @@ fn execute_build_pipeline(
                             update_build_status(&widgets_timer.lbl_build_status, "SUCCESS", StatusKind::Ready);
                             widgets_timer.toast_overlay.add_toast(adw::Toast::new("[OK] Build succeeded"));
                             let has_build_system = {
-                                let mut st = state_timer.borrow_mut();
-                                st.build_in_progress = false;
-                                st.has_build_system
+                                let st = state_timer.borrow();
+                                let mut bt = st.build_trace.borrow_mut();
+                                bt.build_in_progress = false;
+                                bt.has_build_system
                             };
                             widgets_timer.btn_build.set_sensitive(has_build_system);
                             widgets_timer.btn_build_flash.set_sensitive(has_build_system);
@@ -953,9 +958,10 @@ fn execute_build_pipeline(
                         append_log_text(&widgets_timer.build_log_view, &format!("[ERROR] Build succeeded but target .bin was not found. Expected: {}", expected.display()));
                         update_build_status(&widgets_timer.lbl_build_status, "ARTIFACT MISSING", StatusKind::Error);
                         let has_build_system = {
-                            let mut st = state_timer.borrow_mut();
-                            st.build_in_progress = false;
-                            st.has_build_system
+                            let st = state_timer.borrow();
+                            let mut bt = st.build_trace.borrow_mut();
+                            bt.build_in_progress = false;
+                            bt.has_build_system
                         };
                         widgets_timer.btn_build.set_sensitive(has_build_system);
                         widgets_timer.btn_build_flash.set_sensitive(has_build_system);
@@ -968,9 +974,10 @@ fn execute_build_pipeline(
                 append_log_text(&widgets_timer.build_log_view, &format!("\n[BUILD FAILED] {} exited with error code {}. {}", cmd, code_str, action_type));
                 update_build_status(&widgets_timer.lbl_build_status, "BUILD FAILED", StatusKind::Error);
                 let has_build_system = {
-                    let mut st = state_timer.borrow_mut();
-                    st.build_in_progress = false;
-                    st.has_build_system
+                    let st = state_timer.borrow();
+                    let mut bt = st.build_trace.borrow_mut();
+                    bt.build_in_progress = false;
+                    bt.has_build_system
                 };
                 widgets_timer.btn_build.set_sensitive(has_build_system);
                 widgets_timer.btn_build_flash.set_sensitive(has_build_system);
@@ -1043,11 +1050,12 @@ pub fn update_traceability_ui(state: &Rc<RefCell<AppState>>, widgets: &Rc<AppWid
     let (project_dir, main_c_path, build_in_progress, captured_hash) = {
         let st = state.borrow();
         let proj = st.project.borrow();
+        let bt = st.build_trace.borrow();
         (
             proj.project_dir.clone(),
             proj.discovered_main_c.clone(),
-            st.build_in_progress,
-            st.captured_build_hash.clone(),
+            bt.build_in_progress,
+            bt.captured_build_hash.clone(),
         )
     };
 
@@ -1064,10 +1072,7 @@ pub fn update_traceability_ui(state: &Rc<RefCell<AppState>>, widgets: &Rc<AppWid
             let is_git = toolchain::traceability::is_git_repository(&dir);
             let is_enabled = toolchain::traceability::is_traceability_enabled_in_source(&main_c);
 
-            {
-                let mut st = state.borrow_mut();
-                st.is_traceability_enabled = is_enabled;
-            }
+            state.borrow().build_trace.borrow_mut().is_traceability_enabled = is_enabled;
 
             if !is_git {
                 widgets.btn_enable_traceability.set_sensitive(false);
@@ -1107,7 +1112,7 @@ fn try_discover_folder(dir: &Path, state: &Rc<RefCell<AppState>>, widgets: &Rc<A
     let discovery_res = discover_project_files(dir);
 
     {
-        let mut st = state.borrow_mut();
+        let st = state.borrow();
         {
             let mut proj = st.project.borrow_mut();
             proj.project_dir = Some(dir.to_path_buf());
@@ -1122,9 +1127,12 @@ fn try_discover_folder(dir: &Path, state: &Rc<RefCell<AppState>>, widgets: &Rc<A
                 }
             }
         }
-        st.has_makefile = has_makefile;
-        st.has_build_system = has_build_sys;
-        st.detected_build_system = build_sys;
+        {
+            let mut bt = st.build_trace.borrow_mut();
+            bt.has_makefile = has_makefile;
+            bt.has_build_system = has_build_sys;
+            bt.detected_build_system = build_sys;
+        }
     }
 
     widgets.lbl_discovered_dir.set_text(&dir.display().to_string());
@@ -1172,10 +1180,11 @@ fn do_load_project(state: &Rc<RefCell<AppState>>, widgets: &Rc<AppWidgets>) {
     let build_sys = toolchain::builder::detect_build_system(&dir_path);
     let has_build_sys = build_sys.is_some();
     {
-        let mut st = state.borrow_mut();
-        st.has_makefile = dir_path.join("Makefile").is_file() || dir_path.join("makefile").is_file();
-        st.has_build_system = has_build_sys;
-        st.detected_build_system = build_sys;
+        let st = state.borrow();
+        let mut bt = st.build_trace.borrow_mut();
+        bt.has_makefile = dir_path.join("Makefile").is_file() || dir_path.join("makefile").is_file();
+        bt.has_build_system = has_build_sys;
+        bt.detected_build_system = build_sys;
     }
     widgets.btn_build.set_sensitive(has_build_sys);
     widgets.btn_build_flash.set_sensitive(has_build_sys);
@@ -1420,9 +1429,10 @@ fn run_probe_detection_and_flash(
                     append_log_text(&widgets_dlg.build_log_view, "[PROBE] Flashing cancelled by user.");
                     update_build_status(&widgets_dlg.lbl_build_status, "CANCELLED", StatusKind::Idle);
                     let has_build_system = {
-                        let mut st = state_dlg.borrow_mut();
-                        st.build_in_progress = false;
-                        st.has_build_system
+                        let st = state_dlg.borrow();
+                        let mut bt = st.build_trace.borrow_mut();
+                        bt.build_in_progress = false;
+                        bt.has_build_system
                     };
                     widgets_dlg.btn_build.set_sensitive(has_build_system);
                     widgets_dlg.btn_build_flash.set_sensitive(has_build_system);
@@ -1441,9 +1451,10 @@ fn run_probe_detection_and_flash(
             update_build_status(&widgets.lbl_build_status, txt, kind);
             widgets.toast_overlay.add_toast(adw::Toast::new(&format!("[ERROR] {}", err)));
             let has_build_system = {
-                let mut st = state.borrow_mut();
-                st.build_in_progress = false;
-                st.has_build_system
+                let st = state.borrow();
+                let mut bt = st.build_trace.borrow_mut();
+                bt.build_in_progress = false;
+                bt.has_build_system
             };
             widgets.btn_build.set_sensitive(has_build_system);
             widgets.btn_build_flash.set_sensitive(has_build_system);
@@ -1465,9 +1476,10 @@ fn run_flash_stage(
         update_build_status(&widgets.lbl_build_status, "ST-FLASH MISSING", StatusKind::Error);
         widgets.toast_overlay.add_toast(adw::Toast::new("[ERROR] `st-flash` not found on PATH"));
         let has_build_system = {
-            let mut st = state.borrow_mut();
-            st.build_in_progress = false;
-            st.has_build_system
+            let st = state.borrow();
+            let mut bt = st.build_trace.borrow_mut();
+            bt.build_in_progress = false;
+            bt.has_build_system
         };
         widgets.btn_build.set_sensitive(has_build_system);
         widgets.btn_build_flash.set_sensitive(has_build_system);
@@ -1529,9 +1541,10 @@ fn run_flash_stage(
 
         if let Some((success, code)) = finished {
             let has_build_system = {
-                let mut st = state_timer.borrow_mut();
-                st.build_in_progress = false;
-                st.has_build_system
+                let st = state_timer.borrow();
+                let mut bt = st.build_trace.borrow_mut();
+                bt.build_in_progress = false;
+                bt.has_build_system
             };
             widgets_timer.btn_build.set_sensitive(has_build_system);
             widgets_timer.btn_build_flash.set_sensitive(has_build_system);
@@ -1647,9 +1660,10 @@ fn attach_serial_rx_pump(
 
                     if let Some((hash, is_dirty)) = toolchain::traceability::parse_build_banner_line(&data) {
                         {
-                            let mut st = state_timer.borrow_mut();
-                            st.captured_build_hash = Some(hash.clone());
-                            st.is_captured_hash_dirty = is_dirty;
+                            let st = state_timer.borrow();
+                            let mut bt = st.build_trace.borrow_mut();
+                            bt.captured_build_hash = Some(hash.clone());
+                            bt.is_captured_hash_dirty = is_dirty;
                         }
                         append_log_text(
                             &widgets_timer.build_log_view,
@@ -1974,58 +1988,60 @@ mod tests {
     #[test]
     fn test_serial_rx_captures_build_hash() {
         let state = Rc::new(RefCell::new(AppState::default()));
-        assert_eq!(state.borrow().captured_build_hash, None);
-        assert!(!state.borrow().is_captured_hash_dirty);
+        let bt_cell = Rc::clone(&state.borrow().build_trace);
+        assert_eq!(bt_cell.borrow().captured_build_hash, None);
+        assert!(!bt_cell.borrow().is_captured_hash_dirty);
 
         let test_line = "STAKHAL_BUILD: a41f5f7-dirty\r\n";
         if let Some((hash, is_dirty)) = toolchain::traceability::parse_build_banner_line(test_line) {
-            let mut st = state.borrow_mut();
-            st.captured_build_hash = Some(hash);
-            st.is_captured_hash_dirty = is_dirty;
+            let mut bt = bt_cell.borrow_mut();
+            bt.captured_build_hash = Some(hash);
+            bt.is_captured_hash_dirty = is_dirty;
         }
 
         assert_eq!(
-            state.borrow().captured_build_hash.as_deref(),
+            bt_cell.borrow().captured_build_hash.as_deref(),
             Some("a41f5f7-dirty")
         );
-        assert!(state.borrow().is_captured_hash_dirty);
+        assert!(bt_cell.borrow().is_captured_hash_dirty);
 
         // Test clean hash
         let clean_line = "STAKHAL_BUILD: a41f5f7\r\n";
         if let Some((hash, is_dirty)) = toolchain::traceability::parse_build_banner_line(clean_line) {
-            let mut st = state.borrow_mut();
-            st.captured_build_hash = Some(hash);
-            st.is_captured_hash_dirty = is_dirty;
+            let mut bt = bt_cell.borrow_mut();
+            bt.captured_build_hash = Some(hash);
+            bt.is_captured_hash_dirty = is_dirty;
         }
 
         assert_eq!(
-            state.borrow().captured_build_hash.as_deref(),
+            bt_cell.borrow().captured_build_hash.as_deref(),
             Some("a41f5f7")
         );
-        assert!(!state.borrow().is_captured_hash_dirty);
+        assert!(!bt_cell.borrow().is_captured_hash_dirty);
     }
 
     #[test]
     fn test_reproduce_run_flash_stage_double_borrow() {
         let state = Rc::new(RefCell::new(AppState::default()));
         let finished = Some((true, Some(0)));
+        let bt_cell = Rc::clone(&state.borrow().build_trace);
 
         let panic_res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             if let Some((success, _code)) = finished {
-                let mut st = state.borrow_mut();
-                st.build_in_progress = false;
-                let _has_bs = st.has_build_system;
+                let mut bt = bt_cell.borrow_mut();
+                bt.build_in_progress = false;
+                let _has_bs = bt.has_build_system;
 
                 if success {
-                    // Simulates unpatched auto_reconnect_serial_after_flash(&state, ...):
-                    let _session = state.borrow_mut().serial_session.take();
+                    // Simulates re-borrowing the same cell while bt is still held alive:
+                    let _reborrow = bt_cell.borrow_mut();
                 }
             }
         }));
 
         assert!(
             panic_res.is_err(),
-            "Expected double-borrow panic when st is not dropped before re-borrowing state"
+            "Expected double-borrow panic when bt is not dropped before re-borrowing build_trace cell"
         );
     }
 
@@ -2033,13 +2049,14 @@ mod tests {
     fn test_run_flash_stage_borrow_released_before_reconnect() {
         let state = Rc::new(RefCell::new(AppState::default()));
         let finished = Some((true, Some(0)));
+        let bt_cell = Rc::clone(&state.borrow().build_trace);
 
         let panic_res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             if let Some((success, _code)) = finished {
                 let has_build_system = {
-                    let mut st = state.borrow_mut();
-                    st.build_in_progress = false;
-                    st.has_build_system
+                    let mut bt = bt_cell.borrow_mut();
+                    bt.build_in_progress = false;
+                    bt.has_build_system
                 };
                 let _ = has_build_system;
 

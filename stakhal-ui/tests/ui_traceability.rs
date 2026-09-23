@@ -150,7 +150,7 @@ printf("BOOT\r\n");
     assert!(widgets.btn_enable_traceability.is_sensitive());
 
     // Test matched hash status chip
-    state.borrow_mut().captured_build_hash = Some(head.clone());
+    state.borrow().build_trace.borrow_mut().captured_build_hash = Some(head.clone());
     update_traceability_ui(&state, &widgets);
     assert_eq!(
         widgets.lbl_build_traceability.text(),
@@ -159,7 +159,7 @@ printf("BOOT\r\n");
     assert!(widgets.lbl_build_traceability.has_css_class("status-ready"));
 
     // Test dirty hash status chip
-    state.borrow_mut().captured_build_hash = Some(format!("{}-dirty", head));
+    state.borrow().build_trace.borrow_mut().captured_build_hash = Some(format!("{}-dirty", head));
     update_traceability_ui(&state, &widgets);
     assert_eq!(
         widgets.lbl_build_traceability.text(),
@@ -168,13 +168,13 @@ printf("BOOT\r\n");
     assert!(widgets.lbl_build_traceability.has_css_class("status-active"));
 
     // Test diverged hash status chip
-    state.borrow_mut().captured_build_hash = Some("deadbeef".to_string());
+    state.borrow().build_trace.borrow_mut().captured_build_hash = Some("deadbeef".to_string());
     update_traceability_ui(&state, &widgets);
     assert_eq!(widgets.lbl_build_traceability.text(), "BUILD: deadbeef (Diverged)");
     assert!(widgets.lbl_build_traceability.has_css_class("status-error"));
 
     // Reset captured hash
-    state.borrow_mut().captured_build_hash = None;
+    state.borrow().build_trace.borrow_mut().captured_build_hash = None;
 
     // 3. Insert traceability into source
     let res = toolchain::traceability::insert_traceability_into_source(&main_c_path, &temp_dir);

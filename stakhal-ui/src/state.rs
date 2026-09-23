@@ -138,14 +138,6 @@ pub struct AppState {
     pub hovered_pinout_mouse: Option<(f64, f64)>,
     pub selected_pinout_module: Option<String>,
 
-    // Build & flash state
-    pub build_in_progress: bool,
-    pub has_makefile: bool,
-    pub has_build_system: bool,
-    pub detected_build_system: Option<crate::toolchain::builder::BuildSystem>,
-    #[allow(dead_code)]
-    pub selected_probe: Option<String>,
-
     // Serial monitor state
     pub detected_console_uart: Option<stakhal_core::source::ConsoleUartInfo>,
     pub available_serial_ports: Vec<crate::toolchain::serial::SerialPortInfo>,
@@ -155,11 +147,6 @@ pub struct AppState {
     pub serial_session: Option<crate::toolchain::serial::ActiveSerialSession>,
     pub serial_command_history: Vec<String>,
     pub serial_history_index: Option<usize>,
-
-    // Traceability state
-    pub is_traceability_enabled: bool,
-    pub captured_build_hash: Option<String>,
-    pub is_captured_hash_dirty: bool,
 }
 
 impl AppState {
@@ -198,11 +185,6 @@ impl Default for AppState {
             hovered_pinout_pin: None,
             hovered_pinout_mouse: None,
             selected_pinout_module: None,
-            build_in_progress: false,
-            has_makefile: false,
-            has_build_system: false,
-            detected_build_system: None,
-            selected_probe: None,
             detected_console_uart: None,
             available_serial_ports: Vec::new(),
             selected_serial_port: None,
@@ -211,9 +193,6 @@ impl Default for AppState {
             serial_session: None,
             serial_command_history: Vec::new(),
             serial_history_index: None,
-            is_traceability_enabled: false,
-            captured_build_hash: None,
-            is_captured_hash_dirty: false,
         }
     }
 }
