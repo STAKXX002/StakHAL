@@ -1,0 +1,6915 @@
+{
+  "df_sms": [
+    {
+      "id": "SystemState_state",
+      "display_name": "SystemState (state)",
+      "enum_def": {
+        "name": "SystemState",
+        "variants": [
+          "IDLE",
+          "CALIBRATING",
+          "CAL_STOPPING",
+          "CAL_BACKOFF",
+          "GOING",
+          "HOLD",
+          "RETURNING",
+          "RETURNED",
+          "RECOVERY",
+          "REC_STOPPING",
+          "REC_BACKOFF",
+          "FAULT",
+          "OPENING",
+          "CLOSING"
+        ],
+        "file_path": "tests/fixtures/docking_firmware/Core/Src/main.c",
+        "line": 18
+      },
+      "var": {
+        "name": "state",
+        "enum_type": "SystemState",
+        "scope": "Global",
+        "initial_value": "IDLE",
+        "file_path": "tests/fixtures/docking_firmware/Core/Src/main.c",
+        "line": 62
+      },
+      "states": [
+        "IDLE",
+        "CALIBRATING",
+        "CAL_STOPPING",
+        "CAL_BACKOFF",
+        "GOING",
+        "HOLD",
+        "RETURNING",
+        "RETURNED",
+        "RECOVERY",
+        "REC_STOPPING",
+        "REC_BACKOFF",
+        "FAULT",
+        "OPENING",
+        "CLOSING"
+      ],
+      "transitions": [
+        {
+          "from": "CALIBRATING",
+          "to": "FAULT",
+          "guard": "now - stateStart > CAL_TIMEOUT [fault: CAL TIMEOUT]",
+          "label": "CAL TIMEOUT",
+          "is_fault": true,
+          "transition_type": {
+            "IndirectHelper": {
+              "helper_name": "fault",
+              "argument": "CAL TIMEOUT"
+            }
+          },
+          "line": 119
+        },
+        {
+          "from": "CALIBRATING",
+          "to": "CAL_STOPPING",
+          "guard": "z1Hit && z2Hit",
+          "label": "Z1 Hit and Z2 Hit",
+          "is_fault": false,
+          "transition_type": "Direct",
+          "line": 132
+        },
+        {
+          "from": "CALIBRATING",
+          "to": "FAULT",
+          "guard": "z1Hit && !z2Hit && z2.current_pos == z2.target_pos [fault: Z2 LIMIT NOT FOUND]",
+          "label": "Z2 LIMIT NOT FOUND",
+          "is_fault": true,
+          "transition_type": {
+            "IndirectHelper": {
+              "helper_name": "fault",
+              "argument": "Z2 LIMIT NOT FOUND"
+            }
+          },
+          "line": 134
+        },
+        {
+          "from": "CALIBRATING",
+          "to": "FAULT",
+          "guard": "z2Hit && !z1Hit && z1.current_pos == z1.target_pos [fault: Z1 LIMIT NOT FOUND]",
+          "label": "Z1 LIMIT NOT FOUND",
+          "is_fault": true,
+          "transition_type": {
+            "IndirectHelper": {
+              "helper_name": "fault",
+              "argument": "Z1 LIMIT NOT FOUND"
+            }
+          },
+          "line": 136
+        },
+        {
+          "from": "CAL_STOPPING",
+          "to": "FAULT",
+          "guard": "axes_done() && !skewOK() [fault: CAL SKEW]",
+          "label": "CAL SKEW",
+          "is_fault": true,
+          "transition_type": {
+            "IndirectHelper": {
+              "helper_name": "fault",
+              "argument": "CAL SKEW"
+            }
+          },
+          "line": 143
+        },
+        {
+          "from": "CAL_STOPPING",
+          "to": "CAL_BACKOFF",
+          "guard": "axes_done()",
+          "label": "Axes Done",
+          "is_fault": false,
+          "transition_type": "Direct",
+          "line": 149
+        },
+        {
+          "from": "CAL_BACKOFF",
+          "to": "FAULT",
+          "guard": "now - stateStart > CAL_TIMEOUT [fault: CAL BACKOFF TIMEOUT]",
+          "label": "CAL BACKOFF TIMEOUT",
+          "is_fault": true,
+          "transition_type": {
+            "IndirectHelper": {
+              "helper_name": "fault",
+              "argument": "CAL BACKOFF TIMEOUT"
+            }
+          },
+          "line": 155
+        },
+        {
+          "from": "CAL_BACKOFF",
+          "to": "IDLE",
+          "guard": "axes_done()",
+          "label": "Axes Done",
+          "is_fault": false,
+          "transition_type": "Direct",
+          "line": 159
+        },
+        {
+          "from": "GOING",
+          "to": "FAULT",
+          "guard": "now - stateStart > MOVE_TIMEOUT [fault: GO TIMEOUT]",
+          "label": "GO TIMEOUT",
+          "is_fault": true,
+          "transition_type": {
+            "IndirectHelper": {
+              "helper_name": "fault",
+              "argument": "GO TIMEOUT"
+            }
+          },
+          "line": 165
+        },
+        {
+          "from": "GOING",
+          "to": "HOLD",
+          "guard": "axes_done()",
+          "label": "Axes Done",
+          "is_fault": false,
+          "transition_type": "Direct",
+          "line": 167
+        },
+        {
+          "from": "RETURNING",
+          "to": "RECOVERY",
+          "guard": "enteringRecovery",
+          "label": "Entering Recovery",
+          "is_fault": false,
+          "transition_type": "Direct",
+          "line": 188
+        },
+        {
+          "from": "RETURNING",
+          "to": "RETURNED",
+          "guard": "axes_done()",
+          "label": "Axes Done",
+          "is_fault": false,
+          "transition_type": "Direct",
+          "line": 190
+        },
+        {
+          "from": "RETURNING",
+          "to": "FAULT",
+          "guard": "now - stateStart > MOVE_TIMEOUT [fault: RETURN TIMEOUT]",
+          "label": "RETURN TIMEOUT",
+          "is_fault": true,
+          "transition_type": {
+            "IndirectHelper": {
+              "helper_name": "fault",
+              "argument": "RETURN TIMEOUT"
+            }
+          },
+          "line": 193
+        },
+        {
+          "from": "RECOVERY",
+          "to": "FAULT",
+          "guard": "now - stateStart > RECOVERY_TIMEOUT [fault: REC TIMEOUT]",
+          "label": "REC TIMEOUT",
+          "is_fault": true,
+          "transition_type": {
+            "IndirectHelper": {
+              "helper_name": "fault",
+              "argument": "REC TIMEOUT"
+            }
+          },
+          "line": 198
+        },
+        {
+          "from": "RECOVERY",
+          "to": "REC_STOPPING",
+          "guard": "z1Hit && z2Hit",
+          "label": "Z1 Hit and Z2 Hit",
+          "is_fault": false,
+          "transition_type": "Direct",
+          "line": 211
+        },
+        {
+          "from": "RECOVERY",
+          "to": "FAULT",
+          "guard": "z1Hit && !z2Hit && z2.current_pos == z2.target_pos [fault: Z2 LIMIT NOT FOUND]",
+          "label": "Z2 LIMIT NOT FOUND",
+          "is_fault": true,
+          "transition_type": {
+            "IndirectHelper": {
+              "helper_name": "fault",
+              "argument": "Z2 LIMIT NOT FOUND"
+            }
+          },
+          "line": 213
+        },
+        {
+          "from": "RECOVERY",
+          "to": "FAULT",
+          "guard": "z2Hit && !z1Hit && z1.current_pos == z1.target_pos [fault: Z1 LIMIT NOT FOUND]",
+          "label": "Z1 LIMIT NOT FOUND",
+          "is_fault": true,
+          "transition_type": {
+            "IndirectHelper": {
+              "helper_name": "fault",
+              "argument": "Z1 LIMIT NOT FOUND"
+            }
+          },
+          "line": 215
+        },
+        {
+          "from": "REC_STOPPING",
+          "to": "FAULT",
+          "guard": "axes_done() && !skewOK() [fault: REC SKEW]",
+          "label": "REC SKEW",
+          "is_fault": true,
+          "transition_type": {
+            "IndirectHelper": {
+              "helper_name": "fault",
+              "argument": "REC SKEW"
+            }
+          },
+          "line": 222
+        },
+        {
+          "from": "REC_STOPPING",
+          "to": "REC_BACKOFF",
+          "guard": "axes_done()",
+          "label": "Axes Done",
+          "is_fault": false,
+          "transition_type": "Direct",
+          "line": 226
+        },
+        {
+          "from": "REC_BACKOFF",
+          "to": "FAULT",
+          "guard": "now - stateStart > RECOVERY_TIMEOUT [fault: REC BACKOFF TIMEOUT]",
+          "label": "REC BACKOFF TIMEOUT",
+          "is_fault": true,
+          "transition_type": {
+            "IndirectHelper": {
+              "helper_name": "fault",
+              "argument": "REC BACKOFF TIMEOUT"
+            }
+          },
+          "line": 232
+        },
+        {
+          "from": "REC_BACKOFF",
+          "to": "RETURNED",
+          "guard": "axes_done()",
+          "label": "Axes Done",
+          "is_fault": false,
+          "transition_type": "Direct",
+          "line": 236
+        },
+        {
+          "from": "OPENING",
+          "to": "IDLE",
+          "guard": "now - stateStart > OPEN_DURATION_MS",
+          "label": "Timeout (OPEN_DURATION_MS)",
+          "is_fault": false,
+          "transition_type": "Direct",
+          "line": 242
+        },
+        {
+          "from": "CLOSING",
+          "to": "IDLE",
+          "guard": "now - stateStart > CLOSE_DURATION_MS",
+          "label": "Timeout (CLOSE_DURATION_MS)",
+          "is_fault": false,
+          "transition_type": "Direct",
+          "line": 249
+        },
+        {
+          "from": "IDLE",
+          "to": "CALIBRATING",
+          "guard": "cmd_ready && strcmp((const char*)rx_buffer, \"CAL\") == 0 [startCal()]",
+          "label": "CMD: CAL",
+          "is_fault": false,
+          "transition_type": {
+            "IndirectHelper": {
+              "helper_name": "startCal",
+              "argument": null
+            }
+          },
+          "line": 257
+        },
+        {
+          "from": "IDLE",
+          "to": "GOING",
+          "guard": "cmd_ready && strcmp((const char*)rx_buffer, \"GO\") == 0",
+          "label": "CMD: GO",
+          "is_fault": false,
+          "transition_type": "EventTriggered",
+          "line": 264
+        },
+        {
+          "from": "RETURNED",
+          "to": "GOING",
+          "guard": "cmd_ready && strcmp((const char*)rx_buffer, \"GO\") == 0",
+          "label": "CMD: GO",
+          "is_fault": false,
+          "transition_type": "EventTriggered",
+          "line": 264
+        },
+        {
+          "from": "HOLD",
+          "to": "RETURNING",
+          "guard": "cmd_ready && strcmp((const char*)rx_buffer, \"RET\") == 0",
+          "label": "CMD: RET",
+          "is_fault": false,
+          "transition_type": "EventTriggered",
+          "line": 272
+        },
+        {
+          "from": "IDLE",
+          "to": "OPENING",
+          "guard": "cmd_ready && strcmp((const char*)rx_buffer, \"OPEN\") == 0",
+          "label": "CMD: OPEN",
+          "is_fault": false,
+          "transition_type": "EventTriggered",
+          "line": 283
+        },
+        {
+          "from": "RETURNED",
+          "to": "OPENING",
+          "guard": "cmd_ready && strcmp((const char*)rx_buffer, \"OPEN\") == 0",
+          "label": "CMD: OPEN",
+          "is_fault": false,
+          "transition_type": "EventTriggered",
+          "line": 283
+        },
+        {
+          "from": "IDLE",
+          "to": "CLOSING",
+          "guard": "cmd_ready && strcmp((const char*)rx_buffer, \"CLOSE\") == 0",
+          "label": "CMD: CLOSE",
+          "is_fault": false,
+          "transition_type": "EventTriggered",
+          "line": 289
+        },
+        {
+          "from": "RETURNED",
+          "to": "CLOSING",
+          "guard": "cmd_ready && strcmp((const char*)rx_buffer, \"CLOSE\") == 0",
+          "label": "CMD: CLOSE",
+          "is_fault": false,
+          "transition_type": "EventTriggered",
+          "line": 289
+        }
+      ],
+      "ambiguous_transitions": [
+        {
+          "target": "IDLE",
+          "guard": "cmd_ready && strcmp((const char*)rx_buffer, \"RST\") == 0",
+          "line": 278,
+          "note": "Assignment to state with no enclosing state check"
+        }
+      ]
+    }
+  ],
+  "df_layouts": [
+    {
+      "nodes": {
+        "CALIBRATING": {
+          "id": "CALIBRATING",
+          "label": "CALIBRATING",
+          "x": 425.0,
+          "y": 110.0,
+          "width": 175.0,
+          "height": 54.0,
+          "is_fault": false,
+          "is_initial": false,
+          "cluster": "CALIBRATION",
+          "collapsed_out_badges": [
+            "FAULT"
+          ],
+          "incoming_count": 1,
+          "outgoing_count": 4
+        },
+        "CAL_BACKOFF": {
+          "id": "CAL_BACKOFF",
+          "label": "CAL_BACKOFF",
+          "x": 935.0,
+          "y": 110.0,
+          "width": 175.0,
+          "height": 54.0,
+          "is_fault": false,
+          "is_initial": false,
+          "cluster": "CALIBRATION",
+          "collapsed_out_badges": [
+            "FAULT"
+          ],
+          "incoming_count": 1,
+          "outgoing_count": 2
+        },
+        "CAL_STOPPING": {
+          "id": "CAL_STOPPING",
+          "label": "CAL_STOPPING",
+          "x": 680.0,
+          "y": 110.0,
+          "width": 175.0,
+          "height": 54.0,
+          "is_fault": false,
+          "is_initial": false,
+          "cluster": "CALIBRATION",
+          "collapsed_out_badges": [
+            "FAULT"
+          ],
+          "incoming_count": 1,
+          "outgoing_count": 2
+        },
+        "CLOSING": {
+          "id": "CLOSING",
+          "label": "CLOSING",
+          "x": 680.0,
+          "y": 240.0,
+          "width": 175.0,
+          "height": 54.0,
+          "is_fault": false,
+          "is_initial": false,
+          "cluster": "MECHANISM",
+          "collapsed_out_badges": [],
+          "incoming_count": 2,
+          "outgoing_count": 1
+        },
+        "FAULT": {
+          "id": "FAULT",
+          "label": "FAULT",
+          "x": 680.0,
+          "y": 634.0,
+          "width": 175.0,
+          "height": 54.0,
+          "is_fault": true,
+          "is_initial": false,
+          "cluster": "FAULT",
+          "collapsed_out_badges": [],
+          "incoming_count": 12,
+          "outgoing_count": 0
+        },
+        "GOING": {
+          "id": "GOING",
+          "label": "GOING",
+          "x": 425.0,
+          "y": 370.0,
+          "width": 175.0,
+          "height": 54.0,
+          "is_fault": false,
+          "is_initial": false,
+          "cluster": "MOTION",
+          "collapsed_out_badges": [
+            "FAULT"
+          ],
+          "incoming_count": 2,
+          "outgoing_count": 2
+        },
+        "HOLD": {
+          "id": "HOLD",
+          "label": "HOLD",
+          "x": 680.0,
+          "y": 370.0,
+          "width": 175.0,
+          "height": 54.0,
+          "is_fault": false,
+          "is_initial": false,
+          "cluster": "MOTION",
+          "collapsed_out_badges": [],
+          "incoming_count": 1,
+          "outgoing_count": 1
+        },
+        "IDLE": {
+          "id": "IDLE",
+          "label": "IDLE",
+          "x": 110.0,
+          "y": 240.0,
+          "width": 175.0,
+          "height": 54.0,
+          "is_fault": false,
+          "is_initial": true,
+          "cluster": "INITIAL",
+          "collapsed_out_badges": [],
+          "incoming_count": 3,
+          "outgoing_count": 4
+        },
+        "OPENING": {
+          "id": "OPENING",
+          "label": "OPENING",
+          "x": 425.0,
+          "y": 240.0,
+          "width": 175.0,
+          "height": 54.0,
+          "is_fault": false,
+          "is_initial": false,
+          "cluster": "MECHANISM",
+          "collapsed_out_badges": [],
+          "incoming_count": 2,
+          "outgoing_count": 1
+        },
+        "RECOVERY": {
+          "id": "RECOVERY",
+          "label": "RECOVERY",
+          "x": 425.0,
+          "y": 500.0,
+          "width": 175.0,
+          "height": 54.0,
+          "is_fault": false,
+          "is_initial": false,
+          "cluster": "RECOVERY",
+          "collapsed_out_badges": [
+            "FAULT"
+          ],
+          "incoming_count": 1,
+          "outgoing_count": 4
+        },
+        "REC_BACKOFF": {
+          "id": "REC_BACKOFF",
+          "label": "REC_BACKOFF",
+          "x": 935.0,
+          "y": 500.0,
+          "width": 175.0,
+          "height": 54.0,
+          "is_fault": false,
+          "is_initial": false,
+          "cluster": "RECOVERY",
+          "collapsed_out_badges": [
+            "FAULT"
+          ],
+          "incoming_count": 1,
+          "outgoing_count": 2
+        },
+        "REC_STOPPING": {
+          "id": "REC_STOPPING",
+          "label": "REC_STOPPING",
+          "x": 680.0,
+          "y": 500.0,
+          "width": 175.0,
+          "height": 54.0,
+          "is_fault": false,
+          "is_initial": false,
+          "cluster": "RECOVERY",
+          "collapsed_out_badges": [
+            "FAULT"
+          ],
+          "incoming_count": 1,
+          "outgoing_count": 2
+        },
+        "RETURNED": {
+          "id": "RETURNED",
+          "label": "RETURNED",
+          "x": 1250.0,
+          "y": 435.0,
+          "width": 175.0,
+          "height": 54.0,
+          "is_fault": false,
+          "is_initial": false,
+          "cluster": "MOTION",
+          "collapsed_out_badges": [],
+          "incoming_count": 2,
+          "outgoing_count": 3
+        },
+        "RETURNING": {
+          "id": "RETURNING",
+          "label": "RETURNING",
+          "x": 935.0,
+          "y": 370.0,
+          "width": 175.0,
+          "height": 54.0,
+          "is_fault": false,
+          "is_initial": false,
+          "cluster": "MOTION",
+          "collapsed_out_badges": [
+            "FAULT"
+          ],
+          "incoming_count": 1,
+          "outgoing_count": 3
+        }
+      },
+      "edges": [
+        {
+          "from": "CALIBRATING",
+          "to": "FAULT",
+          "guard": "now - stateStart > CAL_TIMEOUT [fault: CAL TIMEOUT]",
+          "label": "CAL TIMEOUT",
+          "display_guard": "CAL TIMEOUT",
+          "is_fault": true,
+          "start": [
+            512.5,
+            164.0
+          ],
+          "end": [
+            767.5,
+            634.0
+          ],
+          "control1": [
+            512.5,
+            375.5
+          ],
+          "control2": [
+            767.5,
+            422.5
+          ],
+          "waypoints": [
+            [
+              512.5,
+              164.0
+            ],
+            [
+              512.5,
+              594.0
+            ],
+            [
+              767.5,
+              594.0
+            ],
+            [
+              767.5,
+              634.0
+            ]
+          ],
+          "label_pos": [
+            512.5,
+            188.0
+          ],
+          "transition_type": {
+            "IndirectHelper": {
+              "helper_name": "fault",
+              "argument": "CAL TIMEOUT"
+            }
+          },
+          "is_high_fan_in": true,
+          "is_inter_cluster": true
+        },
+        {
+          "from": "CALIBRATING",
+          "to": "CAL_STOPPING",
+          "guard": "z1Hit && z2Hit",
+          "label": "Z1 Hit and Z2 Hit",
+          "display_guard": "Z1 Hit and Z2 Hit",
+          "is_fault": false,
+          "start": [
+            600.0,
+            137.0
+          ],
+          "end": [
+            680.0,
+            137.0
+          ],
+          "control1": [
+            632.0,
+            137.0
+          ],
+          "control2": [
+            648.0,
+            137.0
+          ],
+          "waypoints": [
+            [
+              600.0,
+              137.0
+            ],
+            [
+              680.0,
+              137.0
+            ]
+          ],
+          "label_pos": [
+            640.0,
+            182.0
+          ],
+          "transition_type": "Direct",
+          "is_high_fan_in": false,
+          "is_inter_cluster": false
+        },
+        {
+          "from": "CALIBRATING",
+          "to": "FAULT",
+          "guard": "z1Hit && !z2Hit && z2.current_pos == z2.target_pos [fault: Z2 LIMIT NOT FOUND]",
+          "label": "Z2 LIMIT NOT FOUND",
+          "display_guard": "Z2 LIMIT NOT FOUND",
+          "is_fault": true,
+          "start": [
+            512.5,
+            164.0
+          ],
+          "end": [
+            767.5,
+            634.0
+          ],
+          "control1": [
+            512.5,
+            375.5
+          ],
+          "control2": [
+            767.5,
+            422.5
+          ],
+          "waypoints": [
+            [
+              512.5,
+              164.0
+            ],
+            [
+              512.5,
+              594.0
+            ],
+            [
+              767.5,
+              594.0
+            ],
+            [
+              767.5,
+              634.0
+            ]
+          ],
+          "label_pos": [
+            352.5,
+            188.0
+          ],
+          "transition_type": {
+            "IndirectHelper": {
+              "helper_name": "fault",
+              "argument": "Z2 LIMIT NOT FOUND"
+            }
+          },
+          "is_high_fan_in": true,
+          "is_inter_cluster": true
+        },
+        {
+          "from": "CALIBRATING",
+          "to": "FAULT",
+          "guard": "z2Hit && !z1Hit && z1.current_pos == z1.target_pos [fault: Z1 LIMIT NOT FOUND]",
+          "label": "Z1 LIMIT NOT FOUND",
+          "display_guard": "Z1 LIMIT NOT FOUND",
+          "is_fault": true,
+          "start": [
+            512.5,
+            164.0
+          ],
+          "end": [
+            767.5,
+            634.0
+          ],
+          "control1": [
+            512.5,
+            375.5
+          ],
+          "control2": [
+            767.5,
+            422.5
+          ],
+          "waypoints": [
+            [
+              512.5,
+              164.0
+            ],
+            [
+              512.5,
+              594.0
+            ],
+            [
+              767.5,
+              594.0
+            ],
+            [
+              767.5,
+              634.0
+            ]
+          ],
+          "label_pos": [
+            822.5,
+            188.0
+          ],
+          "transition_type": {
+            "IndirectHelper": {
+              "helper_name": "fault",
+              "argument": "Z1 LIMIT NOT FOUND"
+            }
+          },
+          "is_high_fan_in": true,
+          "is_inter_cluster": true
+        },
+        {
+          "from": "CAL_STOPPING",
+          "to": "FAULT",
+          "guard": "axes_done() && !skewOK() [fault: CAL SKEW]",
+          "label": "CAL SKEW",
+          "display_guard": "CAL SKEW",
+          "is_fault": true,
+          "start": [
+            767.5,
+            164.0
+          ],
+          "end": [
+            767.5,
+            634.0
+          ],
+          "control1": [
+            767.5,
+            375.5
+          ],
+          "control2": [
+            767.5,
+            422.5
+          ],
+          "waypoints": [
+            [
+              767.5,
+              164.0
+            ],
+            [
+              767.5,
+              634.0
+            ]
+          ],
+          "label_pos": [
+            927.5,
+            188.0
+          ],
+          "transition_type": {
+            "IndirectHelper": {
+              "helper_name": "fault",
+              "argument": "CAL SKEW"
+            }
+          },
+          "is_high_fan_in": true,
+          "is_inter_cluster": true
+        },
+        {
+          "from": "CAL_STOPPING",
+          "to": "CAL_BACKOFF",
+          "guard": "axes_done()",
+          "label": "Axes Done",
+          "display_guard": "Axes Done",
+          "is_fault": false,
+          "start": [
+            855.0,
+            137.0
+          ],
+          "end": [
+            935.0,
+            137.0
+          ],
+          "control1": [
+            887.0,
+            137.0
+          ],
+          "control2": [
+            903.0,
+            137.0
+          ],
+          "waypoints": [
+            [
+              855.0,
+              137.0
+            ],
+            [
+              935.0,
+              137.0
+            ]
+          ],
+          "label_pos": [
+            1055.0,
+            182.0
+          ],
+          "transition_type": "Direct",
+          "is_high_fan_in": false,
+          "is_inter_cluster": false
+        },
+        {
+          "from": "CAL_BACKOFF",
+          "to": "FAULT",
+          "guard": "now - stateStart > CAL_TIMEOUT [fault: CAL BACKOFF TIMEOUT]",
+          "label": "CAL BACKOFF TIMEOUT",
+          "display_guard": "CAL BACKOFF TIMEOUT",
+          "is_fault": true,
+          "start": [
+            1022.5,
+            164.0
+          ],
+          "end": [
+            767.5,
+            634.0
+          ],
+          "control1": [
+            1022.5,
+            375.5
+          ],
+          "control2": [
+            767.5,
+            422.5
+          ],
+          "waypoints": [
+            [
+              1022.5,
+              164.0
+            ],
+            [
+              1022.5,
+              594.0
+            ],
+            [
+              767.5,
+              594.0
+            ],
+            [
+              767.5,
+              634.0
+            ]
+          ],
+          "label_pos": [
+            1182.5,
+            188.0
+          ],
+          "transition_type": {
+            "IndirectHelper": {
+              "helper_name": "fault",
+              "argument": "CAL BACKOFF TIMEOUT"
+            }
+          },
+          "is_high_fan_in": true,
+          "is_inter_cluster": true
+        },
+        {
+          "from": "CAL_BACKOFF",
+          "to": "IDLE",
+          "guard": "axes_done()",
+          "label": "Axes Done",
+          "display_guard": "Axes Done",
+          "is_fault": false,
+          "start": [
+            1022.5,
+            110.0
+          ],
+          "end": [
+            215.0,
+            240.0
+          ],
+          "control1": [
+            1022.5,
+            80.0
+          ],
+          "control2": [
+            215.0,
+            80.0
+          ],
+          "waypoints": [
+            [
+              1022.5,
+              110.0
+            ],
+            [
+              1022.5,
+              80.0
+            ],
+            [
+              215.0,
+              80.0
+            ],
+            [
+              215.0,
+              240.0
+            ]
+          ],
+          "label_pos": [
+            618.75,
+            68.0
+          ],
+          "transition_type": "Direct",
+          "is_high_fan_in": false,
+          "is_inter_cluster": true
+        },
+        {
+          "from": "GOING",
+          "to": "FAULT",
+          "guard": "now - stateStart > MOVE_TIMEOUT [fault: GO TIMEOUT]",
+          "label": "GO TIMEOUT",
+          "display_guard": "GO TIMEOUT",
+          "is_fault": true,
+          "start": [
+            512.5,
+            424.0
+          ],
+          "end": [
+            767.5,
+            634.0
+          ],
+          "control1": [
+            512.5,
+            518.5
+          ],
+          "control2": [
+            767.5,
+            539.5
+          ],
+          "waypoints": [
+            [
+              512.5,
+              424.0
+            ],
+            [
+              512.5,
+              594.0
+            ],
+            [
+              767.5,
+              594.0
+            ],
+            [
+              767.5,
+              634.0
+            ]
+          ],
+          "label_pos": [
+            512.5,
+            448.0
+          ],
+          "transition_type": {
+            "IndirectHelper": {
+              "helper_name": "fault",
+              "argument": "GO TIMEOUT"
+            }
+          },
+          "is_high_fan_in": true,
+          "is_inter_cluster": true
+        },
+        {
+          "from": "GOING",
+          "to": "HOLD",
+          "guard": "axes_done()",
+          "label": "Axes Done",
+          "display_guard": "Axes Done",
+          "is_fault": false,
+          "start": [
+            600.0,
+            397.0
+          ],
+          "end": [
+            680.0,
+            397.0
+          ],
+          "control1": [
+            632.0,
+            397.0
+          ],
+          "control2": [
+            648.0,
+            397.0
+          ],
+          "waypoints": [
+            [
+              600.0,
+              397.0
+            ],
+            [
+              680.0,
+              397.0
+            ]
+          ],
+          "label_pos": [
+            640.0,
+            442.0
+          ],
+          "transition_type": "Direct",
+          "is_high_fan_in": false,
+          "is_inter_cluster": false
+        },
+        {
+          "from": "RETURNING",
+          "to": "RECOVERY",
+          "guard": "enteringRecovery",
+          "label": "Entering Recovery",
+          "display_guard": "Entering Recovery",
+          "is_fault": false,
+          "start": [
+            1022.5,
+            424.0
+          ],
+          "end": [
+            512.5,
+            500.0
+          ],
+          "control1": [
+            1022.5,
+            454.0
+          ],
+          "control2": [
+            512.5,
+            454.0
+          ],
+          "waypoints": [
+            [
+              1022.5,
+              424.0
+            ],
+            [
+              1022.5,
+              454.0
+            ],
+            [
+              512.5,
+              454.0
+            ],
+            [
+              512.5,
+              500.0
+            ]
+          ],
+          "label_pos": [
+            767.5,
+            442.0
+          ],
+          "transition_type": "Direct",
+          "is_high_fan_in": false,
+          "is_inter_cluster": true
+        },
+        {
+          "from": "RETURNING",
+          "to": "RETURNED",
+          "guard": "axes_done()",
+          "label": "Axes Done",
+          "display_guard": "Axes Done",
+          "is_fault": false,
+          "start": [
+            1110.0,
+            397.0
+          ],
+          "end": [
+            1250.0,
+            451.2
+          ],
+          "control1": [
+            1166.0,
+            397.0
+          ],
+          "control2": [
+            1194.0,
+            451.2
+          ],
+          "waypoints": [
+            [
+              1110.0,
+              397.0
+            ],
+            [
+              1180.0,
+              397.0
+            ],
+            [
+              1180.0,
+              451.2
+            ],
+            [
+              1250.0,
+              451.2
+            ]
+          ],
+          "label_pos": [
+            1180.0,
+            410.1
+          ],
+          "transition_type": "Direct",
+          "is_high_fan_in": false,
+          "is_inter_cluster": false
+        },
+        {
+          "from": "RETURNING",
+          "to": "FAULT",
+          "guard": "now - stateStart > MOVE_TIMEOUT [fault: RETURN TIMEOUT]",
+          "label": "RETURN TIMEOUT",
+          "display_guard": "RETURN TIMEOUT",
+          "is_fault": true,
+          "start": [
+            1022.5,
+            424.0
+          ],
+          "end": [
+            767.5,
+            634.0
+          ],
+          "control1": [
+            1022.5,
+            518.5
+          ],
+          "control2": [
+            767.5,
+            539.5
+          ],
+          "waypoints": [
+            [
+              1022.5,
+              424.0
+            ],
+            [
+              1022.5,
+              594.0
+            ],
+            [
+              767.5,
+              594.0
+            ],
+            [
+              767.5,
+              634.0
+            ]
+          ],
+          "label_pos": [
+            1022.5,
+            448.0
+          ],
+          "transition_type": {
+            "IndirectHelper": {
+              "helper_name": "fault",
+              "argument": "RETURN TIMEOUT"
+            }
+          },
+          "is_high_fan_in": true,
+          "is_inter_cluster": true
+        },
+        {
+          "from": "RECOVERY",
+          "to": "FAULT",
+          "guard": "now - stateStart > RECOVERY_TIMEOUT [fault: REC TIMEOUT]",
+          "label": "REC TIMEOUT",
+          "display_guard": "REC TIMEOUT",
+          "is_fault": true,
+          "start": [
+            512.5,
+            554.0
+          ],
+          "end": [
+            767.5,
+            634.0
+          ],
+          "control1": [
+            512.5,
+            590.0
+          ],
+          "control2": [
+            767.5,
+            598.0
+          ],
+          "waypoints": [
+            [
+              512.5,
+              554.0
+            ],
+            [
+              512.5,
+              594.0
+            ],
+            [
+              767.5,
+              594.0
+            ],
+            [
+              767.5,
+              634.0
+            ]
+          ],
+          "label_pos": [
+            512.5,
+            578.0
+          ],
+          "transition_type": {
+            "IndirectHelper": {
+              "helper_name": "fault",
+              "argument": "REC TIMEOUT"
+            }
+          },
+          "is_high_fan_in": true,
+          "is_inter_cluster": true
+        },
+        {
+          "from": "RECOVERY",
+          "to": "REC_STOPPING",
+          "guard": "z1Hit && z2Hit",
+          "label": "Z1 Hit and Z2 Hit",
+          "display_guard": "Z1 Hit and Z2 Hit",
+          "is_fault": false,
+          "start": [
+            600.0,
+            527.0
+          ],
+          "end": [
+            680.0,
+            527.0
+          ],
+          "control1": [
+            632.0,
+            527.0
+          ],
+          "control2": [
+            648.0,
+            527.0
+          ],
+          "waypoints": [
+            [
+              600.0,
+              527.0
+            ],
+            [
+              680.0,
+              527.0
+            ]
+          ],
+          "label_pos": [
+            640.0,
+            572.0
+          ],
+          "transition_type": "Direct",
+          "is_high_fan_in": false,
+          "is_inter_cluster": false
+        },
+        {
+          "from": "RECOVERY",
+          "to": "FAULT",
+          "guard": "z1Hit && !z2Hit && z2.current_pos == z2.target_pos [fault: Z2 LIMIT NOT FOUND]",
+          "label": "Z2 LIMIT NOT FOUND",
+          "display_guard": "Z2 LIMIT NOT FOUND",
+          "is_fault": true,
+          "start": [
+            512.5,
+            554.0
+          ],
+          "end": [
+            767.5,
+            634.0
+          ],
+          "control1": [
+            512.5,
+            590.0
+          ],
+          "control2": [
+            767.5,
+            598.0
+          ],
+          "waypoints": [
+            [
+              512.5,
+              554.0
+            ],
+            [
+              512.5,
+              594.0
+            ],
+            [
+              767.5,
+              594.0
+            ],
+            [
+              767.5,
+              634.0
+            ]
+          ],
+          "label_pos": [
+            352.5,
+            578.0
+          ],
+          "transition_type": {
+            "IndirectHelper": {
+              "helper_name": "fault",
+              "argument": "Z2 LIMIT NOT FOUND"
+            }
+          },
+          "is_high_fan_in": true,
+          "is_inter_cluster": true
+        },
+        {
+          "from": "RECOVERY",
+          "to": "FAULT",
+          "guard": "z2Hit && !z1Hit && z1.current_pos == z1.target_pos [fault: Z1 LIMIT NOT FOUND]",
+          "label": "Z1 LIMIT NOT FOUND",
+          "display_guard": "Z1 LIMIT NOT FOUND",
+          "is_fault": true,
+          "start": [
+            512.5,
+            554.0
+          ],
+          "end": [
+            767.5,
+            634.0
+          ],
+          "control1": [
+            512.5,
+            590.0
+          ],
+          "control2": [
+            767.5,
+            598.0
+          ],
+          "waypoints": [
+            [
+              512.5,
+              554.0
+            ],
+            [
+              512.5,
+              594.0
+            ],
+            [
+              767.5,
+              594.0
+            ],
+            [
+              767.5,
+              634.0
+            ]
+          ],
+          "label_pos": [
+            822.5,
+            578.0
+          ],
+          "transition_type": {
+            "IndirectHelper": {
+              "helper_name": "fault",
+              "argument": "Z1 LIMIT NOT FOUND"
+            }
+          },
+          "is_high_fan_in": true,
+          "is_inter_cluster": true
+        },
+        {
+          "from": "REC_STOPPING",
+          "to": "FAULT",
+          "guard": "axes_done() && !skewOK() [fault: REC SKEW]",
+          "label": "REC SKEW",
+          "display_guard": "REC SKEW",
+          "is_fault": true,
+          "start": [
+            767.5,
+            554.0
+          ],
+          "end": [
+            767.5,
+            634.0
+          ],
+          "control1": [
+            767.5,
+            590.0
+          ],
+          "control2": [
+            767.5,
+            598.0
+          ],
+          "waypoints": [
+            [
+              767.5,
+              554.0
+            ],
+            [
+              767.5,
+              634.0
+            ]
+          ],
+          "label_pos": [
+            927.5,
+            578.0
+          ],
+          "transition_type": {
+            "IndirectHelper": {
+              "helper_name": "fault",
+              "argument": "REC SKEW"
+            }
+          },
+          "is_high_fan_in": true,
+          "is_inter_cluster": true
+        },
+        {
+          "from": "REC_STOPPING",
+          "to": "REC_BACKOFF",
+          "guard": "axes_done()",
+          "label": "Axes Done",
+          "display_guard": "Axes Done",
+          "is_fault": false,
+          "start": [
+            855.0,
+            527.0
+          ],
+          "end": [
+            935.0,
+            527.0
+          ],
+          "control1": [
+            887.0,
+            527.0
+          ],
+          "control2": [
+            903.0,
+            527.0
+          ],
+          "waypoints": [
+            [
+              855.0,
+              527.0
+            ],
+            [
+              935.0,
+              527.0
+            ]
+          ],
+          "label_pos": [
+            1055.0,
+            572.0
+          ],
+          "transition_type": "Direct",
+          "is_high_fan_in": false,
+          "is_inter_cluster": false
+        },
+        {
+          "from": "REC_BACKOFF",
+          "to": "FAULT",
+          "guard": "now - stateStart > RECOVERY_TIMEOUT [fault: REC BACKOFF TIMEOUT]",
+          "label": "REC BACKOFF TIMEOUT",
+          "display_guard": "REC BACKOFF TIMEOUT",
+          "is_fault": true,
+          "start": [
+            1022.5,
+            554.0
+          ],
+          "end": [
+            767.5,
+            634.0
+          ],
+          "control1": [
+            1022.5,
+            590.0
+          ],
+          "control2": [
+            767.5,
+            598.0
+          ],
+          "waypoints": [
+            [
+              1022.5,
+              554.0
+            ],
+            [
+              1022.5,
+              594.0
+            ],
+            [
+              767.5,
+              594.0
+            ],
+            [
+              767.5,
+              634.0
+            ]
+          ],
+          "label_pos": [
+            1182.5,
+            578.0
+          ],
+          "transition_type": {
+            "IndirectHelper": {
+              "helper_name": "fault",
+              "argument": "REC BACKOFF TIMEOUT"
+            }
+          },
+          "is_high_fan_in": true,
+          "is_inter_cluster": true
+        },
+        {
+          "from": "REC_BACKOFF",
+          "to": "RETURNED",
+          "guard": "axes_done()",
+          "label": "Axes Done",
+          "display_guard": "Axes Done",
+          "is_fault": false,
+          "start": [
+            1110.0,
+            527.0
+          ],
+          "end": [
+            1250.0,
+            472.8
+          ],
+          "control1": [
+            1166.0,
+            527.0
+          ],
+          "control2": [
+            1194.0,
+            472.8
+          ],
+          "waypoints": [
+            [
+              1110.0,
+              527.0
+            ],
+            [
+              1180.0,
+              527.0
+            ],
+            [
+              1180.0,
+              472.8
+            ],
+            [
+              1250.0,
+              472.8
+            ]
+          ],
+          "label_pos": [
+            1180.0,
+            485.9
+          ],
+          "transition_type": "Direct",
+          "is_high_fan_in": false,
+          "is_inter_cluster": true
+        },
+        {
+          "from": "OPENING",
+          "to": "IDLE",
+          "guard": "now - stateStart > OPEN_DURATION_MS",
+          "label": "Timeout (OPEN_DURATION_MS)",
+          "display_guard": "Timeout (OPEN_DURATION_MS)",
+          "is_fault": false,
+          "start": [
+            512.5,
+            240.0
+          ],
+          "end": [
+            215.0,
+            240.0
+          ],
+          "control1": [
+            512.5,
+            64.0
+          ],
+          "control2": [
+            215.0,
+            64.0
+          ],
+          "waypoints": [
+            [
+              512.5,
+              240.0
+            ],
+            [
+              512.5,
+              64.0
+            ],
+            [
+              215.0,
+              64.0
+            ],
+            [
+              215.0,
+              240.0
+            ]
+          ],
+          "label_pos": [
+            363.75,
+            52.0
+          ],
+          "transition_type": "Direct",
+          "is_high_fan_in": false,
+          "is_inter_cluster": true
+        },
+        {
+          "from": "CLOSING",
+          "to": "IDLE",
+          "guard": "now - stateStart > CLOSE_DURATION_MS",
+          "label": "Timeout (CLOSE_DURATION_MS)",
+          "display_guard": "Timeout (CLOSE_DURATION_MS)",
+          "is_fault": false,
+          "start": [
+            767.5,
+            240.0
+          ],
+          "end": [
+            215.0,
+            240.0
+          ],
+          "control1": [
+            767.5,
+            48.0
+          ],
+          "control2": [
+            215.0,
+            48.0
+          ],
+          "waypoints": [
+            [
+              767.5,
+              240.0
+            ],
+            [
+              767.5,
+              48.0
+            ],
+            [
+              215.0,
+              48.0
+            ],
+            [
+              215.0,
+              240.0
+            ]
+          ],
+          "label_pos": [
+            591.25,
+            36.0
+          ],
+          "transition_type": "Direct",
+          "is_high_fan_in": false,
+          "is_inter_cluster": true
+        },
+        {
+          "from": "IDLE",
+          "to": "CALIBRATING",
+          "guard": "cmd_ready && strcmp((const char*)rx_buffer, \"CAL\") == 0 [startCal()]",
+          "label": "CMD: CAL",
+          "display_guard": "CMD: CAL",
+          "is_fault": false,
+          "start": [
+            285.0,
+            250.8
+          ],
+          "end": [
+            425.0,
+            137.0
+          ],
+          "control1": [
+            334.0,
+            250.8
+          ],
+          "control2": [
+            376.0,
+            137.0
+          ],
+          "waypoints": [
+            [
+              285.0,
+              250.8
+            ],
+            [
+              310.0,
+              250.8
+            ],
+            [
+              310.0,
+              137.0
+            ],
+            [
+              425.0,
+              137.0
+            ]
+          ],
+          "label_pos": [
+            370.0,
+            238.8
+          ],
+          "transition_type": {
+            "IndirectHelper": {
+              "helper_name": "startCal",
+              "argument": null
+            }
+          },
+          "is_high_fan_in": false,
+          "is_inter_cluster": true
+        },
+        {
+          "from": "IDLE",
+          "to": "GOING",
+          "guard": "cmd_ready && strcmp((const char*)rx_buffer, \"GO\") == 0",
+          "label": "CMD: GO",
+          "display_guard": "CMD: GO",
+          "is_fault": false,
+          "start": [
+            285.0,
+            261.6
+          ],
+          "end": [
+            425.0,
+            397.0
+          ],
+          "control1": [
+            334.0,
+            261.6
+          ],
+          "control2": [
+            376.0,
+            397.0
+          ],
+          "waypoints": [
+            [
+              285.0,
+              261.6
+            ],
+            [
+              330.0,
+              261.6
+            ],
+            [
+              330.0,
+              397.0
+            ],
+            [
+              425.0,
+              397.0
+            ]
+          ],
+          "label_pos": [
+            10.0,
+            249.6
+          ],
+          "transition_type": "EventTriggered",
+          "is_high_fan_in": false,
+          "is_inter_cluster": true
+        },
+        {
+          "from": "RETURNED",
+          "to": "GOING",
+          "guard": "cmd_ready && strcmp((const char*)rx_buffer, \"GO\") == 0",
+          "label": "CMD: GO",
+          "display_guard": "CMD: GO",
+          "is_fault": false,
+          "start": [
+            1337.5,
+            435.0
+          ],
+          "end": [
+            512.5,
+            370.0
+          ],
+          "control1": [
+            1337.5,
+            32.0
+          ],
+          "control2": [
+            512.5,
+            32.0
+          ],
+          "waypoints": [
+            [
+              1337.5,
+              435.0
+            ],
+            [
+              1337.5,
+              32.0
+            ],
+            [
+              512.5,
+              32.0
+            ],
+            [
+              512.5,
+              370.0
+            ]
+          ],
+          "label_pos": [
+            925.0,
+            20.0
+          ],
+          "transition_type": "EventTriggered",
+          "is_high_fan_in": false,
+          "is_inter_cluster": false
+        },
+        {
+          "from": "HOLD",
+          "to": "RETURNING",
+          "guard": "cmd_ready && strcmp((const char*)rx_buffer, \"RET\") == 0",
+          "label": "CMD: RET",
+          "display_guard": "CMD: RET",
+          "is_fault": false,
+          "start": [
+            855.0,
+            397.0
+          ],
+          "end": [
+            935.0,
+            397.0
+          ],
+          "control1": [
+            887.0,
+            397.0
+          ],
+          "control2": [
+            903.0,
+            397.0
+          ],
+          "waypoints": [
+            [
+              855.0,
+              397.0
+            ],
+            [
+              935.0,
+              397.0
+            ]
+          ],
+          "label_pos": [
+            895.0,
+            411.0
+          ],
+          "transition_type": "EventTriggered",
+          "is_high_fan_in": false,
+          "is_inter_cluster": false
+        },
+        {
+          "from": "IDLE",
+          "to": "OPENING",
+          "guard": "cmd_ready && strcmp((const char*)rx_buffer, \"OPEN\") == 0",
+          "label": "CMD: OPEN",
+          "display_guard": "CMD: OPEN",
+          "is_fault": false,
+          "start": [
+            285.0,
+            272.4
+          ],
+          "end": [
+            425.0,
+            267.0
+          ],
+          "control1": [
+            334.0,
+            272.4
+          ],
+          "control2": [
+            376.0,
+            267.0
+          ],
+          "waypoints": [
+            [
+              285.0,
+              272.4
+            ],
+            [
+              350.0,
+              272.4
+            ],
+            [
+              350.0,
+              267.0
+            ],
+            [
+              425.0,
+              267.0
+            ]
+          ],
+          "label_pos": [
+            370.0,
+            284.4
+          ],
+          "transition_type": "EventTriggered",
+          "is_high_fan_in": false,
+          "is_inter_cluster": true
+        },
+        {
+          "from": "RETURNED",
+          "to": "OPENING",
+          "guard": "cmd_ready && strcmp((const char*)rx_buffer, \"OPEN\") == 0",
+          "label": "CMD: OPEN",
+          "display_guard": "CMD: OPEN",
+          "is_fault": false,
+          "start": [
+            1337.5,
+            435.0
+          ],
+          "end": [
+            512.5,
+            240.0
+          ],
+          "control1": [
+            1337.5,
+            16.0
+          ],
+          "control2": [
+            512.5,
+            16.0
+          ],
+          "waypoints": [
+            [
+              1337.5,
+              435.0
+            ],
+            [
+              1337.5,
+              16.0
+            ],
+            [
+              512.5,
+              16.0
+            ],
+            [
+              512.5,
+              240.0
+            ]
+          ],
+          "label_pos": [
+            1025.0,
+            4.0
+          ],
+          "transition_type": "EventTriggered",
+          "is_high_fan_in": false,
+          "is_inter_cluster": true
+        },
+        {
+          "from": "IDLE",
+          "to": "CLOSING",
+          "guard": "cmd_ready && strcmp((const char*)rx_buffer, \"CLOSE\") == 0",
+          "label": "CMD: CLOSE",
+          "display_guard": "CMD: CLOSE",
+          "is_fault": false,
+          "start": [
+            285.0,
+            283.2
+          ],
+          "end": [
+            767.5,
+            240.0
+          ],
+          "control1": [
+            423.25,
+            283.2
+          ],
+          "control2": [
+            541.75,
+            267.0
+          ],
+          "waypoints": [
+            [
+              285.0,
+              283.2
+            ],
+            [
+              370.0,
+              283.2
+            ],
+            [
+              370.0,
+              215.0
+            ],
+            [
+              767.5,
+              215.0
+            ],
+            [
+              767.5,
+              240.0
+            ]
+          ],
+          "label_pos": [
+            10.0,
+            295.2
+          ],
+          "transition_type": "EventTriggered",
+          "is_high_fan_in": false,
+          "is_inter_cluster": true
+        },
+        {
+          "from": "RETURNED",
+          "to": "CLOSING",
+          "guard": "cmd_ready && strcmp((const char*)rx_buffer, \"CLOSE\") == 0",
+          "label": "CMD: CLOSE",
+          "display_guard": "CMD: CLOSE",
+          "is_fault": false,
+          "start": [
+            1337.5,
+            435.0
+          ],
+          "end": [
+            767.5,
+            240.0
+          ],
+          "control1": [
+            1337.5,
+            0.0
+          ],
+          "control2": [
+            767.5,
+            0.0
+          ],
+          "waypoints": [
+            [
+              1337.5,
+              435.0
+            ],
+            [
+              1337.5,
+              0.0
+            ],
+            [
+              767.5,
+              0.0
+            ],
+            [
+              767.5,
+              240.0
+            ]
+          ],
+          "label_pos": [
+            1152.5,
+            -12.0
+          ],
+          "transition_type": "EventTriggered",
+          "is_high_fan_in": false,
+          "is_inter_cluster": true
+        }
+      ],
+      "lanes": [
+        {
+          "name": "CALIBRATION",
+          "y": 110.0,
+          "x_start": 425.0,
+          "x_end": 1110.0
+        },
+        {
+          "name": "MECHANISM",
+          "y": 240.0,
+          "x_start": 425.0,
+          "x_end": 855.0
+        },
+        {
+          "name": "MOTION",
+          "y": 370.0,
+          "x_start": 425.0,
+          "x_end": 1110.0
+        },
+        {
+          "name": "RECOVERY",
+          "y": 500.0,
+          "x_start": 425.0,
+          "x_end": 1110.0
+        },
+        {
+          "name": "FAULT",
+          "y": 634.0,
+          "x_start": 680.0,
+          "x_end": 855.0
+        }
+      ],
+      "width": 1575.5,
+      "height": 850.0
+    }
+  ],
+  "df2_sms": [
+    {
+      "id": "SystemState_state",
+      "display_name": "SystemState (state)",
+      "enum_def": {
+        "name": "SystemState",
+        "variants": [
+          "IDLE",
+          "CALIBRATING",
+          "CAL_STOPPING",
+          "CAL_BACKOFF",
+          "GOING",
+          "HOLD",
+          "RETURNING",
+          "RETURNED",
+          "RECOVERY",
+          "REC_STOPPING",
+          "REC_BACKOFF",
+          "FAULT",
+          "OPENING",
+          "CLOSING"
+        ],
+        "file_path": "tests/fixtures/docking_firmware_v2/Core/Src/main.c",
+        "line": 73
+      },
+      "var": {
+        "name": "state",
+        "enum_type": "SystemState",
+        "scope": "Global",
+        "initial_value": "IDLE",
+        "file_path": "tests/fixtures/docking_firmware_v2/Core/Src/main.c",
+        "line": 92
+      },
+      "states": [
+        "IDLE",
+        "CALIBRATING",
+        "CAL_STOPPING",
+        "CAL_BACKOFF",
+        "GOING",
+        "HOLD",
+        "RETURNING",
+        "RETURNED",
+        "RECOVERY",
+        "REC_STOPPING",
+        "REC_BACKOFF",
+        "FAULT",
+        "OPENING",
+        "CLOSING"
+      ],
+      "transitions": [
+        {
+          "from": "CALIBRATING",
+          "to": "FAULT",
+          "guard": "now - stateStart > CAL_TIMEOUT [fault: CAL TIMEOUT]",
+          "label": "CAL TIMEOUT",
+          "is_fault": true,
+          "transition_type": {
+            "IndirectHelper": {
+              "helper_name": "fault",
+              "argument": "CAL TIMEOUT"
+            }
+          },
+          "line": 379
+        },
+        {
+          "from": "CALIBRATING",
+          "to": "CAL_STOPPING",
+          "guard": "z1Hit && z2Hit",
+          "label": "Z1 Hit and Z2 Hit",
+          "is_fault": false,
+          "transition_type": "Direct",
+          "line": 392
+        },
+        {
+          "from": "CALIBRATING",
+          "to": "FAULT",
+          "guard": "z1Hit && !z2Hit && z2.current_pos == z2.target_pos [fault: Z2 LIMIT NOT FOUND]",
+          "label": "Z2 LIMIT NOT FOUND",
+          "is_fault": true,
+          "transition_type": {
+            "IndirectHelper": {
+              "helper_name": "fault",
+              "argument": "Z2 LIMIT NOT FOUND"
+            }
+          },
+          "line": 394
+        },
+        {
+          "from": "CALIBRATING",
+          "to": "FAULT",
+          "guard": "z2Hit && !z1Hit && z1.current_pos == z1.target_pos [fault: Z1 LIMIT NOT FOUND]",
+          "label": "Z1 LIMIT NOT FOUND",
+          "is_fault": true,
+          "transition_type": {
+            "IndirectHelper": {
+              "helper_name": "fault",
+              "argument": "Z1 LIMIT NOT FOUND"
+            }
+          },
+          "line": 396
+        },
+        {
+          "from": "CAL_STOPPING",
+          "to": "FAULT",
+          "guard": "now - stateStart > CAL_TIMEOUT [fault: CAL STOP TIMEOUT]",
+          "label": "CAL STOP TIMEOUT",
+          "is_fault": true,
+          "transition_type": {
+            "IndirectHelper": {
+              "helper_name": "fault",
+              "argument": "CAL STOP TIMEOUT"
+            }
+          },
+          "line": 402
+        },
+        {
+          "from": "CAL_STOPPING",
+          "to": "FAULT",
+          "guard": "axes_done() && !skewOK() [fault: CAL SKEW]",
+          "label": "CAL SKEW",
+          "is_fault": true,
+          "transition_type": {
+            "IndirectHelper": {
+              "helper_name": "fault",
+              "argument": "CAL SKEW"
+            }
+          },
+          "line": 405
+        },
+        {
+          "from": "CAL_STOPPING",
+          "to": "CAL_BACKOFF",
+          "guard": "axes_done()",
+          "label": "Axes Done",
+          "is_fault": false,
+          "transition_type": "Direct",
+          "line": 411
+        },
+        {
+          "from": "CAL_BACKOFF",
+          "to": "FAULT",
+          "guard": "now - stateStart > CAL_TIMEOUT [fault: CAL BACKOFF TIMEOUT]",
+          "label": "CAL BACKOFF TIMEOUT",
+          "is_fault": true,
+          "transition_type": {
+            "IndirectHelper": {
+              "helper_name": "fault",
+              "argument": "CAL BACKOFF TIMEOUT"
+            }
+          },
+          "line": 417
+        },
+        {
+          "from": "CAL_BACKOFF",
+          "to": "IDLE",
+          "guard": "axes_done()",
+          "label": "Axes Done",
+          "is_fault": false,
+          "transition_type": "Direct",
+          "line": 421
+        },
+        {
+          "from": "GOING",
+          "to": "FAULT",
+          "guard": "now - stateStart > MOVE_TIMEOUT [fault: GO TIMEOUT]",
+          "label": "GO TIMEOUT",
+          "is_fault": true,
+          "transition_type": {
+            "IndirectHelper": {
+              "helper_name": "fault",
+              "argument": "GO TIMEOUT"
+            }
+          },
+          "line": 427
+        },
+        {
+          "from": "GOING",
+          "to": "HOLD",
+          "guard": "axes_done()",
+          "label": "Axes Done",
+          "is_fault": false,
+          "transition_type": "Direct",
+          "line": 429
+        },
+        {
+          "from": "RETURNING",
+          "to": "RECOVERY",
+          "guard": "enteringRecovery",
+          "label": "Entering Recovery",
+          "is_fault": false,
+          "transition_type": "Direct",
+          "line": 450
+        },
+        {
+          "from": "RETURNING",
+          "to": "RETURNED",
+          "guard": "axes_done()",
+          "label": "Axes Done",
+          "is_fault": false,
+          "transition_type": "Direct",
+          "line": 452
+        },
+        {
+          "from": "RETURNING",
+          "to": "FAULT",
+          "guard": "now - stateStart > MOVE_TIMEOUT [fault: RETURN TIMEOUT]",
+          "label": "RETURN TIMEOUT",
+          "is_fault": true,
+          "transition_type": {
+            "IndirectHelper": {
+              "helper_name": "fault",
+              "argument": "RETURN TIMEOUT"
+            }
+          },
+          "line": 455
+        },
+        {
+          "from": "RECOVERY",
+          "to": "FAULT",
+          "guard": "now - stateStart > RECOVERY_TIMEOUT [fault: REC TIMEOUT]",
+          "label": "REC TIMEOUT",
+          "is_fault": true,
+          "transition_type": {
+            "IndirectHelper": {
+              "helper_name": "fault",
+              "argument": "REC TIMEOUT"
+            }
+          },
+          "line": 460
+        },
+        {
+          "from": "RECOVERY",
+          "to": "REC_STOPPING",
+          "guard": "z1Hit && z2Hit",
+          "label": "Z1 Hit and Z2 Hit",
+          "is_fault": false,
+          "transition_type": "Direct",
+          "line": 473
+        },
+        {
+          "from": "RECOVERY",
+          "to": "FAULT",
+          "guard": "z1Hit && !z2Hit && z2.current_pos == z2.target_pos [fault: Z2 LIMIT NOT FOUND]",
+          "label": "Z2 LIMIT NOT FOUND",
+          "is_fault": true,
+          "transition_type": {
+            "IndirectHelper": {
+              "helper_name": "fault",
+              "argument": "Z2 LIMIT NOT FOUND"
+            }
+          },
+          "line": 475
+        },
+        {
+          "from": "RECOVERY",
+          "to": "FAULT",
+          "guard": "z2Hit && !z1Hit && z1.current_pos == z1.target_pos [fault: Z1 LIMIT NOT FOUND]",
+          "label": "Z1 LIMIT NOT FOUND",
+          "is_fault": true,
+          "transition_type": {
+            "IndirectHelper": {
+              "helper_name": "fault",
+              "argument": "Z1 LIMIT NOT FOUND"
+            }
+          },
+          "line": 477
+        },
+        {
+          "from": "REC_STOPPING",
+          "to": "FAULT",
+          "guard": "now - stateStart > RECOVERY_TIMEOUT [fault: REC STOP TIMEOUT]",
+          "label": "REC STOP TIMEOUT",
+          "is_fault": true,
+          "transition_type": {
+            "IndirectHelper": {
+              "helper_name": "fault",
+              "argument": "REC STOP TIMEOUT"
+            }
+          },
+          "line": 483
+        },
+        {
+          "from": "REC_STOPPING",
+          "to": "FAULT",
+          "guard": "axes_done() && !skewOK() [fault: REC SKEW]",
+          "label": "REC SKEW",
+          "is_fault": true,
+          "transition_type": {
+            "IndirectHelper": {
+              "helper_name": "fault",
+              "argument": "REC SKEW"
+            }
+          },
+          "line": 486
+        },
+        {
+          "from": "REC_STOPPING",
+          "to": "REC_BACKOFF",
+          "guard": "axes_done()",
+          "label": "Axes Done",
+          "is_fault": false,
+          "transition_type": "Direct",
+          "line": 490
+        },
+        {
+          "from": "REC_BACKOFF",
+          "to": "FAULT",
+          "guard": "now - stateStart > RECOVERY_TIMEOUT [fault: REC BACKOFF TIMEOUT]",
+          "label": "REC BACKOFF TIMEOUT",
+          "is_fault": true,
+          "transition_type": {
+            "IndirectHelper": {
+              "helper_name": "fault",
+              "argument": "REC BACKOFF TIMEOUT"
+            }
+          },
+          "line": 496
+        },
+        {
+          "from": "REC_BACKOFF",
+          "to": "RETURNED",
+          "guard": "axes_done()",
+          "label": "Axes Done",
+          "is_fault": false,
+          "transition_type": "Direct",
+          "line": 500
+        },
+        {
+          "from": "OPENING",
+          "to": "IDLE",
+          "guard": "now - stateStart > OPEN_DURATION_MS",
+          "label": "Timeout (OPEN_DURATION_MS)",
+          "is_fault": false,
+          "transition_type": "Direct",
+          "line": 506
+        },
+        {
+          "from": "CLOSING",
+          "to": "IDLE",
+          "guard": "now - stateStart > CLOSE_DURATION_MS",
+          "label": "Timeout (CLOSE_DURATION_MS)",
+          "is_fault": false,
+          "transition_type": "Direct",
+          "line": 513
+        },
+        {
+          "from": "IDLE",
+          "to": "CALIBRATING",
+          "guard": "cmd_ready && strcmp((const char*)rx_buffer, \"CAL\") == 0 [startCal()]",
+          "label": "CMD: CAL",
+          "is_fault": false,
+          "transition_type": {
+            "IndirectHelper": {
+              "helper_name": "startCal",
+              "argument": null
+            }
+          },
+          "line": 521
+        },
+        {
+          "from": "IDLE",
+          "to": "GOING",
+          "guard": "cmd_ready && strcmp((const char*)rx_buffer, \"GO\") == 0",
+          "label": "CMD: GO",
+          "is_fault": false,
+          "transition_type": "EventTriggered",
+          "line": 528
+        },
+        {
+          "from": "RETURNED",
+          "to": "GOING",
+          "guard": "cmd_ready && strcmp((const char*)rx_buffer, \"GO\") == 0",
+          "label": "CMD: GO",
+          "is_fault": false,
+          "transition_type": "EventTriggered",
+          "line": 528
+        },
+        {
+          "from": "HOLD",
+          "to": "RETURNING",
+          "guard": "cmd_ready && strcmp((const char*)rx_buffer, \"RET\") == 0",
+          "label": "CMD: RET",
+          "is_fault": false,
+          "transition_type": "EventTriggered",
+          "line": 536
+        },
+        {
+          "from": "IDLE",
+          "to": "OPENING",
+          "guard": "cmd_ready && strcmp((const char*)rx_buffer, \"OPEN\") == 0",
+          "label": "CMD: OPEN",
+          "is_fault": false,
+          "transition_type": "EventTriggered",
+          "line": 548
+        },
+        {
+          "from": "RETURNED",
+          "to": "OPENING",
+          "guard": "cmd_ready && strcmp((const char*)rx_buffer, \"OPEN\") == 0",
+          "label": "CMD: OPEN",
+          "is_fault": false,
+          "transition_type": "EventTriggered",
+          "line": 548
+        },
+        {
+          "from": "CLOSING",
+          "to": "OPENING",
+          "guard": "cmd_ready && strcmp((const char*)rx_buffer, \"OPEN\") == 0",
+          "label": "CMD: OPEN",
+          "is_fault": false,
+          "transition_type": "EventTriggered",
+          "line": 548
+        },
+        {
+          "from": "IDLE",
+          "to": "CLOSING",
+          "guard": "cmd_ready && strcmp((const char*)rx_buffer, \"CLOSE\") == 0",
+          "label": "CMD: CLOSE",
+          "is_fault": false,
+          "transition_type": "EventTriggered",
+          "line": 558
+        },
+        {
+          "from": "RETURNED",
+          "to": "CLOSING",
+          "guard": "cmd_ready && strcmp((const char*)rx_buffer, \"CLOSE\") == 0",
+          "label": "CMD: CLOSE",
+          "is_fault": false,
+          "transition_type": "EventTriggered",
+          "line": 558
+        },
+        {
+          "from": "OPENING",
+          "to": "CLOSING",
+          "guard": "cmd_ready && strcmp((const char*)rx_buffer, \"CLOSE\") == 0",
+          "label": "CMD: CLOSE",
+          "is_fault": false,
+          "transition_type": "EventTriggered",
+          "line": 558
+        }
+      ],
+      "ambiguous_transitions": [
+        {
+          "target": "IDLE",
+          "guard": "cmd_ready && strcmp((const char*)rx_buffer, \"RST\") == 0",
+          "line": 542,
+          "note": "Assignment to state with no enclosing state check"
+        },
+        {
+          "target": "IDLE",
+          "guard": "cmd_ready && strcmp((const char*)rx_buffer, \"STOP\") == 0",
+          "line": 566,
+          "note": "Assignment to state with no enclosing state check"
+        }
+      ]
+    }
+  ],
+  "df2_layouts": [
+    {
+      "nodes": {
+        "CALIBRATING": {
+          "id": "CALIBRATING",
+          "label": "CALIBRATING",
+          "x": 425.0,
+          "y": 110.0,
+          "width": 175.0,
+          "height": 54.0,
+          "is_fault": false,
+          "is_initial": false,
+          "cluster": "CALIBRATION",
+          "collapsed_out_badges": [
+            "FAULT"
+          ],
+          "incoming_count": 1,
+          "outgoing_count": 4
+        },
+        "CAL_BACKOFF": {
+          "id": "CAL_BACKOFF",
+          "label": "CAL_BACKOFF",
+          "x": 935.0,
+          "y": 110.0,
+          "width": 175.0,
+          "height": 54.0,
+          "is_fault": false,
+          "is_initial": false,
+          "cluster": "CALIBRATION",
+          "collapsed_out_badges": [
+            "FAULT"
+          ],
+          "incoming_count": 1,
+          "outgoing_count": 2
+        },
+        "CAL_STOPPING": {
+          "id": "CAL_STOPPING",
+          "label": "CAL_STOPPING",
+          "x": 680.0,
+          "y": 110.0,
+          "width": 175.0,
+          "height": 54.0,
+          "is_fault": false,
+          "is_initial": false,
+          "cluster": "CALIBRATION",
+          "collapsed_out_badges": [
+            "FAULT"
+          ],
+          "incoming_count": 1,
+          "outgoing_count": 3
+        },
+        "CLOSING": {
+          "id": "CLOSING",
+          "label": "CLOSING",
+          "x": 680.0,
+          "y": 240.0,
+          "width": 175.0,
+          "height": 54.0,
+          "is_fault": false,
+          "is_initial": false,
+          "cluster": "MECHANISM",
+          "collapsed_out_badges": [],
+          "incoming_count": 3,
+          "outgoing_count": 2
+        },
+        "FAULT": {
+          "id": "FAULT",
+          "label": "FAULT",
+          "x": 680.0,
+          "y": 634.0,
+          "width": 175.0,
+          "height": 54.0,
+          "is_fault": true,
+          "is_initial": false,
+          "cluster": "FAULT",
+          "collapsed_out_badges": [],
+          "incoming_count": 14,
+          "outgoing_count": 0
+        },
+        "GOING": {
+          "id": "GOING",
+          "label": "GOING",
+          "x": 425.0,
+          "y": 370.0,
+          "width": 175.0,
+          "height": 54.0,
+          "is_fault": false,
+          "is_initial": false,
+          "cluster": "MOTION",
+          "collapsed_out_badges": [
+            "FAULT"
+          ],
+          "incoming_count": 2,
+          "outgoing_count": 2
+        },
+        "HOLD": {
+          "id": "HOLD",
+          "label": "HOLD",
+          "x": 680.0,
+          "y": 370.0,
+          "width": 175.0,
+          "height": 54.0,
+          "is_fault": false,
+          "is_initial": false,
+          "cluster": "MOTION",
+          "collapsed_out_badges": [],
+          "incoming_count": 1,
+          "outgoing_count": 1
+        },
+        "IDLE": {
+          "id": "IDLE",
+          "label": "IDLE",
+          "x": 110.0,
+          "y": 240.0,
+          "width": 175.0,
+          "height": 54.0,
+          "is_fault": false,
+          "is_initial": true,
+          "cluster": "INITIAL",
+          "collapsed_out_badges": [],
+          "incoming_count": 3,
+          "outgoing_count": 4
+        },
+        "OPENING": {
+          "id": "OPENING",
+          "label": "OPENING",
+          "x": 425.0,
+          "y": 240.0,
+          "width": 175.0,
+          "height": 54.0,
+          "is_fault": false,
+          "is_initial": false,
+          "cluster": "MECHANISM",
+          "collapsed_out_badges": [],
+          "incoming_count": 3,
+          "outgoing_count": 2
+        },
+        "RECOVERY": {
+          "id": "RECOVERY",
+          "label": "RECOVERY",
+          "x": 425.0,
+          "y": 500.0,
+          "width": 175.0,
+          "height": 54.0,
+          "is_fault": false,
+          "is_initial": false,
+          "cluster": "RECOVERY",
+          "collapsed_out_badges": [
+            "FAULT"
+          ],
+          "incoming_count": 1,
+          "outgoing_count": 4
+        },
+        "REC_BACKOFF": {
+          "id": "REC_BACKOFF",
+          "label": "REC_BACKOFF",
+          "x": 935.0,
+          "y": 500.0,
+          "width": 175.0,
+          "height": 54.0,
+          "is_fault": false,
+          "is_initial": false,
+          "cluster": "RECOVERY",
+          "collapsed_out_badges": [
+            "FAULT"
+          ],
+          "incoming_count": 1,
+          "outgoing_count": 2
+        },
+        "REC_STOPPING": {
+          "id": "REC_STOPPING",
+          "label": "REC_STOPPING",
+          "x": 680.0,
+          "y": 500.0,
+          "width": 175.0,
+          "height": 54.0,
+          "is_fault": false,
+          "is_initial": false,
+          "cluster": "RECOVERY",
+          "collapsed_out_badges": [
+            "FAULT"
+          ],
+          "incoming_count": 1,
+          "outgoing_count": 3
+        },
+        "RETURNED": {
+          "id": "RETURNED",
+          "label": "RETURNED",
+          "x": 1250.0,
+          "y": 435.0,
+          "width": 175.0,
+          "height": 54.0,
+          "is_fault": false,
+          "is_initial": false,
+          "cluster": "MOTION",
+          "collapsed_out_badges": [],
+          "incoming_count": 2,
+          "outgoing_count": 3
+        },
+        "RETURNING": {
+          "id": "RETURNING",
+          "label": "RETURNING",
+          "x": 935.0,
+          "y": 370.0,
+          "width": 175.0,
+          "height": 54.0,
+          "is_fault": false,
+          "is_initial": false,
+          "cluster": "MOTION",
+          "collapsed_out_badges": [
+            "FAULT"
+          ],
+          "incoming_count": 1,
+          "outgoing_count": 3
+        }
+      },
+      "edges": [
+        {
+          "from": "CALIBRATING",
+          "to": "FAULT",
+          "guard": "now - stateStart > CAL_TIMEOUT [fault: CAL TIMEOUT]",
+          "label": "CAL TIMEOUT",
+          "display_guard": "CAL TIMEOUT",
+          "is_fault": true,
+          "start": [
+            512.5,
+            164.0
+          ],
+          "end": [
+            767.5,
+            634.0
+          ],
+          "control1": [
+            512.5,
+            375.5
+          ],
+          "control2": [
+            767.5,
+            422.5
+          ],
+          "waypoints": [
+            [
+              512.5,
+              164.0
+            ],
+            [
+              512.5,
+              594.0
+            ],
+            [
+              767.5,
+              594.0
+            ],
+            [
+              767.5,
+              634.0
+            ]
+          ],
+          "label_pos": [
+            512.5,
+            188.0
+          ],
+          "transition_type": {
+            "IndirectHelper": {
+              "helper_name": "fault",
+              "argument": "CAL TIMEOUT"
+            }
+          },
+          "is_high_fan_in": true,
+          "is_inter_cluster": true
+        },
+        {
+          "from": "CALIBRATING",
+          "to": "CAL_STOPPING",
+          "guard": "z1Hit && z2Hit",
+          "label": "Z1 Hit and Z2 Hit",
+          "display_guard": "Z1 Hit and Z2 Hit",
+          "is_fault": false,
+          "start": [
+            600.0,
+            137.0
+          ],
+          "end": [
+            680.0,
+            137.0
+          ],
+          "control1": [
+            632.0,
+            137.0
+          ],
+          "control2": [
+            648.0,
+            137.0
+          ],
+          "waypoints": [
+            [
+              600.0,
+              137.0
+            ],
+            [
+              680.0,
+              137.0
+            ]
+          ],
+          "label_pos": [
+            640.0,
+            182.0
+          ],
+          "transition_type": "Direct",
+          "is_high_fan_in": false,
+          "is_inter_cluster": false
+        },
+        {
+          "from": "CALIBRATING",
+          "to": "FAULT",
+          "guard": "z1Hit && !z2Hit && z2.current_pos == z2.target_pos [fault: Z2 LIMIT NOT FOUND]",
+          "label": "Z2 LIMIT NOT FOUND",
+          "display_guard": "Z2 LIMIT NOT FOUND",
+          "is_fault": true,
+          "start": [
+            512.5,
+            164.0
+          ],
+          "end": [
+            767.5,
+            634.0
+          ],
+          "control1": [
+            512.5,
+            375.5
+          ],
+          "control2": [
+            767.5,
+            422.5
+          ],
+          "waypoints": [
+            [
+              512.5,
+              164.0
+            ],
+            [
+              512.5,
+              594.0
+            ],
+            [
+              767.5,
+              594.0
+            ],
+            [
+              767.5,
+              634.0
+            ]
+          ],
+          "label_pos": [
+            352.5,
+            188.0
+          ],
+          "transition_type": {
+            "IndirectHelper": {
+              "helper_name": "fault",
+              "argument": "Z2 LIMIT NOT FOUND"
+            }
+          },
+          "is_high_fan_in": true,
+          "is_inter_cluster": true
+        },
+        {
+          "from": "CALIBRATING",
+          "to": "FAULT",
+          "guard": "z2Hit && !z1Hit && z1.current_pos == z1.target_pos [fault: Z1 LIMIT NOT FOUND]",
+          "label": "Z1 LIMIT NOT FOUND",
+          "display_guard": "Z1 LIMIT NOT FOUND",
+          "is_fault": true,
+          "start": [
+            512.5,
+            164.0
+          ],
+          "end": [
+            767.5,
+            634.0
+          ],
+          "control1": [
+            512.5,
+            375.5
+          ],
+          "control2": [
+            767.5,
+            422.5
+          ],
+          "waypoints": [
+            [
+              512.5,
+              164.0
+            ],
+            [
+              512.5,
+              594.0
+            ],
+            [
+              767.5,
+              594.0
+            ],
+            [
+              767.5,
+              634.0
+            ]
+          ],
+          "label_pos": [
+            822.5,
+            188.0
+          ],
+          "transition_type": {
+            "IndirectHelper": {
+              "helper_name": "fault",
+              "argument": "Z1 LIMIT NOT FOUND"
+            }
+          },
+          "is_high_fan_in": true,
+          "is_inter_cluster": true
+        },
+        {
+          "from": "CAL_STOPPING",
+          "to": "FAULT",
+          "guard": "now - stateStart > CAL_TIMEOUT [fault: CAL STOP TIMEOUT]",
+          "label": "CAL STOP TIMEOUT",
+          "display_guard": "CAL STOP TIMEOUT",
+          "is_fault": true,
+          "start": [
+            767.5,
+            164.0
+          ],
+          "end": [
+            767.5,
+            634.0
+          ],
+          "control1": [
+            767.5,
+            375.5
+          ],
+          "control2": [
+            767.5,
+            422.5
+          ],
+          "waypoints": [
+            [
+              767.5,
+              164.0
+            ],
+            [
+              767.5,
+              634.0
+            ]
+          ],
+          "label_pos": [
+            997.5,
+            188.0
+          ],
+          "transition_type": {
+            "IndirectHelper": {
+              "helper_name": "fault",
+              "argument": "CAL STOP TIMEOUT"
+            }
+          },
+          "is_high_fan_in": true,
+          "is_inter_cluster": true
+        },
+        {
+          "from": "CAL_STOPPING",
+          "to": "FAULT",
+          "guard": "axes_done() && !skewOK() [fault: CAL SKEW]",
+          "label": "CAL SKEW",
+          "display_guard": "CAL SKEW",
+          "is_fault": true,
+          "start": [
+            767.5,
+            164.0
+          ],
+          "end": [
+            767.5,
+            634.0
+          ],
+          "control1": [
+            767.5,
+            375.5
+          ],
+          "control2": [
+            767.5,
+            422.5
+          ],
+          "waypoints": [
+            [
+              767.5,
+              164.0
+            ],
+            [
+              767.5,
+              634.0
+            ]
+          ],
+          "label_pos": [
+            767.5,
+            212.0
+          ],
+          "transition_type": {
+            "IndirectHelper": {
+              "helper_name": "fault",
+              "argument": "CAL SKEW"
+            }
+          },
+          "is_high_fan_in": true,
+          "is_inter_cluster": true
+        },
+        {
+          "from": "CAL_STOPPING",
+          "to": "CAL_BACKOFF",
+          "guard": "axes_done()",
+          "label": "Axes Done",
+          "display_guard": "Axes Done",
+          "is_fault": false,
+          "start": [
+            855.0,
+            137.0
+          ],
+          "end": [
+            935.0,
+            137.0
+          ],
+          "control1": [
+            887.0,
+            137.0
+          ],
+          "control2": [
+            903.0,
+            137.0
+          ],
+          "waypoints": [
+            [
+              855.0,
+              137.0
+            ],
+            [
+              935.0,
+              137.0
+            ]
+          ],
+          "label_pos": [
+            1125.0,
+            182.0
+          ],
+          "transition_type": "Direct",
+          "is_high_fan_in": false,
+          "is_inter_cluster": false
+        },
+        {
+          "from": "CAL_BACKOFF",
+          "to": "FAULT",
+          "guard": "now - stateStart > CAL_TIMEOUT [fault: CAL BACKOFF TIMEOUT]",
+          "label": "CAL BACKOFF TIMEOUT",
+          "display_guard": "CAL BACKOFF TIMEOUT",
+          "is_fault": true,
+          "start": [
+            1022.5,
+            164.0
+          ],
+          "end": [
+            767.5,
+            634.0
+          ],
+          "control1": [
+            1022.5,
+            375.5
+          ],
+          "control2": [
+            767.5,
+            422.5
+          ],
+          "waypoints": [
+            [
+              1022.5,
+              164.0
+            ],
+            [
+              1022.5,
+              594.0
+            ],
+            [
+              767.5,
+              594.0
+            ],
+            [
+              767.5,
+              634.0
+            ]
+          ],
+          "label_pos": [
+            1252.5,
+            188.0
+          ],
+          "transition_type": {
+            "IndirectHelper": {
+              "helper_name": "fault",
+              "argument": "CAL BACKOFF TIMEOUT"
+            }
+          },
+          "is_high_fan_in": true,
+          "is_inter_cluster": true
+        },
+        {
+          "from": "CAL_BACKOFF",
+          "to": "IDLE",
+          "guard": "axes_done()",
+          "label": "Axes Done",
+          "display_guard": "Axes Done",
+          "is_fault": false,
+          "start": [
+            1022.5,
+            110.0
+          ],
+          "end": [
+            215.0,
+            240.0
+          ],
+          "control1": [
+            1022.5,
+            80.0
+          ],
+          "control2": [
+            215.0,
+            80.0
+          ],
+          "waypoints": [
+            [
+              1022.5,
+              110.0
+            ],
+            [
+              1022.5,
+              80.0
+            ],
+            [
+              215.0,
+              80.0
+            ],
+            [
+              215.0,
+              240.0
+            ]
+          ],
+          "label_pos": [
+            618.75,
+            68.0
+          ],
+          "transition_type": "Direct",
+          "is_high_fan_in": false,
+          "is_inter_cluster": true
+        },
+        {
+          "from": "GOING",
+          "to": "FAULT",
+          "guard": "now - stateStart > MOVE_TIMEOUT [fault: GO TIMEOUT]",
+          "label": "GO TIMEOUT",
+          "display_guard": "GO TIMEOUT",
+          "is_fault": true,
+          "start": [
+            512.5,
+            424.0
+          ],
+          "end": [
+            767.5,
+            634.0
+          ],
+          "control1": [
+            512.5,
+            518.5
+          ],
+          "control2": [
+            767.5,
+            539.5
+          ],
+          "waypoints": [
+            [
+              512.5,
+              424.0
+            ],
+            [
+              512.5,
+              594.0
+            ],
+            [
+              767.5,
+              594.0
+            ],
+            [
+              767.5,
+              634.0
+            ]
+          ],
+          "label_pos": [
+            512.5,
+            448.0
+          ],
+          "transition_type": {
+            "IndirectHelper": {
+              "helper_name": "fault",
+              "argument": "GO TIMEOUT"
+            }
+          },
+          "is_high_fan_in": true,
+          "is_inter_cluster": true
+        },
+        {
+          "from": "GOING",
+          "to": "HOLD",
+          "guard": "axes_done()",
+          "label": "Axes Done",
+          "display_guard": "Axes Done",
+          "is_fault": false,
+          "start": [
+            600.0,
+            397.0
+          ],
+          "end": [
+            680.0,
+            397.0
+          ],
+          "control1": [
+            632.0,
+            397.0
+          ],
+          "control2": [
+            648.0,
+            397.0
+          ],
+          "waypoints": [
+            [
+              600.0,
+              397.0
+            ],
+            [
+              680.0,
+              397.0
+            ]
+          ],
+          "label_pos": [
+            640.0,
+            442.0
+          ],
+          "transition_type": "Direct",
+          "is_high_fan_in": false,
+          "is_inter_cluster": false
+        },
+        {
+          "from": "RETURNING",
+          "to": "RECOVERY",
+          "guard": "enteringRecovery",
+          "label": "Entering Recovery",
+          "display_guard": "Entering Recovery",
+          "is_fault": false,
+          "start": [
+            1022.5,
+            424.0
+          ],
+          "end": [
+            512.5,
+            500.0
+          ],
+          "control1": [
+            1022.5,
+            454.0
+          ],
+          "control2": [
+            512.5,
+            454.0
+          ],
+          "waypoints": [
+            [
+              1022.5,
+              424.0
+            ],
+            [
+              1022.5,
+              454.0
+            ],
+            [
+              512.5,
+              454.0
+            ],
+            [
+              512.5,
+              500.0
+            ]
+          ],
+          "label_pos": [
+            767.5,
+            442.0
+          ],
+          "transition_type": "Direct",
+          "is_high_fan_in": false,
+          "is_inter_cluster": true
+        },
+        {
+          "from": "RETURNING",
+          "to": "RETURNED",
+          "guard": "axes_done()",
+          "label": "Axes Done",
+          "display_guard": "Axes Done",
+          "is_fault": false,
+          "start": [
+            1110.0,
+            397.0
+          ],
+          "end": [
+            1250.0,
+            451.2
+          ],
+          "control1": [
+            1166.0,
+            397.0
+          ],
+          "control2": [
+            1194.0,
+            451.2
+          ],
+          "waypoints": [
+            [
+              1110.0,
+              397.0
+            ],
+            [
+              1180.0,
+              397.0
+            ],
+            [
+              1180.0,
+              451.2
+            ],
+            [
+              1250.0,
+              451.2
+            ]
+          ],
+          "label_pos": [
+            1180.0,
+            410.1
+          ],
+          "transition_type": "Direct",
+          "is_high_fan_in": false,
+          "is_inter_cluster": false
+        },
+        {
+          "from": "RETURNING",
+          "to": "FAULT",
+          "guard": "now - stateStart > MOVE_TIMEOUT [fault: RETURN TIMEOUT]",
+          "label": "RETURN TIMEOUT",
+          "display_guard": "RETURN TIMEOUT",
+          "is_fault": true,
+          "start": [
+            1022.5,
+            424.0
+          ],
+          "end": [
+            767.5,
+            634.0
+          ],
+          "control1": [
+            1022.5,
+            518.5
+          ],
+          "control2": [
+            767.5,
+            539.5
+          ],
+          "waypoints": [
+            [
+              1022.5,
+              424.0
+            ],
+            [
+              1022.5,
+              594.0
+            ],
+            [
+              767.5,
+              594.0
+            ],
+            [
+              767.5,
+              634.0
+            ]
+          ],
+          "label_pos": [
+            1022.5,
+            448.0
+          ],
+          "transition_type": {
+            "IndirectHelper": {
+              "helper_name": "fault",
+              "argument": "RETURN TIMEOUT"
+            }
+          },
+          "is_high_fan_in": true,
+          "is_inter_cluster": true
+        },
+        {
+          "from": "RECOVERY",
+          "to": "FAULT",
+          "guard": "now - stateStart > RECOVERY_TIMEOUT [fault: REC TIMEOUT]",
+          "label": "REC TIMEOUT",
+          "display_guard": "REC TIMEOUT",
+          "is_fault": true,
+          "start": [
+            512.5,
+            554.0
+          ],
+          "end": [
+            767.5,
+            634.0
+          ],
+          "control1": [
+            512.5,
+            590.0
+          ],
+          "control2": [
+            767.5,
+            598.0
+          ],
+          "waypoints": [
+            [
+              512.5,
+              554.0
+            ],
+            [
+              512.5,
+              594.0
+            ],
+            [
+              767.5,
+              594.0
+            ],
+            [
+              767.5,
+              634.0
+            ]
+          ],
+          "label_pos": [
+            512.5,
+            578.0
+          ],
+          "transition_type": {
+            "IndirectHelper": {
+              "helper_name": "fault",
+              "argument": "REC TIMEOUT"
+            }
+          },
+          "is_high_fan_in": true,
+          "is_inter_cluster": true
+        },
+        {
+          "from": "RECOVERY",
+          "to": "REC_STOPPING",
+          "guard": "z1Hit && z2Hit",
+          "label": "Z1 Hit and Z2 Hit",
+          "display_guard": "Z1 Hit and Z2 Hit",
+          "is_fault": false,
+          "start": [
+            600.0,
+            527.0
+          ],
+          "end": [
+            680.0,
+            527.0
+          ],
+          "control1": [
+            632.0,
+            527.0
+          ],
+          "control2": [
+            648.0,
+            527.0
+          ],
+          "waypoints": [
+            [
+              600.0,
+              527.0
+            ],
+            [
+              680.0,
+              527.0
+            ]
+          ],
+          "label_pos": [
+            640.0,
+            572.0
+          ],
+          "transition_type": "Direct",
+          "is_high_fan_in": false,
+          "is_inter_cluster": false
+        },
+        {
+          "from": "RECOVERY",
+          "to": "FAULT",
+          "guard": "z1Hit && !z2Hit && z2.current_pos == z2.target_pos [fault: Z2 LIMIT NOT FOUND]",
+          "label": "Z2 LIMIT NOT FOUND",
+          "display_guard": "Z2 LIMIT NOT FOUND",
+          "is_fault": true,
+          "start": [
+            512.5,
+            554.0
+          ],
+          "end": [
+            767.5,
+            634.0
+          ],
+          "control1": [
+            512.5,
+            590.0
+          ],
+          "control2": [
+            767.5,
+            598.0
+          ],
+          "waypoints": [
+            [
+              512.5,
+              554.0
+            ],
+            [
+              512.5,
+              594.0
+            ],
+            [
+              767.5,
+              594.0
+            ],
+            [
+              767.5,
+              634.0
+            ]
+          ],
+          "label_pos": [
+            352.5,
+            578.0
+          ],
+          "transition_type": {
+            "IndirectHelper": {
+              "helper_name": "fault",
+              "argument": "Z2 LIMIT NOT FOUND"
+            }
+          },
+          "is_high_fan_in": true,
+          "is_inter_cluster": true
+        },
+        {
+          "from": "RECOVERY",
+          "to": "FAULT",
+          "guard": "z2Hit && !z1Hit && z1.current_pos == z1.target_pos [fault: Z1 LIMIT NOT FOUND]",
+          "label": "Z1 LIMIT NOT FOUND",
+          "display_guard": "Z1 LIMIT NOT FOUND",
+          "is_fault": true,
+          "start": [
+            512.5,
+            554.0
+          ],
+          "end": [
+            767.5,
+            634.0
+          ],
+          "control1": [
+            512.5,
+            590.0
+          ],
+          "control2": [
+            767.5,
+            598.0
+          ],
+          "waypoints": [
+            [
+              512.5,
+              554.0
+            ],
+            [
+              512.5,
+              594.0
+            ],
+            [
+              767.5,
+              594.0
+            ],
+            [
+              767.5,
+              634.0
+            ]
+          ],
+          "label_pos": [
+            822.5,
+            578.0
+          ],
+          "transition_type": {
+            "IndirectHelper": {
+              "helper_name": "fault",
+              "argument": "Z1 LIMIT NOT FOUND"
+            }
+          },
+          "is_high_fan_in": true,
+          "is_inter_cluster": true
+        },
+        {
+          "from": "REC_STOPPING",
+          "to": "FAULT",
+          "guard": "now - stateStart > RECOVERY_TIMEOUT [fault: REC STOP TIMEOUT]",
+          "label": "REC STOP TIMEOUT",
+          "display_guard": "REC STOP TIMEOUT",
+          "is_fault": true,
+          "start": [
+            767.5,
+            554.0
+          ],
+          "end": [
+            767.5,
+            634.0
+          ],
+          "control1": [
+            767.5,
+            590.0
+          ],
+          "control2": [
+            767.5,
+            598.0
+          ],
+          "waypoints": [
+            [
+              767.5,
+              554.0
+            ],
+            [
+              767.5,
+              634.0
+            ]
+          ],
+          "label_pos": [
+            997.5,
+            578.0
+          ],
+          "transition_type": {
+            "IndirectHelper": {
+              "helper_name": "fault",
+              "argument": "REC STOP TIMEOUT"
+            }
+          },
+          "is_high_fan_in": true,
+          "is_inter_cluster": true
+        },
+        {
+          "from": "REC_STOPPING",
+          "to": "FAULT",
+          "guard": "axes_done() && !skewOK() [fault: REC SKEW]",
+          "label": "REC SKEW",
+          "display_guard": "REC SKEW",
+          "is_fault": true,
+          "start": [
+            767.5,
+            554.0
+          ],
+          "end": [
+            767.5,
+            634.0
+          ],
+          "control1": [
+            767.5,
+            590.0
+          ],
+          "control2": [
+            767.5,
+            598.0
+          ],
+          "waypoints": [
+            [
+              767.5,
+              554.0
+            ],
+            [
+              767.5,
+              634.0
+            ]
+          ],
+          "label_pos": [
+            607.5,
+            602.0
+          ],
+          "transition_type": {
+            "IndirectHelper": {
+              "helper_name": "fault",
+              "argument": "REC SKEW"
+            }
+          },
+          "is_high_fan_in": true,
+          "is_inter_cluster": true
+        },
+        {
+          "from": "REC_STOPPING",
+          "to": "REC_BACKOFF",
+          "guard": "axes_done()",
+          "label": "Axes Done",
+          "display_guard": "Axes Done",
+          "is_fault": false,
+          "start": [
+            855.0,
+            527.0
+          ],
+          "end": [
+            935.0,
+            527.0
+          ],
+          "control1": [
+            887.0,
+            527.0
+          ],
+          "control2": [
+            903.0,
+            527.0
+          ],
+          "waypoints": [
+            [
+              855.0,
+              527.0
+            ],
+            [
+              935.0,
+              527.0
+            ]
+          ],
+          "label_pos": [
+            1125.0,
+            572.0
+          ],
+          "transition_type": "Direct",
+          "is_high_fan_in": false,
+          "is_inter_cluster": false
+        },
+        {
+          "from": "REC_BACKOFF",
+          "to": "FAULT",
+          "guard": "now - stateStart > RECOVERY_TIMEOUT [fault: REC BACKOFF TIMEOUT]",
+          "label": "REC BACKOFF TIMEOUT",
+          "display_guard": "REC BACKOFF TIMEOUT",
+          "is_fault": true,
+          "start": [
+            1022.5,
+            554.0
+          ],
+          "end": [
+            767.5,
+            634.0
+          ],
+          "control1": [
+            1022.5,
+            590.0
+          ],
+          "control2": [
+            767.5,
+            598.0
+          ],
+          "waypoints": [
+            [
+              1022.5,
+              554.0
+            ],
+            [
+              1022.5,
+              594.0
+            ],
+            [
+              767.5,
+              594.0
+            ],
+            [
+              767.5,
+              634.0
+            ]
+          ],
+          "label_pos": [
+            1252.5,
+            578.0
+          ],
+          "transition_type": {
+            "IndirectHelper": {
+              "helper_name": "fault",
+              "argument": "REC BACKOFF TIMEOUT"
+            }
+          },
+          "is_high_fan_in": true,
+          "is_inter_cluster": true
+        },
+        {
+          "from": "REC_BACKOFF",
+          "to": "RETURNED",
+          "guard": "axes_done()",
+          "label": "Axes Done",
+          "display_guard": "Axes Done",
+          "is_fault": false,
+          "start": [
+            1110.0,
+            527.0
+          ],
+          "end": [
+            1250.0,
+            472.8
+          ],
+          "control1": [
+            1166.0,
+            527.0
+          ],
+          "control2": [
+            1194.0,
+            472.8
+          ],
+          "waypoints": [
+            [
+              1110.0,
+              527.0
+            ],
+            [
+              1180.0,
+              527.0
+            ],
+            [
+              1180.0,
+              472.8
+            ],
+            [
+              1250.0,
+              472.8
+            ]
+          ],
+          "label_pos": [
+            1180.0,
+            485.9
+          ],
+          "transition_type": "Direct",
+          "is_high_fan_in": false,
+          "is_inter_cluster": true
+        },
+        {
+          "from": "OPENING",
+          "to": "IDLE",
+          "guard": "now - stateStart > OPEN_DURATION_MS",
+          "label": "Timeout (OPEN_DURATION_MS)",
+          "display_guard": "Timeout (OPEN_DURATION_MS)",
+          "is_fault": false,
+          "start": [
+            512.5,
+            240.0
+          ],
+          "end": [
+            215.0,
+            240.0
+          ],
+          "control1": [
+            512.5,
+            64.0
+          ],
+          "control2": [
+            215.0,
+            64.0
+          ],
+          "waypoints": [
+            [
+              512.5,
+              240.0
+            ],
+            [
+              512.5,
+              64.0
+            ],
+            [
+              215.0,
+              64.0
+            ],
+            [
+              215.0,
+              240.0
+            ]
+          ],
+          "label_pos": [
+            363.75,
+            52.0
+          ],
+          "transition_type": "Direct",
+          "is_high_fan_in": false,
+          "is_inter_cluster": true
+        },
+        {
+          "from": "CLOSING",
+          "to": "IDLE",
+          "guard": "now - stateStart > CLOSE_DURATION_MS",
+          "label": "Timeout (CLOSE_DURATION_MS)",
+          "display_guard": "Timeout (CLOSE_DURATION_MS)",
+          "is_fault": false,
+          "start": [
+            767.5,
+            240.0
+          ],
+          "end": [
+            215.0,
+            240.0
+          ],
+          "control1": [
+            767.5,
+            48.0
+          ],
+          "control2": [
+            215.0,
+            48.0
+          ],
+          "waypoints": [
+            [
+              767.5,
+              240.0
+            ],
+            [
+              767.5,
+              48.0
+            ],
+            [
+              215.0,
+              48.0
+            ],
+            [
+              215.0,
+              240.0
+            ]
+          ],
+          "label_pos": [
+            591.25,
+            36.0
+          ],
+          "transition_type": "Direct",
+          "is_high_fan_in": false,
+          "is_inter_cluster": true
+        },
+        {
+          "from": "IDLE",
+          "to": "CALIBRATING",
+          "guard": "cmd_ready && strcmp((const char*)rx_buffer, \"CAL\") == 0 [startCal()]",
+          "label": "CMD: CAL",
+          "display_guard": "CMD: CAL",
+          "is_fault": false,
+          "start": [
+            285.0,
+            250.8
+          ],
+          "end": [
+            425.0,
+            137.0
+          ],
+          "control1": [
+            334.0,
+            250.8
+          ],
+          "control2": [
+            376.0,
+            137.0
+          ],
+          "waypoints": [
+            [
+              285.0,
+              250.8
+            ],
+            [
+              310.0,
+              250.8
+            ],
+            [
+              310.0,
+              137.0
+            ],
+            [
+              425.0,
+              137.0
+            ]
+          ],
+          "label_pos": [
+            370.0,
+            238.8
+          ],
+          "transition_type": {
+            "IndirectHelper": {
+              "helper_name": "startCal",
+              "argument": null
+            }
+          },
+          "is_high_fan_in": false,
+          "is_inter_cluster": true
+        },
+        {
+          "from": "IDLE",
+          "to": "GOING",
+          "guard": "cmd_ready && strcmp((const char*)rx_buffer, \"GO\") == 0",
+          "label": "CMD: GO",
+          "display_guard": "CMD: GO",
+          "is_fault": false,
+          "start": [
+            285.0,
+            261.6
+          ],
+          "end": [
+            425.0,
+            397.0
+          ],
+          "control1": [
+            334.0,
+            261.6
+          ],
+          "control2": [
+            376.0,
+            397.0
+          ],
+          "waypoints": [
+            [
+              285.0,
+              261.6
+            ],
+            [
+              330.0,
+              261.6
+            ],
+            [
+              330.0,
+              397.0
+            ],
+            [
+              425.0,
+              397.0
+            ]
+          ],
+          "label_pos": [
+            10.0,
+            249.6
+          ],
+          "transition_type": "EventTriggered",
+          "is_high_fan_in": false,
+          "is_inter_cluster": true
+        },
+        {
+          "from": "RETURNED",
+          "to": "GOING",
+          "guard": "cmd_ready && strcmp((const char*)rx_buffer, \"GO\") == 0",
+          "label": "CMD: GO",
+          "display_guard": "CMD: GO",
+          "is_fault": false,
+          "start": [
+            1337.5,
+            435.0
+          ],
+          "end": [
+            512.5,
+            370.0
+          ],
+          "control1": [
+            1337.5,
+            32.0
+          ],
+          "control2": [
+            512.5,
+            32.0
+          ],
+          "waypoints": [
+            [
+              1337.5,
+              435.0
+            ],
+            [
+              1337.5,
+              32.0
+            ],
+            [
+              512.5,
+              32.0
+            ],
+            [
+              512.5,
+              370.0
+            ]
+          ],
+          "label_pos": [
+            925.0,
+            20.0
+          ],
+          "transition_type": "EventTriggered",
+          "is_high_fan_in": false,
+          "is_inter_cluster": false
+        },
+        {
+          "from": "HOLD",
+          "to": "RETURNING",
+          "guard": "cmd_ready && strcmp((const char*)rx_buffer, \"RET\") == 0",
+          "label": "CMD: RET",
+          "display_guard": "CMD: RET",
+          "is_fault": false,
+          "start": [
+            855.0,
+            397.0
+          ],
+          "end": [
+            935.0,
+            397.0
+          ],
+          "control1": [
+            887.0,
+            397.0
+          ],
+          "control2": [
+            903.0,
+            397.0
+          ],
+          "waypoints": [
+            [
+              855.0,
+              397.0
+            ],
+            [
+              935.0,
+              397.0
+            ]
+          ],
+          "label_pos": [
+            895.0,
+            411.0
+          ],
+          "transition_type": "EventTriggered",
+          "is_high_fan_in": false,
+          "is_inter_cluster": false
+        },
+        {
+          "from": "IDLE",
+          "to": "OPENING",
+          "guard": "cmd_ready && strcmp((const char*)rx_buffer, \"OPEN\") == 0",
+          "label": "CMD: OPEN",
+          "display_guard": "CMD: OPEN",
+          "is_fault": false,
+          "start": [
+            285.0,
+            272.4
+          ],
+          "end": [
+            425.0,
+            267.0
+          ],
+          "control1": [
+            334.0,
+            272.4
+          ],
+          "control2": [
+            376.0,
+            267.0
+          ],
+          "waypoints": [
+            [
+              285.0,
+              272.4
+            ],
+            [
+              350.0,
+              272.4
+            ],
+            [
+              350.0,
+              267.0
+            ],
+            [
+              425.0,
+              267.0
+            ]
+          ],
+          "label_pos": [
+            370.0,
+            284.4
+          ],
+          "transition_type": "EventTriggered",
+          "is_high_fan_in": false,
+          "is_inter_cluster": true
+        },
+        {
+          "from": "RETURNED",
+          "to": "OPENING",
+          "guard": "cmd_ready && strcmp((const char*)rx_buffer, \"OPEN\") == 0",
+          "label": "CMD: OPEN",
+          "display_guard": "CMD: OPEN",
+          "is_fault": false,
+          "start": [
+            1337.5,
+            435.0
+          ],
+          "end": [
+            512.5,
+            240.0
+          ],
+          "control1": [
+            1337.5,
+            16.0
+          ],
+          "control2": [
+            512.5,
+            16.0
+          ],
+          "waypoints": [
+            [
+              1337.5,
+              435.0
+            ],
+            [
+              1337.5,
+              16.0
+            ],
+            [
+              512.5,
+              16.0
+            ],
+            [
+              512.5,
+              240.0
+            ]
+          ],
+          "label_pos": [
+            1025.0,
+            4.0
+          ],
+          "transition_type": "EventTriggered",
+          "is_high_fan_in": false,
+          "is_inter_cluster": true
+        },
+        {
+          "from": "CLOSING",
+          "to": "OPENING",
+          "guard": "cmd_ready && strcmp((const char*)rx_buffer, \"OPEN\") == 0",
+          "label": "CMD: OPEN",
+          "display_guard": "CMD: OPEN",
+          "is_fault": false,
+          "start": [
+            767.5,
+            240.0
+          ],
+          "end": [
+            512.5,
+            240.0
+          ],
+          "control1": [
+            767.5,
+            215.0
+          ],
+          "control2": [
+            512.5,
+            215.0
+          ],
+          "waypoints": [
+            [
+              767.5,
+              240.0
+            ],
+            [
+              767.5,
+              215.0
+            ],
+            [
+              512.5,
+              215.0
+            ],
+            [
+              512.5,
+              240.0
+            ]
+          ],
+          "label_pos": [
+            950.0,
+            227.0
+          ],
+          "transition_type": "EventTriggered",
+          "is_high_fan_in": false,
+          "is_inter_cluster": false
+        },
+        {
+          "from": "IDLE",
+          "to": "CLOSING",
+          "guard": "cmd_ready && strcmp((const char*)rx_buffer, \"CLOSE\") == 0",
+          "label": "CMD: CLOSE",
+          "display_guard": "CMD: CLOSE",
+          "is_fault": false,
+          "start": [
+            285.0,
+            283.2
+          ],
+          "end": [
+            767.5,
+            240.0
+          ],
+          "control1": [
+            423.25,
+            283.2
+          ],
+          "control2": [
+            541.75,
+            267.0
+          ],
+          "waypoints": [
+            [
+              285.0,
+              283.2
+            ],
+            [
+              370.0,
+              283.2
+            ],
+            [
+              370.0,
+              215.0
+            ],
+            [
+              767.5,
+              215.0
+            ],
+            [
+              767.5,
+              240.0
+            ]
+          ],
+          "label_pos": [
+            10.0,
+            295.2
+          ],
+          "transition_type": "EventTriggered",
+          "is_high_fan_in": false,
+          "is_inter_cluster": true
+        },
+        {
+          "from": "RETURNED",
+          "to": "CLOSING",
+          "guard": "cmd_ready && strcmp((const char*)rx_buffer, \"CLOSE\") == 0",
+          "label": "CMD: CLOSE",
+          "display_guard": "CMD: CLOSE",
+          "is_fault": false,
+          "start": [
+            1337.5,
+            435.0
+          ],
+          "end": [
+            767.5,
+            240.0
+          ],
+          "control1": [
+            1337.5,
+            0.0
+          ],
+          "control2": [
+            767.5,
+            0.0
+          ],
+          "waypoints": [
+            [
+              1337.5,
+              435.0
+            ],
+            [
+              1337.5,
+              0.0
+            ],
+            [
+              767.5,
+              0.0
+            ],
+            [
+              767.5,
+              240.0
+            ]
+          ],
+          "label_pos": [
+            1152.5,
+            -12.0
+          ],
+          "transition_type": "EventTriggered",
+          "is_high_fan_in": false,
+          "is_inter_cluster": true
+        },
+        {
+          "from": "OPENING",
+          "to": "CLOSING",
+          "guard": "cmd_ready && strcmp((const char*)rx_buffer, \"CLOSE\") == 0",
+          "label": "CMD: CLOSE",
+          "display_guard": "CMD: CLOSE",
+          "is_fault": false,
+          "start": [
+            600.0,
+            267.0
+          ],
+          "end": [
+            680.0,
+            267.0
+          ],
+          "control1": [
+            632.0,
+            267.0
+          ],
+          "control2": [
+            648.0,
+            267.0
+          ],
+          "waypoints": [
+            [
+              600.0,
+              267.0
+            ],
+            [
+              680.0,
+              267.0
+            ]
+          ],
+          "label_pos": [
+            640.0,
+            312.0
+          ],
+          "transition_type": "EventTriggered",
+          "is_high_fan_in": false,
+          "is_inter_cluster": false
+        }
+      ],
+      "lanes": [
+        {
+          "name": "CALIBRATION",
+          "y": 110.0,
+          "x_start": 425.0,
+          "x_end": 1110.0
+        },
+        {
+          "name": "MECHANISM",
+          "y": 240.0,
+          "x_start": 425.0,
+          "x_end": 855.0
+        },
+        {
+          "name": "MOTION",
+          "y": 370.0,
+          "x_start": 425.0,
+          "x_end": 1110.0
+        },
+        {
+          "name": "RECOVERY",
+          "y": 500.0,
+          "x_start": 425.0,
+          "x_end": 1110.0
+        },
+        {
+          "name": "FAULT",
+          "y": 634.0,
+          "x_start": 680.0,
+          "x_end": 855.0
+        }
+      ],
+      "width": 1575.5,
+      "height": 850.0
+    }
+  ],
+  "aa_sms": [
+    {
+      "id": "AlignState_state",
+      "display_name": "AlignState (state)",
+      "enum_def": {
+        "name": "AlignState",
+        "variants": [
+          "ALIGN_IDLE",
+          "CALIBRATING",
+          "CAL_STOPPING",
+          "CAL_BACKOFF",
+          "GOING",
+          "HOLD",
+          "RETURNING",
+          "RETURNED",
+          "RECOVERY",
+          "REC_STOPPING",
+          "REC_BACKOFF"
+        ],
+        "file_path": "tests/fixtures/aa_ns_stm_port/Core/Src/alignment.c",
+        "line": 34
+      },
+      "var": {
+        "name": "state",
+        "enum_type": "AlignState",
+        "scope": "Global",
+        "initial_value": "ALIGN_IDLE",
+        "file_path": "tests/fixtures/aa_ns_stm_port/Core/Src/alignment.c",
+        "line": 44
+      },
+      "states": [
+        "ALIGN_IDLE",
+        "CALIBRATING",
+        "CAL_STOPPING",
+        "CAL_BACKOFF",
+        "GOING",
+        "HOLD",
+        "RETURNING",
+        "RETURNED",
+        "RECOVERY",
+        "REC_STOPPING",
+        "REC_BACKOFF",
+        "SYSTEM FAULT"
+      ],
+      "transitions": [
+        {
+          "from": "CALIBRATING",
+          "to": "SYSTEM FAULT",
+          "guard": "now - stateStart > CAL_TIMEOUT [system_fault: CAL TIMEOUT]",
+          "label": "CAL TIMEOUT",
+          "is_fault": true,
+          "transition_type": {
+            "IndirectHelper": {
+              "helper_name": "system_fault",
+              "argument": "CAL TIMEOUT"
+            }
+          },
+          "line": 253
+        },
+        {
+          "from": "CALIBRATING",
+          "to": "CAL_STOPPING",
+          "guard": "hit[AXIS_Z1] && hit[AXIS_Z2]",
+          "label": "Hit[AXIS Z1] and Hit[AXIS Z2]",
+          "is_fault": false,
+          "transition_type": "Direct",
+          "line": 267
+        },
+        {
+          "from": "CALIBRATING",
+          "to": "SYSTEM FAULT",
+          "guard": "hit[AXIS_Z1] && !hit[AXIS_Z2] && axes[AXIS_Z2].current_pos == axes[AXIS_Z2].target_pos [system_fault: Z2 LIMIT NOT FOUND]",
+          "label": "Z2 LIMIT NOT FOUND",
+          "is_fault": true,
+          "transition_type": {
+            "IndirectHelper": {
+              "helper_name": "system_fault",
+              "argument": "Z2 LIMIT NOT FOUND"
+            }
+          },
+          "line": 269
+        },
+        {
+          "from": "CALIBRATING",
+          "to": "SYSTEM FAULT",
+          "guard": "hit[AXIS_Z2] && !hit[AXIS_Z1] && axes[AXIS_Z1].current_pos == axes[AXIS_Z1].target_pos [system_fault: Z1 LIMIT NOT FOUND]",
+          "label": "Z1 LIMIT NOT FOUND",
+          "is_fault": true,
+          "transition_type": {
+            "IndirectHelper": {
+              "helper_name": "system_fault",
+              "argument": "Z1 LIMIT NOT FOUND"
+            }
+          },
+          "line": 271
+        },
+        {
+          "from": "CAL_STOPPING",
+          "to": "SYSTEM FAULT",
+          "guard": "now - stateStart > CAL_TIMEOUT [system_fault: CAL STOP TIMEOUT]",
+          "label": "CAL STOP TIMEOUT",
+          "is_fault": true,
+          "transition_type": {
+            "IndirectHelper": {
+              "helper_name": "system_fault",
+              "argument": "CAL STOP TIMEOUT"
+            }
+          },
+          "line": 277
+        },
+        {
+          "from": "CAL_STOPPING",
+          "to": "SYSTEM FAULT",
+          "guard": "axes_done() && !skewOK() [system_fault: CAL SKEW]",
+          "label": "CAL SKEW",
+          "is_fault": true,
+          "transition_type": {
+            "IndirectHelper": {
+              "helper_name": "system_fault",
+              "argument": "CAL SKEW"
+            }
+          },
+          "line": 280
+        },
+        {
+          "from": "CAL_STOPPING",
+          "to": "CAL_BACKOFF",
+          "guard": "axes_done()",
+          "label": "Axes Done",
+          "is_fault": false,
+          "transition_type": "Direct",
+          "line": 285
+        },
+        {
+          "from": "CAL_BACKOFF",
+          "to": "SYSTEM FAULT",
+          "guard": "now - stateStart > CAL_TIMEOUT [system_fault: CAL BACKOFF TIMEOUT]",
+          "label": "CAL BACKOFF TIMEOUT",
+          "is_fault": true,
+          "transition_type": {
+            "IndirectHelper": {
+              "helper_name": "system_fault",
+              "argument": "CAL BACKOFF TIMEOUT"
+            }
+          },
+          "line": 293
+        },
+        {
+          "from": "CAL_BACKOFF",
+          "to": "ALIGN_IDLE",
+          "guard": "axes_done()",
+          "label": "Axes Done",
+          "is_fault": false,
+          "transition_type": "Direct",
+          "line": 298
+        },
+        {
+          "from": "GOING",
+          "to": "SYSTEM FAULT",
+          "guard": "now - stateStart > MOVE_TIMEOUT [system_fault: GO TIMEOUT]",
+          "label": "GO TIMEOUT",
+          "is_fault": true,
+          "transition_type": {
+            "IndirectHelper": {
+              "helper_name": "system_fault",
+              "argument": "GO TIMEOUT"
+            }
+          },
+          "line": 305
+        },
+        {
+          "from": "GOING",
+          "to": "HOLD",
+          "guard": "axes_done()",
+          "label": "Axes Done",
+          "is_fault": false,
+          "transition_type": "Direct",
+          "line": 307
+        },
+        {
+          "from": "RETURNING",
+          "to": "RECOVERY",
+          "guard": "enteringRecovery",
+          "label": "Entering Recovery",
+          "is_fault": false,
+          "transition_type": "Direct",
+          "line": 329
+        },
+        {
+          "from": "RETURNING",
+          "to": "RETURNED",
+          "guard": "axes_done()",
+          "label": "Axes Done",
+          "is_fault": false,
+          "transition_type": "Direct",
+          "line": 331
+        },
+        {
+          "from": "RETURNING",
+          "to": "SYSTEM FAULT",
+          "guard": "now - stateStart > MOVE_TIMEOUT [system_fault: RETURN TIMEOUT]",
+          "label": "RETURN TIMEOUT",
+          "is_fault": true,
+          "transition_type": {
+            "IndirectHelper": {
+              "helper_name": "system_fault",
+              "argument": "RETURN TIMEOUT"
+            }
+          },
+          "line": 334
+        },
+        {
+          "from": "RECOVERY",
+          "to": "SYSTEM FAULT",
+          "guard": "now - stateStart > RECOVERY_TIMEOUT [system_fault: REC TIMEOUT]",
+          "label": "REC TIMEOUT",
+          "is_fault": true,
+          "transition_type": {
+            "IndirectHelper": {
+              "helper_name": "system_fault",
+              "argument": "REC TIMEOUT"
+            }
+          },
+          "line": 341
+        },
+        {
+          "from": "RECOVERY",
+          "to": "REC_STOPPING",
+          "guard": "hit[AXIS_Z1] && hit[AXIS_Z2]",
+          "label": "Hit[AXIS Z1] and Hit[AXIS Z2]",
+          "is_fault": false,
+          "transition_type": "Direct",
+          "line": 355
+        },
+        {
+          "from": "RECOVERY",
+          "to": "SYSTEM FAULT",
+          "guard": "hit[AXIS_Z1] && !hit[AXIS_Z2] && axes[AXIS_Z2].current_pos == axes[AXIS_Z2].target_pos [system_fault: Z2 LIMIT NOT FOUND]",
+          "label": "Z2 LIMIT NOT FOUND",
+          "is_fault": true,
+          "transition_type": {
+            "IndirectHelper": {
+              "helper_name": "system_fault",
+              "argument": "Z2 LIMIT NOT FOUND"
+            }
+          },
+          "line": 357
+        },
+        {
+          "from": "RECOVERY",
+          "to": "SYSTEM FAULT",
+          "guard": "hit[AXIS_Z2] && !hit[AXIS_Z1] && axes[AXIS_Z1].current_pos == axes[AXIS_Z1].target_pos [system_fault: Z1 LIMIT NOT FOUND]",
+          "label": "Z1 LIMIT NOT FOUND",
+          "is_fault": true,
+          "transition_type": {
+            "IndirectHelper": {
+              "helper_name": "system_fault",
+              "argument": "Z1 LIMIT NOT FOUND"
+            }
+          },
+          "line": 359
+        },
+        {
+          "from": "REC_STOPPING",
+          "to": "SYSTEM FAULT",
+          "guard": "now - stateStart > RECOVERY_TIMEOUT [system_fault: REC STOP TIMEOUT]",
+          "label": "REC STOP TIMEOUT",
+          "is_fault": true,
+          "transition_type": {
+            "IndirectHelper": {
+              "helper_name": "system_fault",
+              "argument": "REC STOP TIMEOUT"
+            }
+          },
+          "line": 365
+        },
+        {
+          "from": "REC_STOPPING",
+          "to": "SYSTEM FAULT",
+          "guard": "axes_done() && !skewOK() [system_fault: REC SKEW]",
+          "label": "REC SKEW",
+          "is_fault": true,
+          "transition_type": {
+            "IndirectHelper": {
+              "helper_name": "system_fault",
+              "argument": "REC SKEW"
+            }
+          },
+          "line": 368
+        },
+        {
+          "from": "REC_STOPPING",
+          "to": "REC_BACKOFF",
+          "guard": "axes_done()",
+          "label": "Axes Done",
+          "is_fault": false,
+          "transition_type": "Direct",
+          "line": 372
+        },
+        {
+          "from": "REC_BACKOFF",
+          "to": "SYSTEM FAULT",
+          "guard": "now - stateStart > RECOVERY_TIMEOUT [system_fault: REC BACKOFF TIMEOUT]",
+          "label": "REC BACKOFF TIMEOUT",
+          "is_fault": true,
+          "transition_type": {
+            "IndirectHelper": {
+              "helper_name": "system_fault",
+              "argument": "REC BACKOFF TIMEOUT"
+            }
+          },
+          "line": 379
+        },
+        {
+          "from": "REC_BACKOFF",
+          "to": "RETURNED",
+          "guard": "axes_done()",
+          "label": "Axes Done",
+          "is_fault": false,
+          "transition_type": "Direct",
+          "line": 384
+        },
+        {
+          "from": "ALIGN_IDLE",
+          "to": "CALIBRATING",
+          "guard": "CMD: CAL",
+          "label": "CMD: CAL",
+          "is_fault": false,
+          "transition_type": "EventTriggered",
+          "line": 21
+        },
+        {
+          "from": "ALIGN_IDLE",
+          "to": "GOING",
+          "guard": "CMD: GO",
+          "label": "CMD: GO",
+          "is_fault": false,
+          "transition_type": "EventTriggered",
+          "line": 28
+        },
+        {
+          "from": "RETURNED",
+          "to": "GOING",
+          "guard": "CMD: GO",
+          "label": "CMD: GO",
+          "is_fault": false,
+          "transition_type": "EventTriggered",
+          "line": 28
+        },
+        {
+          "from": "HOLD",
+          "to": "RETURNING",
+          "guard": "CMD: RET",
+          "label": "CMD: RET",
+          "is_fault": false,
+          "transition_type": "EventTriggered",
+          "line": 35
+        },
+        {
+          "from": "(any state)",
+          "to": "ALIGN_IDLE",
+          "guard": "CMD: RST",
+          "label": "CMD: RST",
+          "is_fault": false,
+          "transition_type": "EventTriggered",
+          "line": 41
+        },
+        {
+          "from": "(any state)",
+          "to": "ALIGN_IDLE",
+          "guard": "alignment_emergency_stop",
+          "label": "alignment_emergency_stop",
+          "is_fault": false,
+          "transition_type": "EventTriggered",
+          "line": 11
+        }
+      ],
+      "ambiguous_transitions": [
+        {
+          "target": "ALIGN_IDLE",
+          "guard": "CMD: RST",
+          "line": 41,
+          "note": "Command dispatch via cmd_rst"
+        },
+        {
+          "target": "ALIGN_IDLE",
+          "guard": "alignment_emergency_stop",
+          "line": 11,
+          "note": "Command dispatch via system_fault"
+        }
+      ]
+    },
+    {
+      "id": "HatchState_hatchState",
+      "display_name": "HatchState (hatchState)",
+      "enum_def": {
+        "name": "HatchState",
+        "variants": [
+          "HATCH_IDLE",
+          "HATCH_OPENING",
+          "HATCH_CLOSING"
+        ],
+        "file_path": "tests/fixtures/aa_ns_stm_port/Core/Src/hatch.c",
+        "line": 9
+      },
+      "var": {
+        "name": "hatchState",
+        "enum_type": "HatchState",
+        "scope": "Global",
+        "initial_value": "HATCH_IDLE",
+        "file_path": "tests/fixtures/aa_ns_stm_port/Core/Src/hatch.c",
+        "line": 11
+      },
+      "states": [
+        "HATCH_IDLE",
+        "HATCH_OPENING",
+        "HATCH_CLOSING"
+      ],
+      "transitions": [
+        {
+          "from": "HATCH_OPENING",
+          "to": "HATCH_IDLE",
+          "guard": "now - stateStart > OPEN_DURATION_MS",
+          "label": "Timeout (OPEN_DURATION_MS)",
+          "is_fault": false,
+          "transition_type": "Direct",
+          "line": 75
+        },
+        {
+          "from": "HATCH_CLOSING",
+          "to": "HATCH_IDLE",
+          "guard": "now - stateStart > CLOSE_DURATION_MS",
+          "label": "Timeout (CLOSE_DURATION_MS)",
+          "is_fault": false,
+          "transition_type": "Direct",
+          "line": 86
+        },
+        {
+          "from": "HATCH_IDLE",
+          "to": "HATCH_OPENING",
+          "guard": "CMD: OPEN",
+          "label": "CMD: OPEN",
+          "is_fault": false,
+          "transition_type": "EventTriggered",
+          "line": 47
+        },
+        {
+          "from": "HATCH_IDLE",
+          "to": "HATCH_CLOSING",
+          "guard": "CMD: CLOSE",
+          "label": "CMD: CLOSE",
+          "is_fault": false,
+          "transition_type": "EventTriggered",
+          "line": 52
+        },
+        {
+          "from": "(any state)",
+          "to": "HATCH_IDLE",
+          "guard": "CMD: STOP",
+          "label": "CMD: STOP",
+          "is_fault": false,
+          "transition_type": "EventTriggered",
+          "line": 58
+        },
+        {
+          "from": "(any state)",
+          "to": "HATCH_IDLE",
+          "guard": "hatch_emergency_stop",
+          "label": "hatch_emergency_stop",
+          "is_fault": false,
+          "transition_type": "EventTriggered",
+          "line": 12
+        }
+      ],
+      "ambiguous_transitions": [
+        {
+          "target": "HATCH_IDLE",
+          "guard": "CMD: STOP",
+          "line": 58,
+          "note": "Command dispatch via cmd_stop"
+        },
+        {
+          "target": "HATCH_IDLE",
+          "guard": "hatch_emergency_stop",
+          "line": 12,
+          "note": "Command dispatch via system_fault"
+        }
+      ]
+    }
+  ],
+  "aa_layouts": [
+    {
+      "nodes": {
+        "ALIGN_IDLE": {
+          "id": "ALIGN_IDLE",
+          "label": "ALIGN_IDLE",
+          "x": 110.0,
+          "y": 175.0,
+          "width": 175.0,
+          "height": 54.0,
+          "is_fault": false,
+          "is_initial": true,
+          "cluster": "INITIAL",
+          "collapsed_out_badges": [],
+          "incoming_count": 3,
+          "outgoing_count": 2
+        },
+        "CALIBRATING": {
+          "id": "CALIBRATING",
+          "label": "CALIBRATING",
+          "x": 425.0,
+          "y": 110.0,
+          "width": 175.0,
+          "height": 54.0,
+          "is_fault": false,
+          "is_initial": false,
+          "cluster": "CALIBRATION",
+          "collapsed_out_badges": [
+            "SYSTEM FAULT"
+          ],
+          "incoming_count": 1,
+          "outgoing_count": 4
+        },
+        "CAL_BACKOFF": {
+          "id": "CAL_BACKOFF",
+          "label": "CAL_BACKOFF",
+          "x": 935.0,
+          "y": 110.0,
+          "width": 175.0,
+          "height": 54.0,
+          "is_fault": false,
+          "is_initial": false,
+          "cluster": "CALIBRATION",
+          "collapsed_out_badges": [
+            "SYSTEM FAULT"
+          ],
+          "incoming_count": 1,
+          "outgoing_count": 2
+        },
+        "CAL_STOPPING": {
+          "id": "CAL_STOPPING",
+          "label": "CAL_STOPPING",
+          "x": 680.0,
+          "y": 110.0,
+          "width": 175.0,
+          "height": 54.0,
+          "is_fault": false,
+          "is_initial": false,
+          "cluster": "CALIBRATION",
+          "collapsed_out_badges": [
+            "SYSTEM FAULT"
+          ],
+          "incoming_count": 1,
+          "outgoing_count": 3
+        },
+        "GOING": {
+          "id": "GOING",
+          "label": "GOING",
+          "x": 680.0,
+          "y": 240.0,
+          "width": 175.0,
+          "height": 54.0,
+          "is_fault": false,
+          "is_initial": false,
+          "cluster": "MOTION",
+          "collapsed_out_badges": [
+            "SYSTEM FAULT"
+          ],
+          "incoming_count": 2,
+          "outgoing_count": 2
+        },
+        "HOLD": {
+          "id": "HOLD",
+          "label": "HOLD",
+          "x": 935.0,
+          "y": 240.0,
+          "width": 175.0,
+          "height": 54.0,
+          "is_fault": false,
+          "is_initial": false,
+          "cluster": "MOTION",
+          "collapsed_out_badges": [],
+          "incoming_count": 1,
+          "outgoing_count": 1
+        },
+        "RECOVERY": {
+          "id": "RECOVERY",
+          "label": "RECOVERY",
+          "x": 425.0,
+          "y": 370.0,
+          "width": 175.0,
+          "height": 54.0,
+          "is_fault": false,
+          "is_initial": false,
+          "cluster": "RECOVERY",
+          "collapsed_out_badges": [
+            "SYSTEM FAULT"
+          ],
+          "incoming_count": 1,
+          "outgoing_count": 4
+        },
+        "REC_BACKOFF": {
+          "id": "REC_BACKOFF",
+          "label": "REC_BACKOFF",
+          "x": 935.0,
+          "y": 370.0,
+          "width": 175.0,
+          "height": 54.0,
+          "is_fault": false,
+          "is_initial": false,
+          "cluster": "RECOVERY",
+          "collapsed_out_badges": [
+            "SYSTEM FAULT"
+          ],
+          "incoming_count": 1,
+          "outgoing_count": 2
+        },
+        "REC_STOPPING": {
+          "id": "REC_STOPPING",
+          "label": "REC_STOPPING",
+          "x": 680.0,
+          "y": 370.0,
+          "width": 175.0,
+          "height": 54.0,
+          "is_fault": false,
+          "is_initial": false,
+          "cluster": "RECOVERY",
+          "collapsed_out_badges": [
+            "SYSTEM FAULT"
+          ],
+          "incoming_count": 1,
+          "outgoing_count": 3
+        },
+        "RETURNED": {
+          "id": "RETURNED",
+          "label": "RETURNED",
+          "x": 425.0,
+          "y": 240.0,
+          "width": 175.0,
+          "height": 54.0,
+          "is_fault": false,
+          "is_initial": false,
+          "cluster": "MOTION",
+          "collapsed_out_badges": [],
+          "incoming_count": 2,
+          "outgoing_count": 1
+        },
+        "RETURNING": {
+          "id": "RETURNING",
+          "label": "RETURNING",
+          "x": 1190.0,
+          "y": 240.0,
+          "width": 175.0,
+          "height": 54.0,
+          "is_fault": false,
+          "is_initial": false,
+          "cluster": "MOTION",
+          "collapsed_out_badges": [
+            "SYSTEM FAULT"
+          ],
+          "incoming_count": 1,
+          "outgoing_count": 3
+        },
+        "SYSTEM FAULT": {
+          "id": "SYSTEM FAULT",
+          "label": "SYSTEM FAULT",
+          "x": 807.5,
+          "y": 504.0,
+          "width": 175.0,
+          "height": 54.0,
+          "is_fault": true,
+          "is_initial": false,
+          "cluster": "FAULT",
+          "collapsed_out_badges": [],
+          "incoming_count": 14,
+          "outgoing_count": 0
+        }
+      },
+      "edges": [
+        {
+          "from": "CALIBRATING",
+          "to": "SYSTEM FAULT",
+          "guard": "now - stateStart > CAL_TIMEOUT [system_fault: CAL TIMEOUT]",
+          "label": "CAL TIMEOUT",
+          "display_guard": "CAL TIMEOUT",
+          "is_fault": true,
+          "start": [
+            512.5,
+            164.0
+          ],
+          "end": [
+            895.0,
+            504.0
+          ],
+          "control1": [
+            512.5,
+            317.0
+          ],
+          "control2": [
+            895.0,
+            351.0
+          ],
+          "waypoints": [
+            [
+              512.5,
+              164.0
+            ],
+            [
+              512.5,
+              464.0
+            ],
+            [
+              895.0,
+              464.0
+            ],
+            [
+              895.0,
+              504.0
+            ]
+          ],
+          "label_pos": [
+            512.5,
+            188.0
+          ],
+          "transition_type": {
+            "IndirectHelper": {
+              "helper_name": "system_fault",
+              "argument": "CAL TIMEOUT"
+            }
+          },
+          "is_high_fan_in": true,
+          "is_inter_cluster": true
+        },
+        {
+          "from": "CALIBRATING",
+          "to": "CAL_STOPPING",
+          "guard": "hit[AXIS_Z1] && hit[AXIS_Z2]",
+          "label": "Hit[AXIS Z1] and Hit[AXIS Z2]",
+          "display_guard": "Hit[AXIS Z1] and Hit[AXIS Z2]",
+          "is_fault": false,
+          "start": [
+            600.0,
+            137.0
+          ],
+          "end": [
+            680.0,
+            137.0
+          ],
+          "control1": [
+            632.0,
+            137.0
+          ],
+          "control2": [
+            648.0,
+            137.0
+          ],
+          "waypoints": [
+            [
+              600.0,
+              137.0
+            ],
+            [
+              680.0,
+              137.0
+            ]
+          ],
+          "label_pos": [
+            690.0,
+            182.0
+          ],
+          "transition_type": "Direct",
+          "is_high_fan_in": false,
+          "is_inter_cluster": false
+        },
+        {
+          "from": "CALIBRATING",
+          "to": "SYSTEM FAULT",
+          "guard": "hit[AXIS_Z1] && !hit[AXIS_Z2] && axes[AXIS_Z2].current_pos == axes[AXIS_Z2].target_pos [system_fault: Z2 LIMIT NOT FOUND]",
+          "label": "Z2 LIMIT NOT FOUND",
+          "display_guard": "Z2 LIMIT NOT FOUND",
+          "is_fault": true,
+          "start": [
+            512.5,
+            164.0
+          ],
+          "end": [
+            895.0,
+            504.0
+          ],
+          "control1": [
+            512.5,
+            317.0
+          ],
+          "control2": [
+            895.0,
+            351.0
+          ],
+          "waypoints": [
+            [
+              512.5,
+              164.0
+            ],
+            [
+              512.5,
+              464.0
+            ],
+            [
+              895.0,
+              464.0
+            ],
+            [
+              895.0,
+              504.0
+            ]
+          ],
+          "label_pos": [
+            742.5,
+            212.0
+          ],
+          "transition_type": {
+            "IndirectHelper": {
+              "helper_name": "system_fault",
+              "argument": "Z2 LIMIT NOT FOUND"
+            }
+          },
+          "is_high_fan_in": true,
+          "is_inter_cluster": true
+        },
+        {
+          "from": "CALIBRATING",
+          "to": "SYSTEM FAULT",
+          "guard": "hit[AXIS_Z2] && !hit[AXIS_Z1] && axes[AXIS_Z1].current_pos == axes[AXIS_Z1].target_pos [system_fault: Z1 LIMIT NOT FOUND]",
+          "label": "Z1 LIMIT NOT FOUND",
+          "display_guard": "Z1 LIMIT NOT FOUND",
+          "is_fault": true,
+          "start": [
+            512.5,
+            164.0
+          ],
+          "end": [
+            895.0,
+            504.0
+          ],
+          "control1": [
+            512.5,
+            317.0
+          ],
+          "control2": [
+            895.0,
+            351.0
+          ],
+          "waypoints": [
+            [
+              512.5,
+              164.0
+            ],
+            [
+              512.5,
+              464.0
+            ],
+            [
+              895.0,
+              464.0
+            ],
+            [
+              895.0,
+              504.0
+            ]
+          ],
+          "label_pos": [
+            352.5,
+            140.0
+          ],
+          "transition_type": {
+            "IndirectHelper": {
+              "helper_name": "system_fault",
+              "argument": "Z1 LIMIT NOT FOUND"
+            }
+          },
+          "is_high_fan_in": true,
+          "is_inter_cluster": true
+        },
+        {
+          "from": "CAL_STOPPING",
+          "to": "SYSTEM FAULT",
+          "guard": "now - stateStart > CAL_TIMEOUT [system_fault: CAL STOP TIMEOUT]",
+          "label": "CAL STOP TIMEOUT",
+          "display_guard": "CAL STOP TIMEOUT",
+          "is_fault": true,
+          "start": [
+            767.5,
+            164.0
+          ],
+          "end": [
+            895.0,
+            504.0
+          ],
+          "control1": [
+            767.5,
+            317.0
+          ],
+          "control2": [
+            895.0,
+            351.0
+          ],
+          "waypoints": [
+            [
+              767.5,
+              164.0
+            ],
+            [
+              767.5,
+              464.0
+            ],
+            [
+              895.0,
+              464.0
+            ],
+            [
+              895.0,
+              504.0
+            ]
+          ],
+          "label_pos": [
+            867.5,
+            188.0
+          ],
+          "transition_type": {
+            "IndirectHelper": {
+              "helper_name": "system_fault",
+              "argument": "CAL STOP TIMEOUT"
+            }
+          },
+          "is_high_fan_in": true,
+          "is_inter_cluster": true
+        },
+        {
+          "from": "CAL_STOPPING",
+          "to": "SYSTEM FAULT",
+          "guard": "axes_done() && !skewOK() [system_fault: CAL SKEW]",
+          "label": "CAL SKEW",
+          "display_guard": "CAL SKEW",
+          "is_fault": true,
+          "start": [
+            767.5,
+            164.0
+          ],
+          "end": [
+            895.0,
+            504.0
+          ],
+          "control1": [
+            767.5,
+            317.0
+          ],
+          "control2": [
+            895.0,
+            351.0
+          ],
+          "waypoints": [
+            [
+              767.5,
+              164.0
+            ],
+            [
+              767.5,
+              464.0
+            ],
+            [
+              895.0,
+              464.0
+            ],
+            [
+              895.0,
+              504.0
+            ]
+          ],
+          "label_pos": [
+            997.5,
+            188.0
+          ],
+          "transition_type": {
+            "IndirectHelper": {
+              "helper_name": "system_fault",
+              "argument": "CAL SKEW"
+            }
+          },
+          "is_high_fan_in": true,
+          "is_inter_cluster": true
+        },
+        {
+          "from": "CAL_STOPPING",
+          "to": "CAL_BACKOFF",
+          "guard": "axes_done()",
+          "label": "Axes Done",
+          "display_guard": "Axes Done",
+          "is_fault": false,
+          "start": [
+            855.0,
+            137.0
+          ],
+          "end": [
+            935.0,
+            137.0
+          ],
+          "control1": [
+            887.0,
+            137.0
+          ],
+          "control2": [
+            903.0,
+            137.0
+          ],
+          "waypoints": [
+            [
+              855.0,
+              137.0
+            ],
+            [
+              935.0,
+              137.0
+            ]
+          ],
+          "label_pos": [
+            1125.0,
+            182.0
+          ],
+          "transition_type": "Direct",
+          "is_high_fan_in": false,
+          "is_inter_cluster": false
+        },
+        {
+          "from": "CAL_BACKOFF",
+          "to": "SYSTEM FAULT",
+          "guard": "now - stateStart > CAL_TIMEOUT [system_fault: CAL BACKOFF TIMEOUT]",
+          "label": "CAL BACKOFF TIMEOUT",
+          "display_guard": "CAL BACKOFF TIMEOUT",
+          "is_fault": true,
+          "start": [
+            1022.5,
+            164.0
+          ],
+          "end": [
+            895.0,
+            504.0
+          ],
+          "control1": [
+            1022.5,
+            317.0
+          ],
+          "control2": [
+            895.0,
+            351.0
+          ],
+          "waypoints": [
+            [
+              1022.5,
+              164.0
+            ],
+            [
+              1022.5,
+              464.0
+            ],
+            [
+              895.0,
+              464.0
+            ],
+            [
+              895.0,
+              504.0
+            ]
+          ],
+          "label_pos": [
+            1252.5,
+            188.0
+          ],
+          "transition_type": {
+            "IndirectHelper": {
+              "helper_name": "system_fault",
+              "argument": "CAL BACKOFF TIMEOUT"
+            }
+          },
+          "is_high_fan_in": true,
+          "is_inter_cluster": true
+        },
+        {
+          "from": "CAL_BACKOFF",
+          "to": "ALIGN_IDLE",
+          "guard": "axes_done()",
+          "label": "Axes Done",
+          "display_guard": "Axes Done",
+          "is_fault": false,
+          "start": [
+            1022.5,
+            110.0
+          ],
+          "end": [
+            215.0,
+            175.0
+          ],
+          "control1": [
+            1022.5,
+            80.0
+          ],
+          "control2": [
+            215.0,
+            80.0
+          ],
+          "waypoints": [
+            [
+              1022.5,
+              110.0
+            ],
+            [
+              1022.5,
+              80.0
+            ],
+            [
+              215.0,
+              80.0
+            ],
+            [
+              215.0,
+              175.0
+            ]
+          ],
+          "label_pos": [
+            618.75,
+            68.0
+          ],
+          "transition_type": "Direct",
+          "is_high_fan_in": false,
+          "is_inter_cluster": true
+        },
+        {
+          "from": "GOING",
+          "to": "SYSTEM FAULT",
+          "guard": "now - stateStart > MOVE_TIMEOUT [system_fault: GO TIMEOUT]",
+          "label": "GO TIMEOUT",
+          "display_guard": "GO TIMEOUT",
+          "is_fault": true,
+          "start": [
+            767.5,
+            294.0
+          ],
+          "end": [
+            895.0,
+            504.0
+          ],
+          "control1": [
+            767.5,
+            388.5
+          ],
+          "control2": [
+            895.0,
+            409.5
+          ],
+          "waypoints": [
+            [
+              767.5,
+              294.0
+            ],
+            [
+              767.5,
+              464.0
+            ],
+            [
+              895.0,
+              464.0
+            ],
+            [
+              895.0,
+              504.0
+            ]
+          ],
+          "label_pos": [
+            767.5,
+            318.0
+          ],
+          "transition_type": {
+            "IndirectHelper": {
+              "helper_name": "system_fault",
+              "argument": "GO TIMEOUT"
+            }
+          },
+          "is_high_fan_in": true,
+          "is_inter_cluster": true
+        },
+        {
+          "from": "GOING",
+          "to": "HOLD",
+          "guard": "axes_done()",
+          "label": "Axes Done",
+          "display_guard": "Axes Done",
+          "is_fault": false,
+          "start": [
+            855.0,
+            267.0
+          ],
+          "end": [
+            935.0,
+            267.0
+          ],
+          "control1": [
+            887.0,
+            267.0
+          ],
+          "control2": [
+            903.0,
+            267.0
+          ],
+          "waypoints": [
+            [
+              855.0,
+              267.0
+            ],
+            [
+              935.0,
+              267.0
+            ]
+          ],
+          "label_pos": [
+            895.0,
+            312.0
+          ],
+          "transition_type": "Direct",
+          "is_high_fan_in": false,
+          "is_inter_cluster": false
+        },
+        {
+          "from": "RETURNING",
+          "to": "RECOVERY",
+          "guard": "enteringRecovery",
+          "label": "Entering Recovery",
+          "display_guard": "Entering Recovery",
+          "is_fault": false,
+          "start": [
+            1277.5,
+            294.0
+          ],
+          "end": [
+            512.5,
+            370.0
+          ],
+          "control1": [
+            1277.5,
+            324.0
+          ],
+          "control2": [
+            512.5,
+            324.0
+          ],
+          "waypoints": [
+            [
+              1277.5,
+              294.0
+            ],
+            [
+              1277.5,
+              324.0
+            ],
+            [
+              512.5,
+              324.0
+            ],
+            [
+              512.5,
+              370.0
+            ]
+          ],
+          "label_pos": [
+            1055.0,
+            312.0
+          ],
+          "transition_type": "Direct",
+          "is_high_fan_in": false,
+          "is_inter_cluster": true
+        },
+        {
+          "from": "RETURNING",
+          "to": "RETURNED",
+          "guard": "axes_done()",
+          "label": "Axes Done",
+          "display_guard": "Axes Done",
+          "is_fault": false,
+          "start": [
+            1277.5,
+            240.0
+          ],
+          "end": [
+            512.5,
+            240.0
+          ],
+          "control1": [
+            1277.5,
+            215.0
+          ],
+          "control2": [
+            512.5,
+            215.0
+          ],
+          "waypoints": [
+            [
+              1277.5,
+              240.0
+            ],
+            [
+              1277.5,
+              215.0
+            ],
+            [
+              512.5,
+              215.0
+            ],
+            [
+              512.5,
+              240.0
+            ]
+          ],
+          "label_pos": [
+            1205.0,
+            155.0
+          ],
+          "transition_type": "Direct",
+          "is_high_fan_in": false,
+          "is_inter_cluster": false
+        },
+        {
+          "from": "RETURNING",
+          "to": "SYSTEM FAULT",
+          "guard": "now - stateStart > MOVE_TIMEOUT [system_fault: RETURN TIMEOUT]",
+          "label": "RETURN TIMEOUT",
+          "display_guard": "RETURN TIMEOUT",
+          "is_fault": true,
+          "start": [
+            1277.5,
+            294.0
+          ],
+          "end": [
+            895.0,
+            504.0
+          ],
+          "control1": [
+            1277.5,
+            388.5
+          ],
+          "control2": [
+            895.0,
+            409.5
+          ],
+          "waypoints": [
+            [
+              1277.5,
+              294.0
+            ],
+            [
+              1277.5,
+              464.0
+            ],
+            [
+              895.0,
+              464.0
+            ],
+            [
+              895.0,
+              504.0
+            ]
+          ],
+          "label_pos": [
+            1277.5,
+            318.0
+          ],
+          "transition_type": {
+            "IndirectHelper": {
+              "helper_name": "system_fault",
+              "argument": "RETURN TIMEOUT"
+            }
+          },
+          "is_high_fan_in": true,
+          "is_inter_cluster": true
+        },
+        {
+          "from": "RECOVERY",
+          "to": "SYSTEM FAULT",
+          "guard": "now - stateStart > RECOVERY_TIMEOUT [system_fault: REC TIMEOUT]",
+          "label": "REC TIMEOUT",
+          "display_guard": "REC TIMEOUT",
+          "is_fault": true,
+          "start": [
+            512.5,
+            424.0
+          ],
+          "end": [
+            895.0,
+            504.0
+          ],
+          "control1": [
+            512.5,
+            460.0
+          ],
+          "control2": [
+            895.0,
+            468.0
+          ],
+          "waypoints": [
+            [
+              512.5,
+              424.0
+            ],
+            [
+              512.5,
+              464.0
+            ],
+            [
+              895.0,
+              464.0
+            ],
+            [
+              895.0,
+              504.0
+            ]
+          ],
+          "label_pos": [
+            512.5,
+            448.0
+          ],
+          "transition_type": {
+            "IndirectHelper": {
+              "helper_name": "system_fault",
+              "argument": "REC TIMEOUT"
+            }
+          },
+          "is_high_fan_in": true,
+          "is_inter_cluster": true
+        },
+        {
+          "from": "RECOVERY",
+          "to": "REC_STOPPING",
+          "guard": "hit[AXIS_Z1] && hit[AXIS_Z2]",
+          "label": "Hit[AXIS Z1] and Hit[AXIS Z2]",
+          "display_guard": "Hit[AXIS Z1] and Hit[AXIS Z2]",
+          "is_fault": false,
+          "start": [
+            600.0,
+            397.0
+          ],
+          "end": [
+            680.0,
+            397.0
+          ],
+          "control1": [
+            632.0,
+            397.0
+          ],
+          "control2": [
+            648.0,
+            397.0
+          ],
+          "waypoints": [
+            [
+              600.0,
+              397.0
+            ],
+            [
+              680.0,
+              397.0
+            ]
+          ],
+          "label_pos": [
+            690.0,
+            442.0
+          ],
+          "transition_type": "Direct",
+          "is_high_fan_in": false,
+          "is_inter_cluster": false
+        },
+        {
+          "from": "RECOVERY",
+          "to": "SYSTEM FAULT",
+          "guard": "hit[AXIS_Z1] && !hit[AXIS_Z2] && axes[AXIS_Z2].current_pos == axes[AXIS_Z2].target_pos [system_fault: Z2 LIMIT NOT FOUND]",
+          "label": "Z2 LIMIT NOT FOUND",
+          "display_guard": "Z2 LIMIT NOT FOUND",
+          "is_fault": true,
+          "start": [
+            512.5,
+            424.0
+          ],
+          "end": [
+            895.0,
+            504.0
+          ],
+          "control1": [
+            512.5,
+            460.0
+          ],
+          "control2": [
+            895.0,
+            468.0
+          ],
+          "waypoints": [
+            [
+              512.5,
+              424.0
+            ],
+            [
+              512.5,
+              464.0
+            ],
+            [
+              895.0,
+              464.0
+            ],
+            [
+              895.0,
+              504.0
+            ]
+          ],
+          "label_pos": [
+            352.5,
+            448.0
+          ],
+          "transition_type": {
+            "IndirectHelper": {
+              "helper_name": "system_fault",
+              "argument": "Z2 LIMIT NOT FOUND"
+            }
+          },
+          "is_high_fan_in": true,
+          "is_inter_cluster": true
+        },
+        {
+          "from": "RECOVERY",
+          "to": "SYSTEM FAULT",
+          "guard": "hit[AXIS_Z2] && !hit[AXIS_Z1] && axes[AXIS_Z1].current_pos == axes[AXIS_Z1].target_pos [system_fault: Z1 LIMIT NOT FOUND]",
+          "label": "Z1 LIMIT NOT FOUND",
+          "display_guard": "Z1 LIMIT NOT FOUND",
+          "is_fault": true,
+          "start": [
+            512.5,
+            424.0
+          ],
+          "end": [
+            895.0,
+            504.0
+          ],
+          "control1": [
+            512.5,
+            460.0
+          ],
+          "control2": [
+            895.0,
+            468.0
+          ],
+          "waypoints": [
+            [
+              512.5,
+              424.0
+            ],
+            [
+              512.5,
+              464.0
+            ],
+            [
+              895.0,
+              464.0
+            ],
+            [
+              895.0,
+              504.0
+            ]
+          ],
+          "label_pos": [
+            202.5,
+            448.0
+          ],
+          "transition_type": {
+            "IndirectHelper": {
+              "helper_name": "system_fault",
+              "argument": "Z1 LIMIT NOT FOUND"
+            }
+          },
+          "is_high_fan_in": true,
+          "is_inter_cluster": true
+        },
+        {
+          "from": "REC_STOPPING",
+          "to": "SYSTEM FAULT",
+          "guard": "now - stateStart > RECOVERY_TIMEOUT [system_fault: REC STOP TIMEOUT]",
+          "label": "REC STOP TIMEOUT",
+          "display_guard": "REC STOP TIMEOUT",
+          "is_fault": true,
+          "start": [
+            767.5,
+            424.0
+          ],
+          "end": [
+            895.0,
+            504.0
+          ],
+          "control1": [
+            767.5,
+            460.0
+          ],
+          "control2": [
+            895.0,
+            468.0
+          ],
+          "waypoints": [
+            [
+              767.5,
+              424.0
+            ],
+            [
+              767.5,
+              464.0
+            ],
+            [
+              895.0,
+              464.0
+            ],
+            [
+              895.0,
+              504.0
+            ]
+          ],
+          "label_pos": [
+            867.5,
+            448.0
+          ],
+          "transition_type": {
+            "IndirectHelper": {
+              "helper_name": "system_fault",
+              "argument": "REC STOP TIMEOUT"
+            }
+          },
+          "is_high_fan_in": true,
+          "is_inter_cluster": true
+        },
+        {
+          "from": "REC_STOPPING",
+          "to": "SYSTEM FAULT",
+          "guard": "axes_done() && !skewOK() [system_fault: REC SKEW]",
+          "label": "REC SKEW",
+          "display_guard": "REC SKEW",
+          "is_fault": true,
+          "start": [
+            767.5,
+            424.0
+          ],
+          "end": [
+            895.0,
+            504.0
+          ],
+          "control1": [
+            767.5,
+            460.0
+          ],
+          "control2": [
+            895.0,
+            468.0
+          ],
+          "waypoints": [
+            [
+              767.5,
+              424.0
+            ],
+            [
+              767.5,
+              464.0
+            ],
+            [
+              895.0,
+              464.0
+            ],
+            [
+              895.0,
+              504.0
+            ]
+          ],
+          "label_pos": [
+            997.5,
+            448.0
+          ],
+          "transition_type": {
+            "IndirectHelper": {
+              "helper_name": "system_fault",
+              "argument": "REC SKEW"
+            }
+          },
+          "is_high_fan_in": true,
+          "is_inter_cluster": true
+        },
+        {
+          "from": "REC_STOPPING",
+          "to": "REC_BACKOFF",
+          "guard": "axes_done()",
+          "label": "Axes Done",
+          "display_guard": "Axes Done",
+          "is_fault": false,
+          "start": [
+            855.0,
+            397.0
+          ],
+          "end": [
+            935.0,
+            397.0
+          ],
+          "control1": [
+            887.0,
+            397.0
+          ],
+          "control2": [
+            903.0,
+            397.0
+          ],
+          "waypoints": [
+            [
+              855.0,
+              397.0
+            ],
+            [
+              935.0,
+              397.0
+            ]
+          ],
+          "label_pos": [
+            1125.0,
+            442.0
+          ],
+          "transition_type": "Direct",
+          "is_high_fan_in": false,
+          "is_inter_cluster": false
+        },
+        {
+          "from": "REC_BACKOFF",
+          "to": "SYSTEM FAULT",
+          "guard": "now - stateStart > RECOVERY_TIMEOUT [system_fault: REC BACKOFF TIMEOUT]",
+          "label": "REC BACKOFF TIMEOUT",
+          "display_guard": "REC BACKOFF TIMEOUT",
+          "is_fault": true,
+          "start": [
+            1022.5,
+            424.0
+          ],
+          "end": [
+            895.0,
+            504.0
+          ],
+          "control1": [
+            1022.5,
+            460.0
+          ],
+          "control2": [
+            895.0,
+            468.0
+          ],
+          "waypoints": [
+            [
+              1022.5,
+              424.0
+            ],
+            [
+              1022.5,
+              464.0
+            ],
+            [
+              895.0,
+              464.0
+            ],
+            [
+              895.0,
+              504.0
+            ]
+          ],
+          "label_pos": [
+            1252.5,
+            448.0
+          ],
+          "transition_type": {
+            "IndirectHelper": {
+              "helper_name": "system_fault",
+              "argument": "REC BACKOFF TIMEOUT"
+            }
+          },
+          "is_high_fan_in": true,
+          "is_inter_cluster": true
+        },
+        {
+          "from": "REC_BACKOFF",
+          "to": "RETURNED",
+          "guard": "axes_done()",
+          "label": "Axes Done",
+          "display_guard": "Axes Done",
+          "is_fault": false,
+          "start": [
+            1022.5,
+            370.0
+          ],
+          "end": [
+            512.5,
+            294.0
+          ],
+          "control1": [
+            1022.5,
+            340.0
+          ],
+          "control2": [
+            512.5,
+            340.0
+          ],
+          "waypoints": [
+            [
+              1022.5,
+              370.0
+            ],
+            [
+              1022.5,
+              340.0
+            ],
+            [
+              512.5,
+              340.0
+            ],
+            [
+              512.5,
+              294.0
+            ]
+          ],
+          "label_pos": [
+            667.5,
+            328.0
+          ],
+          "transition_type": "Direct",
+          "is_high_fan_in": false,
+          "is_inter_cluster": true
+        },
+        {
+          "from": "ALIGN_IDLE",
+          "to": "CALIBRATING",
+          "guard": "CMD: CAL",
+          "label": "CMD: CAL",
+          "display_guard": "CMD: CAL",
+          "is_fault": false,
+          "start": [
+            285.0,
+            193.0
+          ],
+          "end": [
+            425.0,
+            137.0
+          ],
+          "control1": [
+            334.0,
+            193.0
+          ],
+          "control2": [
+            376.0,
+            137.0
+          ],
+          "waypoints": [
+            [
+              285.0,
+              193.0
+            ],
+            [
+              310.0,
+              193.0
+            ],
+            [
+              310.0,
+              137.0
+            ],
+            [
+              425.0,
+              137.0
+            ]
+          ],
+          "label_pos": [
+            370.0,
+            181.0
+          ],
+          "transition_type": "EventTriggered",
+          "is_high_fan_in": false,
+          "is_inter_cluster": true
+        },
+        {
+          "from": "ALIGN_IDLE",
+          "to": "GOING",
+          "guard": "CMD: GO",
+          "label": "CMD: GO",
+          "display_guard": "CMD: GO",
+          "is_fault": false,
+          "start": [
+            285.0,
+            211.0
+          ],
+          "end": [
+            767.5,
+            240.0
+          ],
+          "control1": [
+            423.25,
+            211.0
+          ],
+          "control2": [
+            541.75,
+            267.0
+          ],
+          "waypoints": [
+            [
+              285.0,
+              211.0
+            ],
+            [
+              330.0,
+              211.0
+            ],
+            [
+              330.0,
+              215.0
+            ],
+            [
+              767.5,
+              215.0
+            ],
+            [
+              767.5,
+              240.0
+            ]
+          ],
+          "label_pos": [
+            10.0,
+            199.0
+          ],
+          "transition_type": "EventTriggered",
+          "is_high_fan_in": false,
+          "is_inter_cluster": true
+        },
+        {
+          "from": "RETURNED",
+          "to": "GOING",
+          "guard": "CMD: GO",
+          "label": "CMD: GO",
+          "display_guard": "CMD: GO",
+          "is_fault": false,
+          "start": [
+            600.0,
+            267.0
+          ],
+          "end": [
+            680.0,
+            267.0
+          ],
+          "control1": [
+            632.0,
+            267.0
+          ],
+          "control2": [
+            648.0,
+            267.0
+          ],
+          "waypoints": [
+            [
+              600.0,
+              267.0
+            ],
+            [
+              680.0,
+              267.0
+            ]
+          ],
+          "label_pos": [
+            640.0,
+            281.0
+          ],
+          "transition_type": "EventTriggered",
+          "is_high_fan_in": false,
+          "is_inter_cluster": false
+        },
+        {
+          "from": "HOLD",
+          "to": "RETURNING",
+          "guard": "CMD: RET",
+          "label": "CMD: RET",
+          "display_guard": "CMD: RET",
+          "is_fault": false,
+          "start": [
+            1110.0,
+            267.0
+          ],
+          "end": [
+            1190.0,
+            267.0
+          ],
+          "control1": [
+            1142.0,
+            267.0
+          ],
+          "control2": [
+            1158.0,
+            267.0
+          ],
+          "waypoints": [
+            [
+              1110.0,
+              267.0
+            ],
+            [
+              1190.0,
+              267.0
+            ]
+          ],
+          "label_pos": [
+            1150.0,
+            281.0
+          ],
+          "transition_type": "EventTriggered",
+          "is_high_fan_in": false,
+          "is_inter_cluster": false
+        }
+      ],
+      "lanes": [
+        {
+          "name": "CALIBRATION",
+          "y": 110.0,
+          "x_start": 425.0,
+          "x_end": 1110.0
+        },
+        {
+          "name": "MOTION",
+          "y": 240.0,
+          "x_start": 425.0,
+          "x_end": 1365.0
+        },
+        {
+          "name": "RECOVERY",
+          "y": 370.0,
+          "x_start": 425.0,
+          "x_end": 1110.0
+        },
+        {
+          "name": "FAULT",
+          "y": 504.0,
+          "x_start": 807.5,
+          "x_end": 982.5
+        }
+      ],
+      "width": 1820.75,
+      "height": 850.0
+    },
+    {
+      "nodes": {
+        "HATCH_CLOSING": {
+          "id": "HATCH_CLOSING",
+          "label": "HATCH_CLOSING",
+          "x": 680.0,
+          "y": 110.0,
+          "width": 175.0,
+          "height": 54.0,
+          "is_fault": false,
+          "is_initial": false,
+          "cluster": "GENERAL",
+          "collapsed_out_badges": [
+            "HATCH_IDLE"
+          ],
+          "incoming_count": 1,
+          "outgoing_count": 1
+        },
+        "HATCH_IDLE": {
+          "id": "HATCH_IDLE",
+          "label": "HATCH_IDLE",
+          "x": 110.0,
+          "y": 45.0,
+          "width": 175.0,
+          "height": 54.0,
+          "is_fault": false,
+          "is_initial": true,
+          "cluster": "INITIAL",
+          "collapsed_out_badges": [],
+          "incoming_count": 4,
+          "outgoing_count": 2
+        },
+        "HATCH_OPENING": {
+          "id": "HATCH_OPENING",
+          "label": "HATCH_OPENING",
+          "x": 425.0,
+          "y": 110.0,
+          "width": 175.0,
+          "height": 54.0,
+          "is_fault": false,
+          "is_initial": false,
+          "cluster": "GENERAL",
+          "collapsed_out_badges": [
+            "HATCH_IDLE"
+          ],
+          "incoming_count": 1,
+          "outgoing_count": 1
+        }
+      },
+      "edges": [
+        {
+          "from": "HATCH_OPENING",
+          "to": "HATCH_IDLE",
+          "guard": "now - stateStart > OPEN_DURATION_MS",
+          "label": "Timeout (OPEN_DURATION_MS)",
+          "display_guard": "Timeout (OPEN_DURATION_MS)",
+          "is_fault": false,
+          "start": [
+            512.5,
+            164.0
+          ],
+          "end": [
+            197.5,
+            99.0
+          ],
+          "control1": [
+            355.0,
+            184.0
+          ],
+          "control2": [
+            355.0,
+            99.0
+          ],
+          "waypoints": [
+            [
+              512.5,
+              164.0
+            ],
+            [
+              512.5,
+              194.0
+            ],
+            [
+              197.5,
+              194.0
+            ],
+            [
+              197.5,
+              99.0
+            ]
+          ],
+          "label_pos": [
+            355.0,
+            208.0
+          ],
+          "transition_type": "Direct",
+          "is_high_fan_in": true,
+          "is_inter_cluster": true
+        },
+        {
+          "from": "HATCH_CLOSING",
+          "to": "HATCH_IDLE",
+          "guard": "now - stateStart > CLOSE_DURATION_MS",
+          "label": "Timeout (CLOSE_DURATION_MS)",
+          "display_guard": "Timeout (CLOSE_DURATION_MS)",
+          "is_fault": false,
+          "start": [
+            767.5,
+            164.0
+          ],
+          "end": [
+            197.5,
+            99.0
+          ],
+          "control1": [
+            482.5,
+            184.0
+          ],
+          "control2": [
+            482.5,
+            99.0
+          ],
+          "waypoints": [
+            [
+              767.5,
+              164.0
+            ],
+            [
+              767.5,
+              194.0
+            ],
+            [
+              197.5,
+              194.0
+            ],
+            [
+              197.5,
+              99.0
+            ]
+          ],
+          "label_pos": [
+            582.5,
+            208.0
+          ],
+          "transition_type": "Direct",
+          "is_high_fan_in": true,
+          "is_inter_cluster": true
+        },
+        {
+          "from": "HATCH_IDLE",
+          "to": "HATCH_OPENING",
+          "guard": "CMD: OPEN",
+          "label": "CMD: OPEN",
+          "display_guard": "CMD: OPEN",
+          "is_fault": false,
+          "start": [
+            285.0,
+            63.0
+          ],
+          "end": [
+            425.0,
+            137.0
+          ],
+          "control1": [
+            334.0,
+            63.0
+          ],
+          "control2": [
+            376.0,
+            137.0
+          ],
+          "waypoints": [
+            [
+              285.0,
+              63.0
+            ],
+            [
+              310.0,
+              63.0
+            ],
+            [
+              310.0,
+              137.0
+            ],
+            [
+              425.0,
+              137.0
+            ]
+          ],
+          "label_pos": [
+            370.0,
+            51.0
+          ],
+          "transition_type": "EventTriggered",
+          "is_high_fan_in": false,
+          "is_inter_cluster": true
+        },
+        {
+          "from": "HATCH_IDLE",
+          "to": "HATCH_CLOSING",
+          "guard": "CMD: CLOSE",
+          "label": "CMD: CLOSE",
+          "display_guard": "CMD: CLOSE",
+          "is_fault": false,
+          "start": [
+            285.0,
+            81.0
+          ],
+          "end": [
+            767.5,
+            110.0
+          ],
+          "control1": [
+            423.25,
+            81.0
+          ],
+          "control2": [
+            541.75,
+            137.0
+          ],
+          "waypoints": [
+            [
+              285.0,
+              81.0
+            ],
+            [
+              330.0,
+              81.0
+            ],
+            [
+              330.0,
+              85.0
+            ],
+            [
+              767.5,
+              85.0
+            ],
+            [
+              767.5,
+              110.0
+            ]
+          ],
+          "label_pos": [
+            480.0,
+            69.0
+          ],
+          "transition_type": "EventTriggered",
+          "is_high_fan_in": false,
+          "is_inter_cluster": true
+        }
+      ],
+      "lanes": [
+        {
+          "name": "GENERAL",
+          "y": 110.0,
+          "x_start": 425.0,
+          "x_end": 855.0
+        }
+      ],
+      "width": 1300.0,
+      "height": 850.0
+    }
+  ]
+}
