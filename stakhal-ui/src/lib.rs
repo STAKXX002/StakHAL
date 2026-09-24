@@ -63,12 +63,8 @@ pub fn update_build_status(lbl: &gtk4::Label, text: &str, kind: StatusKind) {
 }
 
 use state::{AppState, AppWidgets};
-use ui::nucleo_pinout::{
-    build_nucleo_pinout_panel, setup_nucleo_pinout_drawing_and_gestures, NucleoPinoutPanelWidgets,
-};
-use ui::state_diagram::{
-    build_state_diagram_panel, setup_state_diagram_drawing_and_gestures, StateDiagramPanelWidgets,
-};
+use ui::nucleo_pinout::{build_nucleo_pinout_panel, NucleoPinoutPanelWidgets};
+use ui::state_diagram::{build_state_diagram_panel, StateDiagramPanelWidgets};
 
 use ui::main_panel::{build_main_panel, MainPanelWidgets};
 
@@ -411,106 +407,14 @@ dropdown button {
         box_quick_commands: box_quick_commands.clone(),
     });
 
-    setup_state_diagram_drawing_and_gestures(
-        &diagram_drawing_area,
-        &btn_fit_to_view,
-        &lbl_selected_info,
-        Rc::clone(&state),
+    // Connect Diagram and Navigation
+    ui::setup_diagram::setup_diagram_and_navigation(
+        &state,
+        &widgets,
+        &btn_diagram_back,
+        &btn_pinout_back,
+        &btn_serial_back,
     );
-    setup_nucleo_pinout_drawing_and_gestures(&state, &widgets);
-
-    // Navigation callbacks
-    let stack_back2 = stack.clone();
-    btn_diagram_back.connect_clicked(move |_| {
-        stack_back2.set_visible_child_full("overview", gtk4::StackTransitionType::SlideRight);
-    });
-
-    let stack_back3 = stack.clone();
-    btn_pinout_back.connect_clicked(move |_| {
-        stack_back3.set_visible_child_full("overview", gtk4::StackTransitionType::SlideRight);
-    });
-
-    let stack_back_serial = stack.clone();
-    btn_serial_back.connect_clicked(move |_| {
-        stack_back_serial.set_visible_child_full("overview", gtk4::StackTransitionType::SlideRight);
-    });
-
-    let stack_diagram = stack.clone();
-    btn_call_graph.connect_clicked(move |_| {
-        stack_diagram.set_visible_child_full("state_diagram", gtk4::StackTransitionType::SlideLeft);
-    });
-
-    let stack_pinout = stack.clone();
-    btn_nucleo_pinout.connect_clicked(move |_| {
-        stack_pinout.set_visible_child_full("nucleo_pinout", gtk4::StackTransitionType::SlideLeft);
-    });
-
-    let stack_serial = stack.clone();
-    let state_serial = Rc::clone(&state);
-    let widgets_serial = Rc::clone(&widgets);
-    btn_serial_monitor.connect_clicked(move |_| {
-        refresh_serial_ports(&state_serial, &widgets_serial);
-        stack_serial.set_visible_child_full("serial_monitor", gtk4::StackTransitionType::SlideLeft);
-    });
-
-    // State machine selector dropdown callback
-    let state_combo = Rc::clone(&state);
-    let area_combo = diagram_drawing_area.clone();
-    let lbl_info_combo = lbl_selected_info.clone();
-    combo_state_machine.connect_selected_notify(move |cb| {
-        let idx = cb.selected() as usize;
-        state_combo.borrow().with_canvas_state_mut(|st| {
-            st.selected_state_machine = idx;
-            st.selected_state_node = None;
-            st.state_diagram_layout = None; // trigger layout recompute for selected machine
-            st.diagram_needs_fit = true;
-        });
-        {
-            let proj = Rc::clone(&state_combo.borrow().project);
-            let proj_guard = proj.borrow();
-            if let Some(ref p) = proj_guard.loaded_project {
-                if idx < p.state_machines.len() {
-                    let sm = &p.state_machines[idx];
-                    if !sm.ambiguous_transitions.is_empty() {
-                        let notes: Vec<_> = sm
-                            .ambiguous_transitions
-                            .iter()
-                            .map(|a| format!("(any state) -> {} [{}]", a.target, a.guard))
-                            .collect();
-                        lbl_info_combo.set_text(&format!(
-                            "NOTE: {} Ambiguous Transition(s): {}",
-                            sm.ambiguous_transitions.len(),
-                            notes.join(", ")
-                        ));
-                    } else {
-                        lbl_info_combo.set_text("Select a state node to inspect transitions and guard triggers.");
-                    }
-                }
-            }
-        }
-        area_combo.queue_draw();
-    });
-
-    // Nucleo Pinout module filter dropdown callback
-    let state_mod_combo = Rc::clone(&state);
-    let area_pinout_combo = widgets.pinout_drawing_area.clone();
-    combo_pinout_module.connect_selected_notify(move |cb| {
-        let idx = cb.selected();
-        let sel_str = cb.model()
-            .and_then(|m| m.downcast::<gtk4::StringList>().ok())
-            .and_then(|sl| sl.string(idx))
-            .map(|s| s.to_string());
-
-        let mod_filter = match sel_str.as_deref() {
-            Some("All Modules") | None => None,
-            Some(s) => Some(s.to_string()),
-        };
-
-        state_mod_combo.borrow().with_canvas_state_mut(|c| {
-            c.selected_pinout_module = mod_filter;
-        });
-        area_pinout_combo.queue_draw();
-    });
 
     // Connect Project Setup (Browse & Load)
     ui::setup_project::setup_project_handlers(&btn_browse, &state, &widgets);

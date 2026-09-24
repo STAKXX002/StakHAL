@@ -2,6 +2,7 @@ pub mod main_panel;
 pub mod nucleo_pinout;
 pub mod serial_monitor;
 pub mod setup_build_flash;
+pub mod setup_diagram;
 pub mod setup_project;
 pub mod setup_serial;
 pub mod state_diagram;
