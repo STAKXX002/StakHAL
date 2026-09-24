@@ -726,7 +726,11 @@ mod tests {
         let aa_ioc = aa_dir.join("aa_ns_stm_port.ioc");
         let aa_main = aa_dir.join("Core/Src/main.c");
         if let Ok(project) = load_project(&aa_ioc, &aa_main) {
-            let artifact_dir = std::path::Path::new("/home/stakxx002/.gemini/antigravity-ide/brain/e21edbbd-844e-44ef-9dfa-1af3c8e3a19b");
+            let artifact_dir = std::env::var_os("CARGO_TARGET_DIR")
+                .map(std::path::PathBuf::from)
+                .unwrap_or_else(|| std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../target"))
+                .join("test-artifacts");
+            std::fs::create_dir_all(&artifact_dir).expect("failed to create test-artifacts directory");
 
             // All modules
             let surf_all = gtk4::cairo::ImageSurface::create(gtk4::cairo::Format::ARgb32, 1400, 850).expect("surface");
@@ -738,11 +742,8 @@ mod tests {
             st_all.borrow().project.borrow_mut().loaded_project = Some(project.clone());
             ui::nucleo_pinout::draw::draw_nucleo_pinout(&cr_all, 1400.0, 850.0, &st_all);
             surf_all.flush();
-            if artifact_dir.exists() {
-                if let Ok(mut f) = std::fs::File::create(artifact_dir.join("pinout_all_modules.png")) {
-                    let _ = surf_all.write_to_png(&mut f);
-                }
-            }
+            let mut f = std::fs::File::create(artifact_dir.join("pinout_all_modules.png")).expect("create pinout_all_modules.png");
+            surf_all.write_to_png(&mut f).expect("write pinout_all_modules.png");
 
             // Hatch module
             let surf_hatch = gtk4::cairo::ImageSurface::create(gtk4::cairo::Format::ARgb32, 1400, 850).expect("surface");
@@ -756,11 +757,8 @@ mod tests {
             st_hatch.borrow().project.borrow_mut().loaded_project = Some(project.clone());
             ui::nucleo_pinout::draw::draw_nucleo_pinout(&cr_hatch, 1400.0, 850.0, &st_hatch);
             surf_hatch.flush();
-            if artifact_dir.exists() {
-                if let Ok(mut f) = std::fs::File::create(artifact_dir.join("pinout_module_hatch.png")) {
-                    let _ = surf_hatch.write_to_png(&mut f);
-                }
-            }
+            let mut f = std::fs::File::create(artifact_dir.join("pinout_module_hatch.png")).expect("create pinout_module_hatch.png");
+            surf_hatch.write_to_png(&mut f).expect("write pinout_module_hatch.png");
 
             // 4. State diagram orthogonal snapshots: docking_firmware_v2
             if let Ok(dock_proj) = load_project(&Path::new(env!("CARGO_MANIFEST_DIR")).join("../stakhal-core/tests/fixtures/docking_firmware_v2/docking_firmware_v2.ioc"), &Path::new(env!("CARGO_MANIFEST_DIR")).join("../stakhal-core/tests/fixtures/docking_firmware_v2/Core/Src/main.c")) {
@@ -783,11 +781,8 @@ mod tests {
                 st_dock.borrow().project.borrow_mut().loaded_project = Some(dock_proj.clone());
                 ui::state_diagram::draw::draw_state_diagram(&cr_dock, w as f64, h as f64, &st_dock);
                 surf_dock.flush();
-                if artifact_dir.exists() {
-                    if let Ok(mut f) = std::fs::File::create(artifact_dir.join("orthogonal_docking_v2.png")) {
-                        let _ = surf_dock.write_to_png(&mut f);
-                    }
-                }
+                let mut f = std::fs::File::create(artifact_dir.join("orthogonal_docking_v2.png")).expect("create orthogonal_docking_v2.png");
+                surf_dock.write_to_png(&mut f).expect("write orthogonal_docking_v2.png");
 
                 // Docking with GOING selected
                 let surf_dock_sel = gtk4::cairo::ImageSurface::create(gtk4::cairo::Format::ARgb32, w, h).expect("surf");
@@ -804,11 +799,8 @@ mod tests {
                 st_dock_sel.borrow().project.borrow_mut().loaded_project = Some(dock_proj);
                 ui::state_diagram::draw::draw_state_diagram(&cr_dock_sel, w as f64, h as f64, &st_dock_sel);
                 surf_dock_sel.flush();
-                if artifact_dir.exists() {
-                    if let Ok(mut f) = std::fs::File::create(artifact_dir.join("orthogonal_docking_v2_selected.png")) {
-                        let _ = surf_dock_sel.write_to_png(&mut f);
-                    }
-                }
+                let mut f = std::fs::File::create(artifact_dir.join("orthogonal_docking_v2_selected.png")).expect("create orthogonal_docking_v2_selected.png");
+                surf_dock_sel.write_to_png(&mut f).expect("write orthogonal_docking_v2_selected.png");
             }
 
             // 5. State diagram orthogonal snapshots: aa_ns_stm_port (AlignState)
@@ -832,11 +824,8 @@ mod tests {
                 st_align.borrow().project.borrow_mut().loaded_project = Some(project.clone());
                 ui::state_diagram::draw::draw_state_diagram(&cr_align, w as f64, h as f64, &st_align);
                 surf_align.flush();
-                if artifact_dir.exists() {
-                    if let Ok(mut f) = std::fs::File::create(artifact_dir.join("orthogonal_aa_ns_align.png")) {
-                        let _ = surf_align.write_to_png(&mut f);
-                    }
-                }
+                let mut f = std::fs::File::create(artifact_dir.join("orthogonal_aa_ns_align.png")).expect("create orthogonal_aa_ns_align.png");
+                surf_align.write_to_png(&mut f).expect("write orthogonal_aa_ns_align.png");
 
                 // AlignState with RETURNING selected (shows RETURNING -> RECOVERY cross-lane edge)
                 let surf_align_ret = gtk4::cairo::ImageSurface::create(gtk4::cairo::Format::ARgb32, w, h).expect("surf");
@@ -853,11 +842,26 @@ mod tests {
                 st_align_ret.borrow().project.borrow_mut().loaded_project = Some(project);
                 ui::state_diagram::draw::draw_state_diagram(&cr_align_ret, w as f64, h as f64, &st_align_ret);
                 surf_align_ret.flush();
-                if artifact_dir.exists() {
-                    if let Ok(mut f) = std::fs::File::create(artifact_dir.join("orthogonal_aa_ns_align_selected.png")) {
-                        let _ = surf_align_ret.write_to_png(&mut f);
-                    }
-                }
+                let mut f = std::fs::File::create(artifact_dir.join("orthogonal_aa_ns_align_selected.png")).expect("create orthogonal_aa_ns_align_selected.png");
+                surf_align_ret.write_to_png(&mut f).expect("write orthogonal_aa_ns_align_selected.png");
+            }
+
+            // Verify all 6 snapshot artifacts were written and are non-empty
+            for name in &[
+                "pinout_all_modules.png",
+                "pinout_module_hatch.png",
+                "orthogonal_docking_v2.png",
+                "orthogonal_docking_v2_selected.png",
+                "orthogonal_aa_ns_align.png",
+                "orthogonal_aa_ns_align_selected.png",
+            ] {
+                let p = artifact_dir.join(name);
+                assert!(p.exists(), "Expected render snapshot {} to exist", p.display());
+                assert!(
+                    std::fs::metadata(&p).map(|m| m.len() > 0).unwrap_or(false),
+                    "Expected render snapshot {} to be non-empty",
+                    p.display()
+                );
             }
         }
     }
