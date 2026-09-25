@@ -1,7 +1,9 @@
+use gtk4::glib;
 use gtk4::prelude::*;
 use libadwaita as adw;
 use libadwaita::prelude::*;
 use crate::state::create_icon_button;
+use crate::ui::tokens::motion;
 
 pub struct MainPanelWidgets {
     pub overview_box: gtk4::Box,
@@ -378,5 +380,104 @@ pub fn create_region_row(
     }
 
     row
+}
+
+pub const STAGGER_BASE_STEP_MS: u64 = 18;
+pub const STAGGER_MAX_CASCADE_MS: u64 = 300;
+
+/// Calculate delay in milliseconds for staggered row entry.
+/// Rows stagger by ~18ms per row, scaling down if total cascade duration exceeds 300ms.
+pub fn calculate_stagger_delay_ms(index: usize, total_count: usize) -> u64 {
+    if total_count <= 1 || index == 0 {
+        return 0;
+    }
+    let natural_last = (total_count - 1) as u64 * STAGGER_BASE_STEP_MS;
+    if natural_last <= STAGGER_MAX_CASCADE_MS {
+        (index as u64) * STAGGER_BASE_STEP_MS
+    } else {
+        let step = STAGGER_MAX_CASCADE_MS as f64 / (total_count - 1) as f64;
+        let delay = ((index as f64) * step).round() as u64;
+        delay.min(STAGGER_MAX_CASCADE_MS)
+    }
+}
+
+/// Appends a row widget to a ListBox with a staggered opacity reveal animation.
+/// Each row appears ~15-20ms after the previous (scaled down if total cascade exceeds 300ms)
+/// using ease-out cubic opacity fade over DURATION_SHORT_MS (180ms).
+/// When reduced-motion is enabled, collapses to instant (0ms) opacity 1.0.
+pub fn append_staggered_row<W: IsA<gtk4::Widget> + Clone + 'static>(
+    list_box: &gtk4::ListBox,
+    row: &W,
+    index: usize,
+    total_count: usize,
+) {
+    list_box.append(row);
+    row.add_css_class("stagger-reveal-row");
+
+    if !motion::is_animations_enabled() {
+        row.set_opacity(1.0);
+        return;
+    }
+
+    let delay_ms = calculate_stagger_delay_ms(index, total_count);
+    let start = std::time::Instant::now();
+    let delay = std::time::Duration::from_millis(delay_ms);
+    let duration = std::time::Duration::from_millis(motion::DURATION_SHORT_MS);
+
+    row.set_opacity(0.0);
+    row.add_tick_callback(move |widget, _| {
+        let elapsed = start.elapsed();
+        if elapsed < delay {
+            widget.set_opacity(0.0);
+            return glib::ControlFlow::Continue;
+        }
+        let anim_elapsed = elapsed - delay;
+        if anim_elapsed >= duration {
+            widget.set_opacity(1.0);
+            widget.queue_draw();
+            return glib::ControlFlow::Break;
+        }
+        let progress = anim_elapsed.as_secs_f64() / duration.as_secs_f64();
+        let alpha = motion::ease_out_cubic(progress);
+        widget.set_opacity(alpha);
+        widget.queue_draw();
+        glib::ControlFlow::Continue
+    });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_calculate_stagger_delay_bounds_and_capping() {
+        // Zero or single row
+        assert_eq!(calculate_stagger_delay_ms(0, 0), 0);
+        assert_eq!(calculate_stagger_delay_ms(0, 1), 0);
+
+        // Small list (5 rows): step is 18ms, max cascade = 4 * 18 = 72ms <= 300ms
+        assert_eq!(calculate_stagger_delay_ms(0, 5), 0);
+        assert_eq!(calculate_stagger_delay_ms(1, 5), 18);
+        assert_eq!(calculate_stagger_delay_ms(2, 5), 36);
+        assert_eq!(calculate_stagger_delay_ms(3, 5), 54);
+        assert_eq!(calculate_stagger_delay_ms(4, 5), 72);
+
+        // Moderate list (17 rows): 16 * 18 = 288ms <= 300ms
+        assert_eq!(calculate_stagger_delay_ms(0, 17), 0);
+        assert_eq!(calculate_stagger_delay_ms(16, 17), 288);
+
+        // Large list (31 rows): 30 * 18 = 540ms > 300ms, scaled down to 300 / 30 = 10ms per row
+        assert_eq!(calculate_stagger_delay_ms(0, 31), 0);
+        assert_eq!(calculate_stagger_delay_ms(1, 31), 10);
+        assert_eq!(calculate_stagger_delay_ms(15, 31), 150);
+        assert_eq!(calculate_stagger_delay_ms(30, 31), 300);
+
+        // Very large list (100 rows): last row capped at 300ms
+        assert_eq!(calculate_stagger_delay_ms(0, 100), 0);
+        assert_eq!(calculate_stagger_delay_ms(99, 100), 300);
+        for i in 0..100 {
+            assert!(calculate_stagger_delay_ms(i, 100) <= 300);
+        }
+    }
 }
 

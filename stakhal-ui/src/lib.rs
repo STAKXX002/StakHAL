@@ -212,6 +212,10 @@ row, listboxrow, actionrow {
     border-bottom: 1px solid @border_hair;
 }
 
+.stagger-reveal-row {
+    transition: opacity 180ms cubic-bezier(0.0, 0.0, 0.2, 1.0);
+}
+
 .clickable-row {
     transition: color 100ms cubic-bezier(0.0, 0.0, 0.2, 1.0),
                 background-color 100ms cubic-bezier(0.0, 0.0, 0.2, 1.0);

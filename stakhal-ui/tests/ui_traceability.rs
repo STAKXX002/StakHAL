@@ -189,5 +189,14 @@ printf("BOOT\r\n");
     update_traceability_ui(&state, &widgets);
     assert!(widgets.btn_enable_traceability.is_sensitive());
 
+    // 5. Staggered row reveal helper verification
+    let row0 = stakhal_ui::ui::main_panel::create_peripheral_row("USART1", Some("Asynchronous"), 2);
+    let row1 = stakhal_ui::ui::main_panel::create_peripheral_row("SPI1", Some("Full-Duplex"), 4);
+    stakhal_ui::ui::main_panel::append_staggered_row(&widgets.list_peripherals, &row0, 0, 2);
+    stakhal_ui::ui::main_panel::append_staggered_row(&widgets.list_peripherals, &row1, 1, 2);
+    assert!(row0.has_css_class("stagger-reveal-row"));
+    assert!(row1.has_css_class("stagger-reveal-row"));
+    assert!(widgets.list_peripherals.first_child().is_some());
+
     let _ = std::fs::remove_dir_all(&temp_dir);
 }

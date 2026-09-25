@@ -11,7 +11,7 @@ use crate::append_log_text;
 use crate::config::{load_app_config, save_app_config};
 use crate::state::{AppState, AppWidgets};
 use crate::toolchain;
-use crate::ui::main_panel::{clear_list_box, create_peripheral_row, create_region_row};
+use crate::ui::main_panel::{append_staggered_row, clear_list_box, create_peripheral_row, create_region_row};
 use crate::update_quick_send_buttons;
 use crate::update_traceability_ui;
 
@@ -115,12 +115,13 @@ pub fn do_load_project(state: &Rc<RefCell<AppState>>, widgets: &Rc<AppWidgets>) 
             clear_list_box(&widgets.list_peripherals);
             clear_list_box(&widgets.list_user_regions);
 
-            for p in &project.peripherals {
+            let total_peripherals = project.peripherals.len();
+            for (idx, p) in project.peripherals.iter().enumerate() {
                 let row = create_peripheral_row(&p.name, p.mode.as_deref(), p.parameters.len());
-                widgets.list_peripherals.append(&row);
+                append_staggered_row(&widgets.list_peripherals, &row, idx, total_peripherals);
             }
 
-            for r in &project.user_regions {
+            for (idx, r) in project.user_regions.iter().enumerate() {
                 let row = create_region_row(
                     &r.tag,
                     r.byte_range.0,
@@ -129,7 +130,7 @@ pub fn do_load_project(state: &Rc<RefCell<AppState>>, widgets: &Rc<AppWidgets>) 
                     r.line_range.1,
                     false,
                 );
-                widgets.list_user_regions.append(&row);
+                append_staggered_row(&widgets.list_user_regions, &row, idx, total_regions);
             }
 
             if let Some(ref lb) = project.loop_body {
@@ -141,7 +142,7 @@ pub fn do_load_project(state: &Rc<RefCell<AppState>>, widgets: &Rc<AppWidgets>) 
                     lb.line_range.1,
                     true,
                 );
-                widgets.list_user_regions.append(&row);
+                append_staggered_row(&widgets.list_user_regions, &row, project.user_regions.len(), total_regions);
             }
 
             let is_f446 = project.meta.mcu_name.to_uppercase().contains("F446");
