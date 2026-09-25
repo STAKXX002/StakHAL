@@ -148,7 +148,9 @@ button.stakhal-btn {
     border: 1px solid @border_hair;
     background-color: @bg_panel;
     color: @text_primary;
-    transition: all 120ms ease;
+    transition: color 100ms cubic-bezier(0.0, 0.0, 0.2, 1.0),
+                background-color 100ms cubic-bezier(0.0, 0.0, 0.2, 1.0),
+                border-color 100ms cubic-bezier(0.0, 0.0, 0.2, 1.0);
     border-radius: 2px;
 }
 
@@ -167,6 +169,9 @@ button.stakhal-btn.suggested-action {
     background-color: @accent;
     color: @bg_void;
     font-weight: 600;
+    transition: color 100ms cubic-bezier(0.0, 0.0, 0.2, 1.0),
+                background-color 100ms cubic-bezier(0.0, 0.0, 0.2, 1.0),
+                border-color 100ms cubic-bezier(0.0, 0.0, 0.2, 1.0);
     border-radius: 2px;
 }
 
@@ -184,6 +189,9 @@ button.stakhal-btn.flat {
     border: 1px solid transparent;
     background-color: transparent;
     color: @text_muted;
+    transition: color 100ms cubic-bezier(0.0, 0.0, 0.2, 1.0),
+                background-color 100ms cubic-bezier(0.0, 0.0, 0.2, 1.0),
+                border-color 100ms cubic-bezier(0.0, 0.0, 0.2, 1.0);
     border-radius: 2px;
 }
 
@@ -191,6 +199,10 @@ button.stakhal-btn.flat:hover {
     border-color: @border_hair;
     background-color: @bg_panel;
     color: @text_primary;
+}
+
+button.stakhal-btn.flat:active {
+    background-color: #1a2026;
 }
 
 /* Rows and ListBoxes */
@@ -201,7 +213,8 @@ row, listboxrow, actionrow {
 }
 
 .clickable-row {
-    transition: all 120ms ease;
+    transition: color 100ms cubic-bezier(0.0, 0.0, 0.2, 1.0),
+                background-color 100ms cubic-bezier(0.0, 0.0, 0.2, 1.0);
 }
 
 .clickable-row:hover {
@@ -233,24 +246,44 @@ textview text {
     font-weight: 600;
 }
 
+/* Status Chips and Badges */
+label.card, .status-chip {
+    transition: color 180ms cubic-bezier(0.0, 0.0, 0.2, 1.0),
+                background-color 180ms cubic-bezier(0.0, 0.0, 0.2, 1.0),
+                border-color 180ms cubic-bezier(0.0, 0.0, 0.2, 1.0);
+    padding: 2px 8px;
+}
+
 /* Strictly Reserved Status Classes (signal only, never decoration) */
 .status-ready, .status-ok {
     color: @state_ready;
     font-weight: 600;
+    transition: color 180ms cubic-bezier(0.0, 0.0, 0.2, 1.0),
+                background-color 180ms cubic-bezier(0.0, 0.0, 0.2, 1.0),
+                border-color 180ms cubic-bezier(0.0, 0.0, 0.2, 1.0);
 }
 
 .status-active, .status-busy, .status-warning {
     color: @state_active;
     font-weight: 600;
+    transition: color 180ms cubic-bezier(0.0, 0.0, 0.2, 1.0),
+                background-color 180ms cubic-bezier(0.0, 0.0, 0.2, 1.0),
+                border-color 180ms cubic-bezier(0.0, 0.0, 0.2, 1.0);
 }
 
 .status-error, .status-fault {
     color: @state_error;
     font-weight: 600;
+    transition: color 180ms cubic-bezier(0.0, 0.0, 0.2, 1.0),
+                background-color 180ms cubic-bezier(0.0, 0.0, 0.2, 1.0),
+                border-color 180ms cubic-bezier(0.0, 0.0, 0.2, 1.0);
 }
 
 .status-idle {
     color: @text_muted;
+    transition: color 180ms cubic-bezier(0.0, 0.0, 0.2, 1.0),
+                background-color 180ms cubic-bezier(0.0, 0.0, 0.2, 1.0),
+                border-color 180ms cubic-bezier(0.0, 0.0, 0.2, 1.0);
 }
 
 .implicit-badge {
