@@ -8,3 +8,4 @@ pub mod setup_project;
 pub mod setup_serial;
 pub mod state_diagram;
 pub mod tokens;
+pub mod verify_stroke;

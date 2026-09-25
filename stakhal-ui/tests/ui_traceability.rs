@@ -61,12 +61,14 @@ printf("BOOT\r\n");
         lbl_mcu_family: gtk4::Label::new(None),
         lbl_mcu_name: gtk4::Label::new(None),
         lbl_build_traceability: gtk4::Label::new(None),
+        area_traceability_verify: gtk4::DrawingArea::new(),
         lbl_periph_header: gtk4::Label::new(None),
         lbl_region_header: gtk4::Label::new(None),
         list_peripherals: gtk4::ListBox::new(),
         list_user_regions: gtk4::ListBox::new(),
         build_log_view: gtk4::TextView::new(),
         lbl_build_status: gtk4::Label::new(None),
+        area_flash_verify: gtk4::DrawingArea::new(),
         btn_clear_log: gtk4::Button::new(),
         diagram_drawing_area: gtk4::DrawingArea::new(),
         btn_fit_to_view: gtk4::Button::new(),
@@ -157,6 +159,13 @@ printf("BOOT\r\n");
         format!("BUILD: {} (Matches working tree)", head)
     );
     assert!(widgets.lbl_build_traceability.has_css_class("status-ready"));
+    assert!(state.borrow().build_trace.borrow().traceability_was_matched);
+    assert!(state.borrow().build_trace.borrow().traceability_verify_start.is_some());
+    let initial_anim_start = state.borrow().build_trace.borrow().traceability_verify_start.unwrap();
+
+    // Redraw while still matched: verify animation does NOT replay
+    update_traceability_ui(&state, &widgets);
+    assert_eq!(state.borrow().build_trace.borrow().traceability_verify_start, Some(initial_anim_start));
 
     // Test dirty hash status chip
     state.borrow().build_trace.borrow_mut().captured_build_hash = Some(format!("{}-dirty", head));
@@ -166,6 +175,8 @@ printf("BOOT\r\n");
         format!("BUILD: {}-dirty", head)
     );
     assert!(widgets.lbl_build_traceability.has_css_class("status-active"));
+    assert!(!state.borrow().build_trace.borrow().traceability_was_matched);
+    assert!(state.borrow().build_trace.borrow().traceability_verify_start.is_none());
 
     // Test diverged hash status chip
     state.borrow().build_trace.borrow_mut().captured_build_hash = Some("deadbeef".to_string());

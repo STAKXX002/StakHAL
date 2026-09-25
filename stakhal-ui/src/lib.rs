@@ -333,12 +333,14 @@ dropdown button {
         lbl_mcu_family,
         lbl_mcu_name,
         lbl_build_traceability,
+        area_traceability_verify,
         lbl_periph_header,
         lbl_region_header,
         list_peripherals,
         list_user_regions,
         build_log_view,
         lbl_build_status,
+        area_flash_verify,
         btn_clear_log,
         btn_serial_monitor,
     } = build_main_panel();
@@ -431,12 +433,14 @@ dropdown button {
         lbl_mcu_family,
         lbl_mcu_name,
         lbl_build_traceability,
+        area_traceability_verify: area_traceability_verify.clone(),
         lbl_periph_header,
         lbl_region_header,
         list_peripherals,
         list_user_regions,
         build_log_view: build_log_view.clone(),
         lbl_build_status: lbl_build_status.clone(),
+        area_flash_verify: area_flash_verify.clone(),
         btn_clear_log: btn_clear_log.clone(),
         diagram_drawing_area: diagram_drawing_area.clone(),
         btn_fit_to_view: btn_fit_to_view.clone(),
@@ -459,6 +463,17 @@ dropdown button {
         btn_send_command: btn_send_command.clone(),
         box_quick_commands: box_quick_commands.clone(),
     });
+
+    ui::verify_stroke::setup_verify_stroke_area(
+        &area_traceability_verify,
+        Rc::clone(&state),
+        true,
+    );
+    ui::verify_stroke::setup_verify_stroke_area(
+        &area_flash_verify,
+        Rc::clone(&state),
+        false,
+    );
 
     // Connect Diagram and Navigation
     ui::setup_diagram::setup_diagram_and_navigation(

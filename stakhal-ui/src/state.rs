@@ -25,6 +25,9 @@ pub struct BuildTraceState {
     pub is_traceability_enabled: bool,
     pub captured_build_hash: Option<String>,
     pub is_captured_hash_dirty: bool,
+    pub traceability_verify_start: Option<std::time::Instant>,
+    pub flash_verify_start: Option<std::time::Instant>,
+    pub traceability_was_matched: bool,
 }
 
 /// Domain cell: serial communication session, history, and configuration
@@ -155,6 +158,7 @@ pub struct AppWidgets {
     pub lbl_mcu_family: gtk4::Label,
     pub lbl_mcu_name: gtk4::Label,
     pub lbl_build_traceability: gtk4::Label,
+    pub area_traceability_verify: gtk4::DrawingArea,
     pub lbl_periph_header: gtk4::Label,
     pub lbl_region_header: gtk4::Label,
     pub list_peripherals: gtk4::ListBox,
@@ -166,6 +170,7 @@ pub struct AppWidgets {
     pub btn_enable_traceability: gtk4::Button,
     pub build_log_view: gtk4::TextView,
     pub lbl_build_status: gtk4::Label,
+    pub area_flash_verify: gtk4::DrawingArea,
     pub btn_clear_log: gtk4::Button,
 
     // State diagram widgets

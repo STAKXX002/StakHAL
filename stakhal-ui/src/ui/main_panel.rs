@@ -21,12 +21,14 @@ pub struct MainPanelWidgets {
     pub lbl_mcu_family: gtk4::Label,
     pub lbl_mcu_name: gtk4::Label,
     pub lbl_build_traceability: gtk4::Label,
+    pub area_traceability_verify: gtk4::DrawingArea,
     pub lbl_periph_header: gtk4::Label,
     pub lbl_region_header: gtk4::Label,
     pub list_peripherals: gtk4::ListBox,
     pub list_user_regions: gtk4::ListBox,
     pub build_log_view: gtk4::TextView,
     pub lbl_build_status: gtk4::Label,
+    pub area_flash_verify: gtk4::DrawingArea,
     pub btn_clear_log: gtk4::Button,
     pub btn_serial_monitor: gtk4::Button,
 }
@@ -168,6 +170,15 @@ pub fn build_main_panel() -> MainPanelWidgets {
         .tooltip_text("Firmware build traceability status")
         .build();
 
+    let area_traceability_verify = crate::ui::verify_stroke::build_verify_stroke_area();
+
+    let box_trace_row = gtk4::Box::builder()
+        .orientation(gtk4::Orientation::Horizontal)
+        .spacing(6)
+        .build();
+    box_trace_row.append(&lbl_build_traceability);
+    box_trace_row.append(&area_traceability_verify);
+
     let status_bar_box = gtk4::Box::builder()
         .orientation(gtk4::Orientation::Horizontal)
         .spacing(24)
@@ -180,7 +191,7 @@ pub fn build_main_panel() -> MainPanelWidgets {
     status_bar_box.append(&lbl_project_name);
     status_bar_box.append(&lbl_mcu_family);
     status_bar_box.append(&lbl_mcu_name);
-    status_bar_box.append(&lbl_build_traceability);
+    status_bar_box.append(&box_trace_row);
 
     let lbl_periph_header = gtk4::Label::builder()
         .label("[ PERIPHERALS ]")
@@ -236,12 +247,15 @@ pub fn build_main_panel() -> MainPanelWidgets {
         .tooltip_text("Clear console logs")
         .build();
 
+    let area_flash_verify = crate::ui::verify_stroke::build_verify_stroke_area();
+
     let console_header_box = gtk4::Box::builder()
         .orientation(gtk4::Orientation::Horizontal)
         .spacing(8)
         .build();
     console_header_box.append(&lbl_console_header);
     console_header_box.append(&lbl_build_status);
+    console_header_box.append(&area_flash_verify);
     let console_spacer = gtk4::Box::builder().hexpand(true).build();
     console_header_box.append(&console_spacer);
     console_header_box.append(&btn_clear_log);
@@ -301,12 +315,14 @@ pub fn build_main_panel() -> MainPanelWidgets {
         lbl_mcu_family,
         lbl_mcu_name,
         lbl_build_traceability,
+        area_traceability_verify,
         lbl_periph_header,
         lbl_region_header,
         list_peripherals,
         list_user_regions,
         build_log_view,
         lbl_build_status,
+        area_flash_verify,
         btn_clear_log,
         btn_serial_monitor,
     }

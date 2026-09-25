@@ -13,11 +13,19 @@ use crate::{update_build_status, StatusKind};
 
 pub fn setup_build_flash_handlers(state: &Rc<RefCell<AppState>>, widgets: &Rc<AppWidgets>) {
     // Connect Clear Console Button
+    let state_clear = Rc::clone(state);
     let log_view_clear = widgets.build_log_view.clone();
     let status_clear = widgets.lbl_build_status.clone();
+    let area_flash_clear = widgets.area_flash_verify.clone();
     widgets.btn_clear_log.connect_clicked(move |_| {
         log_view_clear.buffer().set_text("");
         update_build_status(&status_clear, "IDLE", StatusKind::Idle);
+        {
+            let st = state_clear.borrow();
+            let mut bt = st.build_trace.borrow_mut();
+            bt.flash_verify_start = None;
+        }
+        area_flash_clear.queue_draw();
     });
 
     // Connect Build Button (compile only, no flash)
@@ -149,8 +157,11 @@ pub fn execute_build_pipeline(
             None => return,
         };
         bt.build_in_progress = true;
+        bt.flash_verify_start = None;
         (dir, build_sys)
     };
+
+    widgets.area_flash_verify.queue_draw();
 
     widgets.btn_build.set_sensitive(false);
     widgets.btn_build_flash.set_sensitive(false);
@@ -419,6 +430,26 @@ pub fn update_traceability_ui(state: &Rc<RefCell<AppState>>, widgets: &Rc<AppWid
     };
     apply_traceability_status_to_label(&widgets.lbl_build_traceability, &status);
 
+    let is_matched = matches!(
+        status,
+        toolchain::traceability::TraceabilityStatus::MatchesWorkingTree { .. }
+    );
+    {
+        let st = state.borrow();
+        let mut bt = st.build_trace.borrow_mut();
+        if is_matched {
+            if !bt.traceability_was_matched {
+                bt.traceability_was_matched = true;
+                bt.traceability_verify_start = Some(std::time::Instant::now());
+                widgets.area_traceability_verify.queue_draw();
+            }
+        } else if bt.traceability_was_matched {
+            bt.traceability_was_matched = false;
+            bt.traceability_verify_start = None;
+            widgets.area_traceability_verify.queue_draw();
+        }
+    }
+
     match (project_dir, main_c_path) {
         (Some(dir), Some(main_c)) => {
             let is_git = toolchain::traceability::is_git_repository(&dir);
@@ -634,12 +665,24 @@ pub fn run_flash_stage(
             if success {
                 append_log_text(&widgets_timer.build_log_view, "\n[FLASH SUCCESS] Firmware written to 0x08000000 and target MCU reset successfully!");
                 update_build_status(&widgets_timer.lbl_build_status, "SUCCESS", StatusKind::Ready);
+                {
+                    let st = state_timer.borrow();
+                    let mut bt = st.build_trace.borrow_mut();
+                    bt.flash_verify_start = Some(std::time::Instant::now());
+                }
+                widgets_timer.area_flash_verify.queue_draw();
                 widgets_timer.toast_overlay.add_toast(adw::Toast::new("[OK] Build and Flash Succeeded!"));
 
                 // Phase 5: Auto-switch to Serial Monitor tab and auto-reconnect
                 crate::navigate_stack(&widgets_timer.stack, "serial_monitor", gtk4::StackTransitionType::SlideLeft);
                 crate::auto_reconnect_serial_after_flash(&state_timer, &widgets_timer);
             } else {
+                {
+                    let st = state_timer.borrow();
+                    let mut bt = st.build_trace.borrow_mut();
+                    bt.flash_verify_start = None;
+                }
+                widgets_timer.area_flash_verify.queue_draw();
                 let code_str = code.map(|c| c.to_string()).unwrap_or_else(|| "unknown".to_string());
                 append_log_text(&widgets_timer.build_log_view, &format!("\n[FLASH FAILED] st-flash exited with code {}.", code_str));
                 update_build_status(&widgets_timer.lbl_build_status, "FLASH FAILED", StatusKind::Error);
