@@ -105,12 +105,20 @@ pub fn navigate_stack(stack: &gtk4::Stack, child_name: &str, transition: gtk4::S
             if elapsed >= total_duration || !ui::tokens::motion::is_animations_enabled() {
                 widget.set_margin_start(0);
                 widget.set_margin_end(0);
+                widget.queue_draw();
                 return glib::ControlFlow::Break;
             }
 
             let t = (elapsed.as_secs_f64() / total_duration.as_secs_f64()).clamp(0.0, 1.0);
             let progress = ui::tokens::motion::ease_out_cubic(t);
             let remaining = ((1.0 - progress) * initial_offset as f64).round() as i32;
+
+            if remaining <= 0 || t >= 1.0 {
+                widget.set_margin_start(0);
+                widget.set_margin_end(0);
+                widget.queue_draw();
+                return glib::ControlFlow::Break;
+            }
 
             if is_forward {
                 widget.set_margin_start(remaining);
@@ -120,6 +128,7 @@ pub fn navigate_stack(stack: &gtk4::Stack, child_name: &str, transition: gtk4::S
                 widget.set_margin_start(0);
             }
 
+            widget.queue_draw();
             glib::ControlFlow::Continue
         });
     }
@@ -1033,6 +1042,7 @@ mod tests {
             glib::MainContext::default().iteration(false);
             std::thread::sleep(std::time::Duration::from_millis(10));
         }
+        while glib::MainContext::default().iteration(false) {}
         assert_eq!(label_a.margin_start(), 0);
         assert_eq!(label_a.margin_end(), 0);
 
