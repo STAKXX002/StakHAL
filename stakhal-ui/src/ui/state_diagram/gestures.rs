@@ -59,7 +59,7 @@ pub fn setup_state_diagram_drawing_and_gestures(
     let info_click = lbl_selected_info.clone();
 
     click_gesture.connect_pressed(move |_, _, x, y| {
-        let (current_sel, selected_sm_idx) = state_click.borrow().with_canvas_state_mut(|st| {
+        state_click.borrow().with_canvas_state_mut(|st| {
             let zoom = st.diagram_zoom;
             let pan_x = st.diagram_pan_x;
             let pan_y = st.diagram_pan_y;
@@ -91,39 +91,9 @@ pub fn setup_state_diagram_drawing_and_gestures(
                     st.node_flash_animation = None;
                 }
             }
-
-            (st.selected_state_node.clone(), st.selected_state_machine)
         });
 
-        // Update selected info label
-        if let Some(ref sel) = current_sel {
-            let proj = Rc::clone(&state_click.borrow().project);
-            let proj_guard = proj.borrow();
-            if let Some(ref p) = proj_guard.loaded_project {
-                if let Some(sm) = p.state_machines.get(selected_sm_idx) {
-                    let outgoing: Vec<_> = sm.transitions.iter().filter(|t| &t.from == sel).collect();
-                    let incoming: Vec<_> = sm.transitions.iter().filter(|t| &t.to == sel).collect();
-
-                    let mut info = format!("STATE: {} | Incoming: {} | Outgoing: {}", sel, incoming.len(), outgoing.len());
-                    if !outgoing.is_empty() {
-                        let out_summary: Vec<_> = outgoing
-                            .iter()
-                            .map(|t| {
-                                if !t.label.is_empty() && !t.guard.is_empty() && t.label != t.guard {
-                                    format!("-> {} [{} (raw: {})]", t.to, t.label, t.guard)
-                                } else {
-                                    format!("-> {} [{}]", t.to, t.display_guard(25))
-                                }
-                            })
-                            .collect();
-                        info.push_str(&format!(" | Exits: {}", out_summary.join(", ")));
-                    }
-                    info_click.set_text(&info);
-                }
-            }
-        } else {
-            info_click.set_text("Click a node to inspect full transition paths | Click background to collapse high-fan-in edges");
-        }
+        update_selected_state_info_label(&info_click, &state_click.borrow());
 
         area_click.queue_draw();
     });
@@ -287,6 +257,38 @@ pub fn calculate_zoom_at_cursor(
     let new_pan_y = cursor_y - world_y * new_zoom;
 
     (new_zoom, new_pan_x, new_pan_y)
+}
+
+/// Update the diagram panel's selected state info label based on the current AppState selection.
+pub fn update_selected_state_info_label(label: &gtk4::Label, state: &AppState) {
+    let (sel_node, sel_sm_idx) = state.with_canvas_state(|c| (c.selected_state_node.clone(), c.selected_state_machine));
+    if let Some(ref sel) = sel_node {
+        let proj = state.project.borrow();
+        if let Some(ref p) = proj.loaded_project {
+            if let Some(sm) = p.state_machines.get(sel_sm_idx) {
+                let outgoing: Vec<_> = sm.transitions.iter().filter(|t| &t.from == sel).collect();
+                let incoming: Vec<_> = sm.transitions.iter().filter(|t| &t.to == sel).collect();
+
+                let mut info = format!("STATE: {} | Incoming: {} | Outgoing: {}", sel, incoming.len(), outgoing.len());
+                if !outgoing.is_empty() {
+                    let out_summary: Vec<_> = outgoing
+                        .iter()
+                        .map(|t| {
+                            if !t.label.is_empty() && !t.guard.is_empty() && t.label != t.guard {
+                                format!("-> {} [{} (raw: {})]", t.to, t.label, t.guard)
+                            } else {
+                                format!("-> {} [{}]", t.to, t.display_guard(25))
+                            }
+                        })
+                        .collect();
+                    info.push_str(&format!(" | Exits: {}", out_summary.join(", ")));
+                }
+                label.set_text(&info);
+                return;
+            }
+        }
+    }
+    label.set_text("Click a node to inspect full transition paths | Click background to collapse high-fan-in edges");
 }
 
 #[cfg(test)]

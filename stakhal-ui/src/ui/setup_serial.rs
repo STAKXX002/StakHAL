@@ -108,6 +108,47 @@ pub fn attach_serial_rx_pump(
                         );
                         crate::ui::setup_build_flash::update_traceability_ui(&state_timer, &widgets_timer);
                     }
+
+                    // Live state machine transition recognition (Phase 5)
+                    let is_serial_connected = state_timer.borrow().serial.borrow().is_serial_connected;
+                    if is_serial_connected {
+                        let known_nodes: Vec<String> = {
+                            let st = state_timer.borrow();
+                            let proj = st.project.borrow();
+                            let sm_idx = st.with_canvas_state(|c| c.selected_state_machine);
+                            if let Some(ref p) = proj.loaded_project {
+                                if let Some(sm) = p.state_machines.get(sm_idx) {
+                                    sm.states.clone()
+                                } else {
+                                    Vec::new()
+                                }
+                            } else {
+                                Vec::new()
+                            }
+                        };
+
+                        if !known_nodes.is_empty() {
+                            if let Some(matched_node) = toolchain::traceability::parse_state_transition_line(&data, &known_nodes) {
+                                let is_diagram_open = widgets_timer.stack.visible_child_name().as_deref() == Some("state_diagram");
+                                {
+                                    let st = state_timer.borrow();
+                                    st.with_canvas_state_mut(|c| {
+                                        c.live_state_node = Some(matched_node.clone());
+                                        c.selected_state_node = Some(matched_node.clone());
+                                        if is_diagram_open && crate::ui::tokens::motion::is_animations_enabled() {
+                                            c.node_flash_animation = Some((matched_node.clone(), std::time::Instant::now()));
+                                        } else {
+                                            c.node_flash_animation = None;
+                                        }
+                                    });
+                                }
+                                if is_diagram_open {
+                                    crate::ui::state_diagram::update_selected_state_info_label(&widgets_timer.lbl_selected_info, &state_timer.borrow());
+                                    widgets_timer.diagram_drawing_area.queue_draw();
+                                }
+                            }
+                        }
+                    }
                 }
                 crate::toolchain::serial::SerialRxEvent::Error(err) => {
                     append_serial_text(

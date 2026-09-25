@@ -287,6 +287,21 @@ pub fn parse_build_banner_line(line: &str) -> Option<(String, bool)> {
     None
 }
 
+/// Parse an incoming serial stream line for exact state-name transitions.
+/// Matches trimmed line content against known state machine node names.
+pub fn parse_state_transition_line(line: &str, known_nodes: &[String]) -> Option<String> {
+    for subline in line.split('\n') {
+        let trimmed = subline.trim().trim_matches(|c: char| c == '\r' || c == '\n');
+        if trimmed.is_empty() {
+            continue;
+        }
+        if let Some(matched) = known_nodes.iter().find(|n| n.as_str() == trimmed) {
+            return Some(matched.clone());
+        }
+    }
+    None
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TraceabilityStatus {
     /// No captured hash yet (or not connected / not a git repo)
@@ -603,6 +618,57 @@ printf("BOOT\r\n");
         assert_eq!(parse_build_banner_line("READY\r\nCAL REQUIRED\r\n"), None);
         assert_eq!(parse_build_banner_line("STAKHAL_BUILD: \r\n"), None);
         assert_eq!(parse_build_banner_line(""), None);
+    }
+
+    #[test]
+    fn test_parse_state_transition_line_exact_matching() {
+        let known = vec![
+            "IDLE".to_string(),
+            "CALIBRATING".to_string(),
+            "HOLD".to_string(),
+            "RETURNED".to_string(),
+            "OPENING".to_string(),
+            "CLOSING".to_string(),
+            "FAULT".to_string(),
+        ];
+
+        // Exact matches with CRLF
+        assert_eq!(
+            parse_state_transition_line("HOLD\r\n", &known),
+            Some("HOLD".to_string())
+        );
+        assert_eq!(
+            parse_state_transition_line("RETURNED\r\n", &known),
+            Some("RETURNED".to_string())
+        );
+        assert_eq!(
+            parse_state_transition_line("OPENING\n", &known),
+            Some("OPENING".to_string())
+        );
+        assert_eq!(
+            parse_state_transition_line("  CLOSING  \r\n", &known),
+            Some("CLOSING".to_string())
+        );
+
+        // Multi-line burst where one line is a state
+        assert_eq!(
+            parse_state_transition_line("REC OK\r\nZERO\r\nRETURNED\r\n", &known),
+            Some("RETURNED".to_string())
+        );
+
+        // Rejection of substring-only matches
+        assert_eq!(
+            parse_state_transition_line("FAULT: motor jammed\r\n", &known),
+            None
+        );
+        assert_eq!(parse_state_transition_line("CAL OK\r\n", &known), None);
+        assert_eq!(parse_state_transition_line("Z1 HIT\r\n", &known), None);
+        assert_eq!(
+            parse_state_transition_line("READY\r\nCAL REQUIRED\r\n", &known),
+            None
+        );
+        assert_eq!(parse_state_transition_line("GO\r\n", &known), None);
+        assert_eq!(parse_state_transition_line("", &known), None);
     }
 
     #[test]

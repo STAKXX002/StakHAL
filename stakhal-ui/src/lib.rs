@@ -932,8 +932,9 @@ mod tests {
                 );
             }
         }
+    }
 
-        #[test]
+    #[test]
         fn test_navigate_stack_duration_tuning() {
             if gtk4::init().is_err() && !gtk4::is_initialized() {
                 return;
@@ -950,8 +951,66 @@ mod tests {
                 ui::tokens::motion::effective_duration_ms(ui::tokens::motion::DURATION_SHORT_MS) as u32;
             assert_eq!(stack.transition_duration(), expected_duration);
         }
+
+        #[test]
+        fn test_live_state_highlighting_matching() {
+            let ioc_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../stakhal-core/tests/fixtures/docking_firmware_v2/docking_firmware_v2.ioc");
+            let main_c_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../stakhal-core/tests/fixtures/docking_firmware_v2/Core/Src/main.c");
+            let project = load_project(&ioc_path, &main_c_path).unwrap();
+            assert!(!project.state_machines.is_empty());
+            let sm = &project.state_machines[0];
+            let known_nodes = &sm.states;
+
+            // 1. Verify exact state lines match
+            assert_eq!(
+                crate::toolchain::traceability::parse_state_transition_line("HOLD\r\n", known_nodes),
+                Some("HOLD".to_string())
+            );
+            assert_eq!(
+                crate::toolchain::traceability::parse_state_transition_line("RETURNED\r\n", known_nodes),
+                Some("RETURNED".to_string())
+            );
+
+            // 2. Verify unrelated printfs do not match
+            assert_eq!(
+                crate::toolchain::traceability::parse_state_transition_line("FAULT: motor jam\r\n", known_nodes),
+                None
+            );
+            assert_eq!(
+                crate::toolchain::traceability::parse_state_transition_line("Z1 HIT\r\n", known_nodes),
+                None
+            );
+
+            // 3. Test AppState updates: silent tracking vs live highlight
+            let st = AppState::default();
+            st.project.borrow_mut().loaded_project = Some(project.clone());
+            st.serial.borrow_mut().is_serial_connected = true;
+
+            // Stream in a matching state line
+            let line = "HOLD\r\n";
+            if let Some(matched) = crate::toolchain::traceability::parse_state_transition_line(line, known_nodes) {
+                st.with_canvas_state_mut(|c| {
+                    c.live_state_node = Some(matched.clone());
+                    c.selected_state_node = Some(matched);
+                });
+            }
+            assert_eq!(st.with_canvas_state(|c| c.live_state_node.clone()).as_deref(), Some("HOLD"));
+            assert_eq!(st.with_canvas_state(|c| c.selected_state_node.clone()).as_deref(), Some("HOLD"));
+
+            // Next state line
+            let line2 = "RETURNED\r\n";
+            if let Some(matched) = crate::toolchain::traceability::parse_state_transition_line(line2, known_nodes) {
+                st.with_canvas_state_mut(|c| {
+                    c.live_state_node = Some(matched.clone());
+                    c.selected_state_node = Some(matched);
+                });
+            }
+            assert_eq!(st.with_canvas_state(|c| c.live_state_node.clone()).as_deref(), Some("RETURNED"));
+            assert_eq!(st.with_canvas_state(|c| c.selected_state_node.clone()).as_deref(), Some("RETURNED"));
+        }
     }
-}
 
 
 

@@ -40,6 +40,7 @@ pub fn setup_diagram_and_navigation(
     let stack_diagram = widgets.stack.clone();
     let state_diagram_nav = Rc::clone(state);
     let area_diagram_nav = widgets.diagram_drawing_area.clone();
+    let lbl_info_diagram_nav = widgets.lbl_selected_info.clone();
     widgets.btn_call_graph.connect_clicked(move |_| {
         state_diagram_nav.borrow().with_canvas_state_mut(|st| {
             let sel = st.selected_state_machine;
@@ -48,6 +49,7 @@ pub fn setup_diagram_and_navigation(
                 st.edge_reveal_animation = Some((sel, std::time::Instant::now()));
             }
         });
+        crate::ui::state_diagram::update_selected_state_info_label(&lbl_info_diagram_nav, &state_diagram_nav.borrow());
         area_diagram_nav.queue_draw();
         crate::navigate_stack(&stack_diagram, "state_diagram", gtk4::StackTransitionType::SlideLeft);
     });
