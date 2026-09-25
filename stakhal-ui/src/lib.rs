@@ -1,6 +1,6 @@
 use std::cell::RefCell;
 use std::rc::Rc;
-use gtk4::{gdk, gio};
+use gtk4::{gdk, gio, glib};
 use gtk4::prelude::*;
 use libadwaita as adw;
 pub mod config;
@@ -64,12 +64,67 @@ pub fn update_build_status(lbl: &gtk4::Label, text: &str, kind: StatusKind) {
 
 pub fn navigate_stack(stack: &gtk4::Stack, child_name: &str, transition: gtk4::StackTransitionType) {
     let duration = ui::tokens::motion::effective_duration_ms(ui::tokens::motion::DURATION_SHORT_MS) as u32;
+    stack.set_transition_type(gtk4::StackTransitionType::Crossfade);
     stack.set_transition_duration(duration);
+
+    // Reset margins on all children to avoid any residual layout offset
+    let mut c_opt = stack.first_child();
+    while let Some(c) = c_opt {
+        c.set_margin_start(0);
+        c.set_margin_end(0);
+        c_opt = c.next_sibling();
+    }
+
     if duration == 0 {
         stack.set_visible_child_name(child_name);
-    } else {
-        stack.set_visible_child_full(child_name, transition);
+        return;
     }
+
+    let is_forward = match transition {
+        gtk4::StackTransitionType::SlideRight
+        | gtk4::StackTransitionType::OverRight
+        | gtk4::StackTransitionType::UnderRight => false,
+        _ => true,
+    };
+
+    if let Some(child) = stack.child_by_name(child_name) {
+        let initial_offset = 10;
+        if is_forward {
+            child.set_margin_start(initial_offset);
+            child.set_margin_end(0);
+        } else {
+            child.set_margin_end(initial_offset);
+            child.set_margin_start(0);
+        }
+
+        let start_time = std::time::Instant::now();
+        let total_duration = std::time::Duration::from_millis(ui::tokens::motion::DURATION_SHORT_MS);
+
+        child.add_tick_callback(move |widget, _| {
+            let elapsed = start_time.elapsed();
+            if elapsed >= total_duration || !ui::tokens::motion::is_animations_enabled() {
+                widget.set_margin_start(0);
+                widget.set_margin_end(0);
+                return glib::ControlFlow::Break;
+            }
+
+            let t = (elapsed.as_secs_f64() / total_duration.as_secs_f64()).clamp(0.0, 1.0);
+            let progress = ui::tokens::motion::ease_out_cubic(t);
+            let remaining = ((1.0 - progress) * initial_offset as f64).round() as i32;
+
+            if is_forward {
+                widget.set_margin_start(remaining);
+                widget.set_margin_end(0);
+            } else {
+                widget.set_margin_end(remaining);
+                widget.set_margin_start(0);
+            }
+
+            glib::ControlFlow::Continue
+        });
+    }
+
+    stack.set_visible_child_full(child_name, gtk4::StackTransitionType::Crossfade);
 }
 
 use state::{AppState, AppWidgets};
@@ -382,7 +437,7 @@ dropdown button {
     let initial_transition_duration =
         ui::tokens::motion::effective_duration_ms(ui::tokens::motion::DURATION_SHORT_MS) as u32;
     let stack = gtk4::Stack::builder()
-        .transition_type(gtk4::StackTransitionType::SlideLeftRight)
+        .transition_type(gtk4::StackTransitionType::Crossfade)
         .transition_duration(initial_transition_duration)
         .build();
 
@@ -935,22 +990,69 @@ mod tests {
     }
 
     #[test]
-        fn test_navigate_stack_duration_tuning() {
-            if gtk4::init().is_err() && !gtk4::is_initialized() {
-                return;
-            }
-            let stack = gtk4::Stack::new();
-            let label_a = gtk4::Label::new(Some("A"));
-            let label_b = gtk4::Label::new(Some("B"));
-            stack.add_named(&label_a, Some("a"));
-            stack.add_named(&label_b, Some("b"));
-
-            navigate_stack(&stack, "b", gtk4::StackTransitionType::SlideLeft);
-
-            let expected_duration =
-                ui::tokens::motion::effective_duration_ms(ui::tokens::motion::DURATION_SHORT_MS) as u32;
-            assert_eq!(stack.transition_duration(), expected_duration);
+    fn test_navigate_stack_duration_tuning() {
+        if gtk4::init().is_err() && !gtk4::is_initialized() {
+            return;
         }
+        let stack = gtk4::Stack::new();
+        let label_a = gtk4::Label::new(Some("A"));
+        let label_b = gtk4::Label::new(Some("B"));
+        stack.add_named(&label_a, Some("a"));
+        stack.add_named(&label_b, Some("b"));
+
+        // 1. Forward navigation with animations enabled
+        if let Some(settings) = gtk4::Settings::default() {
+            settings.set_gtk_enable_animations(true);
+        }
+        navigate_stack(&stack, "b", gtk4::StackTransitionType::SlideLeft);
+
+        let expected_duration =
+            ui::tokens::motion::effective_duration_ms(ui::tokens::motion::DURATION_SHORT_MS) as u32;
+        assert_eq!(stack.transition_duration(), expected_duration);
+        assert_eq!(stack.transition_type(), gtk4::StackTransitionType::Crossfade);
+        assert_eq!(label_b.margin_start(), 10);
+        assert_eq!(label_b.margin_end(), 0);
+
+        // 2. Backward navigation
+        navigate_stack(&stack, "a", gtk4::StackTransitionType::SlideRight);
+        assert_eq!(stack.transition_duration(), expected_duration);
+        assert_eq!(stack.transition_type(), gtk4::StackTransitionType::Crossfade);
+        // Previous child margins reset to 0, and incoming child has margin_end = 10
+        assert_eq!(label_b.margin_start(), 0);
+        assert_eq!(label_b.margin_end(), 0);
+        assert_eq!(label_a.margin_end(), 10);
+        assert_eq!(label_a.margin_start(), 0);
+
+        // 3. Margin animation completes and resets to 0
+        let win = gtk4::Window::new();
+        win.set_child(Some(&stack));
+        win.present();
+
+        let start = std::time::Instant::now();
+        while start.elapsed() < std::time::Duration::from_millis(260) {
+            glib::MainContext::default().iteration(false);
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        assert_eq!(label_a.margin_start(), 0);
+        assert_eq!(label_a.margin_end(), 0);
+
+        // 4. Reduced-motion path: instant cut with no residual margin
+        if let Some(settings) = gtk4::Settings::default() {
+            settings.set_gtk_enable_animations(false);
+        }
+        navigate_stack(&stack, "b", gtk4::StackTransitionType::SlideLeft);
+        assert_eq!(stack.transition_duration(), 0);
+        assert_eq!(stack.visible_child_name().as_deref(), Some("b"));
+        assert_eq!(label_b.margin_start(), 0);
+        assert_eq!(label_b.margin_end(), 0);
+        assert_eq!(label_a.margin_start(), 0);
+        assert_eq!(label_a.margin_end(), 0);
+
+        // Restore system animation settings
+        if let Some(settings) = gtk4::Settings::default() {
+            settings.set_gtk_enable_animations(true);
+        }
+    }
 
         #[test]
         fn test_live_state_highlighting_matching() {
