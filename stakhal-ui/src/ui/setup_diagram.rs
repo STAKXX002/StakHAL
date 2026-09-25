@@ -24,27 +24,27 @@ pub fn setup_diagram_and_navigation(
     // Navigation callbacks
     let stack_back2 = widgets.stack.clone();
     btn_diagram_back.connect_clicked(move |_| {
-        stack_back2.set_visible_child_full("overview", gtk4::StackTransitionType::SlideRight);
+        crate::navigate_stack(&stack_back2, "overview", gtk4::StackTransitionType::SlideRight);
     });
 
     let stack_back3 = widgets.stack.clone();
     btn_pinout_back.connect_clicked(move |_| {
-        stack_back3.set_visible_child_full("overview", gtk4::StackTransitionType::SlideRight);
+        crate::navigate_stack(&stack_back3, "overview", gtk4::StackTransitionType::SlideRight);
     });
 
     let stack_back_serial = widgets.stack.clone();
     btn_serial_back.connect_clicked(move |_| {
-        stack_back_serial.set_visible_child_full("overview", gtk4::StackTransitionType::SlideRight);
+        crate::navigate_stack(&stack_back_serial, "overview", gtk4::StackTransitionType::SlideRight);
     });
 
     let stack_diagram = widgets.stack.clone();
     widgets.btn_call_graph.connect_clicked(move |_| {
-        stack_diagram.set_visible_child_full("state_diagram", gtk4::StackTransitionType::SlideLeft);
+        crate::navigate_stack(&stack_diagram, "state_diagram", gtk4::StackTransitionType::SlideLeft);
     });
 
     let stack_pinout = widgets.stack.clone();
     widgets.btn_nucleo_pinout.connect_clicked(move |_| {
-        stack_pinout.set_visible_child_full("nucleo_pinout", gtk4::StackTransitionType::SlideLeft);
+        crate::navigate_stack(&stack_pinout, "nucleo_pinout", gtk4::StackTransitionType::SlideLeft);
     });
 
     let stack_serial = widgets.stack.clone();
@@ -52,7 +52,7 @@ pub fn setup_diagram_and_navigation(
     let widgets_serial = Rc::clone(widgets);
     widgets.btn_serial_monitor.connect_clicked(move |_| {
         crate::ui::setup_serial::refresh_serial_ports(&state_serial, &widgets_serial);
-        stack_serial.set_visible_child_full("serial_monitor", gtk4::StackTransitionType::SlideLeft);
+        crate::navigate_stack(&stack_serial, "serial_monitor", gtk4::StackTransitionType::SlideLeft);
     });
 
     // State machine selector dropdown callback

@@ -62,6 +62,16 @@ pub fn update_build_status(lbl: &gtk4::Label, text: &str, kind: StatusKind) {
     }
 }
 
+pub fn navigate_stack(stack: &gtk4::Stack, child_name: &str, transition: gtk4::StackTransitionType) {
+    let duration = ui::tokens::motion::effective_duration_ms(ui::tokens::motion::DURATION_SHORT_MS) as u32;
+    stack.set_transition_duration(duration);
+    if duration == 0 {
+        stack.set_visible_child_name(child_name);
+    } else {
+        stack.set_visible_child_full(child_name, transition);
+    }
+}
+
 use state::{AppState, AppWidgets};
 use ui::nucleo_pinout::{build_nucleo_pinout_panel, NucleoPinoutPanelWidgets};
 use ui::state_diagram::{build_state_diagram_panel, StateDiagramPanelWidgets};
@@ -330,9 +340,11 @@ dropdown button {
         box_quick_commands,
     } = build_serial_monitor_panel();
 
+    let initial_transition_duration =
+        ui::tokens::motion::effective_duration_ms(ui::tokens::motion::DURATION_SHORT_MS) as u32;
     let stack = gtk4::Stack::builder()
         .transition_type(gtk4::StackTransitionType::SlideLeftRight)
-        .transition_duration(220)
+        .transition_duration(initial_transition_duration)
         .build();
 
     stack.add_named(&overview_box, Some("overview"));
@@ -350,7 +362,11 @@ dropdown button {
     content_box.append(&header_bar);
     content_box.append(&stack);
 
-    toast_overlay.set_child(Some(&content_box));
+    let launch_overlay = gtk4::Overlay::new();
+    launch_overlay.set_child(Some(&content_box));
+    ui::launch_overlay::setup_launch_overlay(&launch_overlay);
+
+    toast_overlay.set_child(Some(&launch_overlay));
 
     let window = adw::ApplicationWindow::builder()
         .application(app)
@@ -863,6 +879,24 @@ mod tests {
                     p.display()
                 );
             }
+        }
+
+        #[test]
+        fn test_navigate_stack_duration_tuning() {
+            if gtk4::init().is_err() && !gtk4::is_initialized() {
+                return;
+            }
+            let stack = gtk4::Stack::new();
+            let label_a = gtk4::Label::new(Some("A"));
+            let label_b = gtk4::Label::new(Some("B"));
+            stack.add_named(&label_a, Some("a"));
+            stack.add_named(&label_b, Some("b"));
+
+            navigate_stack(&stack, "b", gtk4::StackTransitionType::SlideLeft);
+
+            let expected_duration =
+                ui::tokens::motion::effective_duration_ms(ui::tokens::motion::DURATION_SHORT_MS) as u32;
+            assert_eq!(stack.transition_duration(), expected_duration);
         }
     }
 }

@@ -637,7 +637,7 @@ pub fn run_flash_stage(
                 widgets_timer.toast_overlay.add_toast(adw::Toast::new("[OK] Build and Flash Succeeded!"));
 
                 // Phase 5: Auto-switch to Serial Monitor tab and auto-reconnect
-                widgets_timer.stack.set_visible_child_full("serial_monitor", gtk4::StackTransitionType::SlideLeft);
+                crate::navigate_stack(&widgets_timer.stack, "serial_monitor", gtk4::StackTransitionType::SlideLeft);
                 crate::auto_reconnect_serial_after_flash(&state_timer, &widgets_timer);
             } else {
                 let code_str = code.map(|c| c.to_string()).unwrap_or_else(|| "unknown".to_string());
