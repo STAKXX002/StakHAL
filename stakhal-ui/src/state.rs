@@ -76,6 +76,9 @@ pub struct DiagramCanvasState {
     pub hovered_pinout_pin: Option<(String, u8)>,
     pub hovered_pinout_mouse: Option<(f64, f64)>,
     pub selected_pinout_module: Option<String>,
+    pub node_flash_animation: Option<(String, std::time::Instant)>,
+    pub edge_reveal_animation: Option<(usize, std::time::Instant)>,
+    pub session_revealed_machines: std::collections::HashSet<usize>,
 }
 
 impl Default for DiagramCanvasState {
@@ -97,6 +100,9 @@ impl Default for DiagramCanvasState {
             hovered_pinout_pin: None,
             hovered_pinout_mouse: None,
             selected_pinout_module: None,
+            node_flash_animation: None,
+            edge_reveal_animation: None,
+            session_revealed_machines: std::collections::HashSet::new(),
         }
     }
 }

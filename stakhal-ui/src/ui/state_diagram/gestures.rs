@@ -17,6 +17,39 @@ pub fn setup_state_diagram_drawing_and_gestures(
         draw_state_diagram_canvas(area, cr, w as f64, h as f64, &state_draw);
     });
 
+    // Tick callback for manual Cairo frame interpolation (node flash and edge reveal)
+    let state_tick = Rc::clone(&state);
+    drawing_area.add_tick_callback(move |area, _| {
+        let mut needs_redraw = false;
+        state_tick.borrow().with_canvas_state_mut(|st| {
+            if let Some((_, start)) = st.node_flash_animation {
+                let elapsed = start.elapsed().as_millis() as u64;
+                if elapsed >= crate::ui::tokens::motion::DURATION_SHORT_MS
+                    || !crate::ui::tokens::motion::is_animations_enabled()
+                {
+                    st.node_flash_animation = None;
+                }
+                needs_redraw = true;
+            }
+
+            if let Some((_, start)) = st.edge_reveal_animation {
+                let elapsed = start.elapsed().as_millis() as u64;
+                if elapsed >= crate::ui::tokens::motion::DURATION_MEDIUM_MS
+                    || !crate::ui::tokens::motion::is_animations_enabled()
+                {
+                    st.edge_reveal_animation = None;
+                }
+                needs_redraw = true;
+            }
+        });
+
+        if needs_redraw {
+            area.queue_draw();
+        }
+
+        glib::ControlFlow::Continue
+    });
+
     // 2. Click Gesture for Node Selection
     let click_gesture = gtk4::GestureClick::new();
     click_gesture.set_button(1); // Left click
@@ -47,8 +80,16 @@ pub fn setup_state_diagram_drawing_and_gestures(
             // Toggle selection off if clicking the already selected node, or collapse if clicking background
             if hit_node.is_none() || st.selected_state_node == hit_node {
                 st.selected_state_node = None;
+                st.node_flash_animation = None;
             } else {
                 st.selected_state_node = hit_node.clone();
+                if crate::ui::tokens::motion::is_animations_enabled() {
+                    if let Some(ref hit) = hit_node {
+                        st.node_flash_animation = Some((hit.clone(), std::time::Instant::now()));
+                    }
+                } else {
+                    st.node_flash_animation = None;
+                }
             }
 
             (st.selected_state_node.clone(), st.selected_state_machine)

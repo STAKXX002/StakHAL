@@ -88,7 +88,17 @@ pub fn draw_state_diagram(
         });
     }
 
-    let (layout_opt, zoom, pan_x, pan_y, selected_node, hovered_node) = state.borrow().with_canvas_state(|st| {
+    let (
+        layout_opt,
+        zoom,
+        pan_x,
+        pan_y,
+        selected_node,
+        hovered_node,
+        node_flash,
+        edge_reveal,
+        selected_sm_idx,
+    ) = state.borrow().with_canvas_state(|st| {
         (
             st.state_diagram_layout.clone(),
             st.diagram_zoom,
@@ -96,6 +106,9 @@ pub fn draw_state_diagram(
             st.diagram_pan_y,
             st.selected_state_node.clone(),
             st.hovered_state_node.clone(),
+            st.node_flash_animation.clone(),
+            st.edge_reveal_animation,
+            st.selected_state_machine,
         )
     });
     let layout = match &layout_opt {
@@ -117,6 +130,26 @@ pub fn draw_state_diagram(
 
     let selected_node = selected_node.as_deref();
     let hovered_node = hovered_node.as_deref();
+
+    let (flash_node, flash_progress) = match node_flash {
+        Some((ref node, start)) if tokens::motion::is_animations_enabled() => {
+            let elapsed = start.elapsed().as_millis() as f64;
+            let dur = tokens::motion::DURATION_SHORT_MS as f64;
+            let t = (elapsed / dur).clamp(0.0, 1.0);
+            (Some(node.clone()), tokens::motion::ease_out_cubic(t))
+        }
+        _ => (None, 1.0),
+    };
+
+    let edge_reveal_progress = match edge_reveal {
+        Some((idx, start)) if idx == selected_sm_idx && tokens::motion::is_animations_enabled() => {
+            let elapsed = start.elapsed().as_millis() as f64;
+            let dur = tokens::motion::DURATION_MEDIUM_MS as f64;
+            let t = (elapsed / dur).clamp(0.0, 1.0);
+            tokens::motion::ease_out_cubic(t)
+        }
+        _ => 1.0,
+    };
 
     // Fill canvas background
     cr.set_source_rgb(COLOR_CANVAS_BG.0, COLOR_CANVAS_BG.1, COLOR_CANVAS_BG.2);
@@ -209,37 +242,61 @@ pub fn draw_state_diagram(
 
         cr.set_source_rgba(edge_r, edge_g, edge_b, edge_a);
         cr.set_line_width(tokens::shape::BORDER_WIDTH_HAIR);
-        let _ = cr.stroke();
-
-        // Draw arrowhead at edge.end aligned with the final segment
-        let (arrow_dx, arrow_dy) = if edge.waypoints.len() >= 2 {
-            let n = edge.waypoints.len();
-            (edge.waypoints[n - 1].0 - edge.waypoints[n - 2].0, edge.waypoints[n - 1].1 - edge.waypoints[n - 2].1)
+        if edge_reveal_progress < 1.0 {
+            let total_len = if edge.waypoints.len() >= 2 {
+                let mut l = 0.0;
+                for i in 0..(edge.waypoints.len() - 1) {
+                    let dx = edge.waypoints[i + 1].0 - edge.waypoints[i].0;
+                    let dy = edge.waypoints[i + 1].1 - edge.waypoints[i].1;
+                    l += (dx * dx + dy * dy).sqrt();
+                }
+                l
+            } else {
+                let dx = edge.end.0 - edge.start.0;
+                let dy = edge.end.1 - edge.start.1;
+                (dx * dx + dy * dy).sqrt().max(10.0)
+            };
+            let visible_len = (total_len * edge_reveal_progress).max(0.1);
+            cr.set_dash(&[visible_len, total_len * 2.0], 0.0);
+            let _ = cr.stroke();
+            cr.set_dash(&[], 0.0);
         } else {
-            (edge.end.0 - edge.control2.0, edge.end.1 - edge.control2.1)
-        };
-        let angle = arrow_dy.atan2(arrow_dx);
-        let arrow_len = 8.0;
+            let _ = cr.stroke();
+        }
 
-        cr.new_path();
-        cr.move_to(edge.end.0, edge.end.1);
-        cr.line_to(
-            edge.end.0 - arrow_len * (angle - 0.4).cos(),
-            edge.end.1 - arrow_len * (angle - 0.4).sin(),
-        );
-        cr.line_to(
-            edge.end.0 - arrow_len * (angle + 0.4).cos(),
-            edge.end.1 - arrow_len * (angle + 0.4).sin(),
-        );
-        cr.close_path();
-        cr.set_source_rgba(edge_r, edge_g, edge_b, edge_a);
-        let _ = cr.fill();
+        // Draw arrowhead at edge.end aligned with the final segment only if reveal is nearly complete
+        if edge_reveal_progress >= 0.95 {
+            let (arrow_dx, arrow_dy) = if edge.waypoints.len() >= 2 {
+                let n = edge.waypoints.len();
+                (edge.waypoints[n - 1].0 - edge.waypoints[n - 2].0, edge.waypoints[n - 1].1 - edge.waypoints[n - 2].1)
+            } else {
+                (edge.end.0 - edge.control2.0, edge.end.1 - edge.control2.1)
+            };
+            let angle = arrow_dy.atan2(arrow_dx);
+            let arrow_len = 8.0;
+
+            cr.new_path();
+            cr.move_to(edge.end.0, edge.end.1);
+            cr.line_to(
+                edge.end.0 - arrow_len * (angle - 0.4).cos(),
+                edge.end.1 - arrow_len * (angle - 0.4).sin(),
+            );
+            cr.line_to(
+                edge.end.0 - arrow_len * (angle + 0.4).cos(),
+                edge.end.1 - arrow_len * (angle + 0.4).sin(),
+            );
+            cr.close_path();
+            cr.set_source_rgba(edge_r, edge_g, edge_b, edge_a);
+            let _ = cr.fill();
+        }
     }
 
     // 3. Draw Nodes
     for (id, node) in &layout.nodes {
         let is_selected = selected_node == Some(id.as_str());
         let is_hovered = hovered_node == Some(id.as_str());
+        let is_flashing = flash_node.as_deref() == Some(id.as_str()) && flash_progress < 1.0;
+        let flash_intensity = if is_flashing { 1.0 - flash_progress } else { 0.0 };
 
         let is_connected_to_selection = match selected_node {
             Some(sel) => {
@@ -264,6 +321,7 @@ pub fn draw_state_diagram(
             is_selected,
             is_hovered,
             is_dimmed_node,
+            flash_intensity,
         );
 
         // Draw node label (Data -> JetBrains Mono)
@@ -357,15 +415,17 @@ pub fn draw_state_diagram(
             continue;
         }
 
-        let is_dimmed = selected_node.is_some() && !is_connected_to_selection;
-        draw_guard_badge(
-            cr,
-            edge.label_pos.0,
-            edge.label_pos.1,
-            &edge.display_guard,
-            edge.is_fault,
-            is_dimmed,
-        );
+        if edge_reveal_progress >= 0.85 {
+            let is_dimmed = selected_node.is_some() && !is_connected_to_selection;
+            draw_guard_badge(
+                cr,
+                edge.label_pos.0,
+                edge.label_pos.1,
+                &edge.display_guard,
+                edge.is_fault,
+                is_dimmed,
+            );
+        }
     }
 }
 
@@ -397,6 +457,7 @@ fn draw_rounded_node(
     is_selected: bool,
     is_hovered: bool,
     is_dimmed: bool,
+    flash_intensity: f64,
 ) {
     cr.new_path();
     cr.arc(x + w - r, y + r, r, -std::f64::consts::FRAC_PI_2, 0.0);
@@ -421,8 +482,25 @@ fn draw_rounded_node(
     }
     let _ = cr.fill_preserve();
 
+    if flash_intensity > 0.0 {
+        cr.set_source_rgba(
+            tokens::color::ACCENT.0,
+            tokens::color::ACCENT.1,
+            tokens::color::ACCENT.2,
+            0.40 * flash_intensity,
+        );
+        let _ = cr.fill_preserve();
+    }
+
     // Node stroke (Strict 1px hairline)
-    if is_dimmed {
+    if flash_intensity > 0.0 {
+        cr.set_source_rgba(
+            tokens::color::ACCENT.0,
+            tokens::color::ACCENT.1,
+            tokens::color::ACCENT.2,
+            (0.6 + 0.4 * flash_intensity).min(1.0),
+        );
+    } else if is_dimmed {
         cr.set_source_rgba(tokens::color::BORDER_HAIR.0, tokens::color::BORDER_HAIR.1, tokens::color::BORDER_HAIR.2, 0.35);
     } else if is_fault {
         cr.set_source_rgb(COLOR_FAULT_RED.0, COLOR_FAULT_RED.1, COLOR_FAULT_RED.2);
@@ -650,5 +728,53 @@ mod tests {
         });
         draw_state_diagram(&cr, 1200.0, 800.0, &state);
         surface.flush();
+    }
+
+    #[test]
+    fn test_state_diagram_animations() {
+        let surface = cairo::ImageSurface::create(cairo::Format::ARgb32, 1200, 800)
+            .expect("Failed to create surface");
+        let cr = cairo::Context::new(&surface).expect("Failed to create context");
+        let state = Rc::new(RefCell::new(AppState::default()));
+
+        let fixture_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../stakhal-core/tests/fixtures/docking_firmware");
+        let ioc_path = fixture_dir.join("docking_firmware.ioc");
+        let main_c_path = fixture_dir.join("Core/Src/main.c");
+
+        let project = stakhal_core::ir::schema::load_project(&ioc_path, &main_c_path)
+            .expect("Failed to load docking firmware fixture");
+        state.borrow().project.borrow_mut().loaded_project = Some(project);
+
+        // 1. Test Node Click Flash Animation
+        state.borrow().with_canvas_state_mut(|c| {
+            c.node_flash_animation = Some(("GOING".to_string(), std::time::Instant::now()));
+        });
+        draw_state_diagram(&cr, 1200.0, 800.0, &state);
+        surface.flush();
+
+        // 2. Test Edge Reveal Animation in progress (t=0)
+        state.borrow().with_canvas_state_mut(|c| {
+            c.node_flash_animation = None;
+            c.edge_reveal_animation = Some((0, std::time::Instant::now()));
+        });
+        draw_state_diagram(&cr, 1200.0, 800.0, &state);
+        surface.flush();
+
+        // 3. Test Edge Reveal Animation finished
+        state.borrow().with_canvas_state_mut(|c| {
+            c.edge_reveal_animation = None;
+        });
+        draw_state_diagram(&cr, 1200.0, 800.0, &state);
+        surface.flush();
+
+        // 4. Test Session Revealed Machine Tracking
+        let is_revealed = state.borrow().with_canvas_state(|c| c.session_revealed_machines.contains(&0));
+        assert!(!is_revealed);
+        state.borrow().with_canvas_state_mut(|c| {
+            c.session_revealed_machines.insert(0);
+        });
+        let is_revealed2 = state.borrow().with_canvas_state(|c| c.session_revealed_machines.contains(&0));
+        assert!(is_revealed2);
     }
 }

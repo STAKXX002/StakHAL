@@ -38,7 +38,17 @@ pub fn setup_diagram_and_navigation(
     });
 
     let stack_diagram = widgets.stack.clone();
+    let state_diagram_nav = Rc::clone(state);
+    let area_diagram_nav = widgets.diagram_drawing_area.clone();
     widgets.btn_call_graph.connect_clicked(move |_| {
+        state_diagram_nav.borrow().with_canvas_state_mut(|st| {
+            let sel = st.selected_state_machine;
+            if crate::ui::tokens::motion::is_animations_enabled() && !st.session_revealed_machines.contains(&sel) {
+                st.session_revealed_machines.insert(sel);
+                st.edge_reveal_animation = Some((sel, std::time::Instant::now()));
+            }
+        });
+        area_diagram_nav.queue_draw();
         crate::navigate_stack(&stack_diagram, "state_diagram", gtk4::StackTransitionType::SlideLeft);
     });
 
@@ -66,6 +76,13 @@ pub fn setup_diagram_and_navigation(
             st.selected_state_node = None;
             st.state_diagram_layout = None; // trigger layout recompute for selected machine
             st.diagram_needs_fit = true;
+
+            if crate::ui::tokens::motion::is_animations_enabled() && !st.session_revealed_machines.contains(&idx) {
+                st.session_revealed_machines.insert(idx);
+                st.edge_reveal_animation = Some((idx, std::time::Instant::now()));
+            } else {
+                st.edge_reveal_animation = None;
+            }
         });
         {
             let proj = Rc::clone(&state_combo.borrow().project);
