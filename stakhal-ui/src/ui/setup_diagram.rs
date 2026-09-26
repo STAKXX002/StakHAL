@@ -132,4 +132,15 @@ pub fn setup_diagram_and_navigation(
         });
         area_pinout_combo.queue_draw();
     });
+
+    // Nucleo Pinout show all labels toggle callback
+    let state_show_all = Rc::clone(state);
+    let area_show_all = widgets.pinout_drawing_area.clone();
+    widgets.chk_pinout_show_all.connect_toggled(move |btn| {
+        let is_active = btn.is_active();
+        state_show_all.borrow().with_canvas_state_mut(|c| {
+            c.pinout_show_all = is_active;
+        });
+        area_show_all.queue_draw();
+    });
 }

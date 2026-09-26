@@ -425,6 +425,7 @@ dropdown button {
         pinout_drawing_area,
         pinout_scrolled,
         combo_pinout_module,
+        chk_pinout_show_all,
     } = build_nucleo_pinout_panel();
 
     let SerialMonitorWidgets {
@@ -514,6 +515,7 @@ dropdown button {
         pinout_drawing_area,
         _pinout_scrolled: pinout_scrolled,
         combo_pinout_module: combo_pinout_module.clone(),
+        chk_pinout_show_all,
         btn_serial_monitor: btn_serial_monitor.clone(),
         combo_port: combo_port.clone(),
         btn_refresh_ports: btn_refresh_ports.clone(),

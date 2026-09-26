@@ -7,6 +7,7 @@ pub struct NucleoPinoutPanelWidgets {
     pub pinout_drawing_area: gtk4::DrawingArea,
     pub pinout_scrolled: gtk4::ScrolledWindow,
     pub combo_pinout_module: gtk4::DropDown,
+    pub chk_pinout_show_all: gtk4::CheckButton,
 }
 
 pub fn build_nucleo_pinout_panel() -> NucleoPinoutPanelWidgets {
@@ -23,6 +24,13 @@ pub fn build_nucleo_pinout_panel() -> NucleoPinoutPanelWidgets {
     combo_pinout_module.set_cursor_from_name(Some("pointer"));
     combo_pinout_module.set_tooltip_text(Some("Filter pins by firmware module"));
     combo_pinout_module.set_css_classes(&["stakhal-btn", "flat"]);
+
+    let chk_pinout_show_all = gtk4::CheckButton::builder()
+        .label("Show all labels")
+        .active(false)
+        .tooltip_text("Show persistent labels for all active pins")
+        .build();
+    chk_pinout_show_all.set_css_classes(&["caption"]);
 
     let lbl_pinout_hint = gtk4::Label::builder()
         .label("Hover or click pins to inspect & pin badges • Filter module for persistent badges • Persistent badges show conflicts")
@@ -41,6 +49,7 @@ pub fn build_nucleo_pinout_panel() -> NucleoPinoutPanelWidgets {
     pinout_header_bar.append(&btn_pinout_back);
     pinout_header_bar.append(&lbl_pinout_title);
     pinout_header_bar.append(&combo_pinout_module);
+    pinout_header_bar.append(&chk_pinout_show_all);
     pinout_header_bar.append(&lbl_pinout_hint);
 
     let pinout_drawing_area = gtk4::DrawingArea::builder()
@@ -68,6 +77,7 @@ pub fn build_nucleo_pinout_panel() -> NucleoPinoutPanelWidgets {
         pinout_drawing_area,
         pinout_scrolled,
         combo_pinout_module,
+        chk_pinout_show_all,
     }
 }
 

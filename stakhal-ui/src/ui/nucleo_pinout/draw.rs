@@ -443,8 +443,12 @@ pub fn compute_visible_callout_badges(
     let min_y = board_y + 4.0;
     let max_y = (board_y + board_h - badge_h - 4.0).max(min_y);
 
-    let (selected_module, pinned_pins) = state.with_canvas_state(|c| {
-        (c.selected_pinout_module.clone(), c.pinned_pins.clone())
+    let (selected_module, pinned_pins, show_all) = state.with_canvas_state(|c| {
+        (
+            c.selected_pinout_module.clone(),
+            c.pinned_pins.clone(),
+            c.pinout_show_all,
+        )
     });
 
     let mut raw_badges = Vec::new();
@@ -457,12 +461,12 @@ pub fn compute_visible_callout_badges(
             .map(|sel| pin.modules.iter().any(|m| m == sel))
             .unwrap_or(false);
 
-        let show_badge = pin.is_conflict || is_hovered || is_pinned || is_module_active;
+        let show_badge = pin.is_conflict || is_hovered || is_pinned || is_module_active || show_all;
         if !show_badge {
             continue;
         }
 
-        let is_muted = if is_pinned {
+        let is_muted = if is_pinned || show_all {
             false
         } else {
             pin.is_muted
@@ -629,12 +633,13 @@ pub fn draw_nucleo_pinout(
     height: f64,
     state: &Rc<RefCell<AppState>>,
 ) {
-    let (hovered_pin, hovered_mouse, is_filtering_module, pinned_pins) = state.borrow().with_canvas_state(|c| {
+    let (hovered_pin, hovered_mouse, is_filtering_module, pinned_pins, show_all) = state.borrow().with_canvas_state(|c| {
         (
             c.hovered_pinout_pin.clone(),
             c.hovered_pinout_mouse,
             c.selected_pinout_module.is_some(),
             c.pinned_pins.clone(),
+            c.pinout_show_all,
         )
     });
     let highlights = get_active_pin_highlights(&state.borrow());
@@ -753,7 +758,7 @@ pub fn draw_nucleo_pinout(
 
             let (r, g, b, alpha, width) = if is_hovered || is_pinned {
                 (tokens::color::ACCENT.0, tokens::color::ACCENT.1, tokens::color::ACCENT.2, 1.0, 1.5)
-            } else if pin.is_muted {
+            } else if !show_all && pin.is_muted {
                 (pin.color.0, pin.color.1, pin.color.2, 0.35, 1.0)
             } else {
                 (pin.color.0, pin.color.1, pin.color.2, 0.70, 1.0)
@@ -775,7 +780,7 @@ pub fn draw_nucleo_pinout(
 
         let (fill_r, fill_g, fill_b, alpha) = if is_hovered || is_pinned {
             (tokens::color::ACCENT.0, tokens::color::ACCENT.1, tokens::color::ACCENT.2, 1.0)
-        } else if pin.is_muted {
+        } else if !show_all && pin.is_muted {
             (pin.color.0, pin.color.1, pin.color.2, 0.35)
         } else {
             (pin.color.0, pin.color.1, pin.color.2, 1.0)
@@ -1574,7 +1579,7 @@ mod tests {
             let (hover_px, hover_py) = get_pin_marker_pos("CN10", 11, 1280.0, 820.0).unwrap();
 
             let state = AppState::default();
-            state.project.borrow_mut().loaded_project = Some(project);
+            state.project.borrow_mut().loaded_project = Some(project.clone());
             state.with_canvas_state_mut(|c| {
                 c.selected_pinout_module = None;
                 c.hovered_pinout_pin = Some(("CN10".to_string(), 11)); // PA5 (D13)
@@ -1591,6 +1596,107 @@ mod tests {
             let out_path_legacy = "/home/stakxx002/.gemini/antigravity-ide/brain/e21edbbd-844e-44ef-9dfa-1af3c8e3a19b/pinout_board_overlay_verification.png";
             let mut file_l = std::fs::File::create(out_path_legacy).expect("Failed to create output PNG");
             surface.write_to_png(&mut file_l).expect("Failed to write PNG");
+        }
+
+        // 5. Render Full Board Toggle View: Show all labels across the entire project (18 pins in aa_ns_stm_port)
+        {
+            let surface = cairo::ImageSurface::create(cairo::Format::ARgb32, 1280, 820).expect("Failed to create surface");
+            let cr = cairo::Context::new(&surface).expect("Failed to create context");
+            let state = AppState::default();
+            state.project.borrow_mut().loaded_project = Some(project);
+            state.with_canvas_state_mut(|c| {
+                c.selected_pinout_module = None;
+                c.pinned_pins.clear();
+                c.pinout_show_all = true;
+                c.hovered_pinout_pin = None;
+                c.hovered_pinout_mouse = None;
+            });
+            let rc_state = Rc::new(RefCell::new(state));
+            draw_nucleo_pinout(&cr, 1280.0, 820.0, &rc_state);
+            surface.flush();
+
+            let out_path_full = "/home/stakxx002/.gemini/antigravity-ide/brain/e21edbbd-844e-44ef-9dfa-1af3c8e3a19b/pinout_board_show_all_verification.png";
+            let mut file_f = std::fs::File::create(out_path_full).expect("Failed to create output PNG");
+            surface.write_to_png(&mut file_f).expect("Failed to write PNG");
+        }
+    }
+
+    #[test]
+    fn test_nucleo_pinout_show_all_toggle() {
+        let fixture_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../stakhal-core/tests/fixtures/aa_ns_stm_port");
+        let ioc_path = fixture_dir.join("aa_ns_stm_port.ioc");
+        let main_c_path = fixture_dir.join("Core/Src/main.c");
+        let project = stakhal_core::ir::schema::load_project(&ioc_path, &main_c_path)
+            .expect("Failed to load aa_ns_stm_port");
+
+        let state = AppState::default();
+        state.project.borrow_mut().loaded_project = Some(project.clone());
+
+        // Default: show_all = false -> only conflict badges (0 for default aa_ns_stm_port)
+        let resting_badges = compute_visible_callout_badges(1280.0, 820.0, &state, None);
+        for b in &resting_badges {
+            assert!(stakhal_core::nucleo_pinout::check_reserved(b.mcu_pin).is_some());
+        }
+
+        // Toggle show_all on: all 18 active pins in aa_ns_stm_port get persistent badges
+        state.with_canvas_state_mut(|c| {
+            c.pinout_show_all = true;
+        });
+
+        let all_badges = compute_visible_callout_badges(1280.0, 820.0, &state, None);
+        assert_eq!(all_badges.len(), 18, "All 18 active pins must have visible badges when show_all is enabled");
+
+        // Verify none of the badges are muted
+        for b in &all_badges {
+            assert!(!b.is_muted, "Pin {} badge must not be muted when show_all is true", b.mcu_pin);
+        }
+
+        // Verify collision-free relaxation on both left (3 pins) and right (15 pins) gutters
+        let mut left_b: Vec<_> = all_badges.iter().filter(|b| b.is_left).collect();
+        let mut right_b: Vec<_> = all_badges.iter().filter(|b| !b.is_left).collect();
+        assert_eq!(left_b.len(), 3);
+        assert_eq!(right_b.len(), 15);
+
+        left_b.sort_by(|a, b| a.y.partial_cmp(&b.y).unwrap());
+        right_b.sort_by(|a, b| a.y.partial_cmp(&b.y).unwrap());
+
+        for i in 1..left_b.len() {
+            let prev = left_b[i - 1];
+            let curr = left_b[i];
+            let gap = curr.y - (prev.y + prev.h);
+            assert!(
+                gap >= 1.99,
+                "Left collision detected between {} ({:.1}) and {} ({:.1})! Gap={:.2}",
+                prev.mcu_pin, prev.y, curr.mcu_pin, curr.y, gap
+            );
+        }
+
+        for i in 1..right_b.len() {
+            let prev = right_b[i - 1];
+            let curr = right_b[i];
+            let gap = curr.y - (prev.y + prev.h);
+            assert!(
+                gap >= 1.99,
+                "Right collision detected between {} ({:.1}) and {} ({:.1})! Gap={:.2}",
+                prev.mcu_pin, prev.y, curr.mcu_pin, curr.y, gap
+            );
+        }
+
+        // Verify drawing with show_all doesn't panic
+        let surface = cairo::ImageSurface::create(cairo::Format::ARgb32, 1280, 820).expect("Failed to create surface");
+        let cr = cairo::Context::new(&surface).expect("Failed to create context");
+        let rc_state = Rc::new(RefCell::new(state));
+        draw_nucleo_pinout(&cr, 1280.0, 820.0, &rc_state);
+        surface.flush();
+
+        // Toggle show_all off: returns to resting state
+        rc_state.borrow().with_canvas_state_mut(|c| {
+            c.pinout_show_all = false;
+        });
+        let back_to_resting = compute_visible_callout_badges(1280.0, 820.0, &rc_state.borrow(), None);
+        for b in &back_to_resting {
+            assert!(stakhal_core::nucleo_pinout::check_reserved(b.mcu_pin).is_some());
         }
     }
 }
