@@ -13,7 +13,7 @@ pub fn build_nucleo_pinout_panel() -> NucleoPinoutPanelWidgets {
     let btn_pinout_back = create_icon_button("Back to Overview", "go-previous-symbolic", false);
 
     let lbl_pinout_title = gtk4::Label::builder()
-        .label("[ NUCLEO-F446RE PHYSICAL CONNECTOR PINOUT ]")
+        .label("[ NUCLEO-F446RE PHYSICAL BOARD PINOUT ]")
         .halign(gtk4::Align::Start)
         .hexpand(true)
         .css_classes(vec!["title-3".to_string()])
@@ -25,7 +25,7 @@ pub fn build_nucleo_pinout_panel() -> NucleoPinoutPanelWidgets {
     combo_pinout_module.set_css_classes(&["stakhal-btn", "flat"]);
 
     let lbl_pinout_hint = gtk4::Label::builder()
-        .label("Highlighted pins indicate active signals in loaded project")
+        .label("Hover pin markers or gutter callouts for details • Dual-identity pins link Morpho and Arduino")
         .halign(gtk4::Align::End)
         .css_classes(vec!["dim-label".to_string(), "caption".to_string()])
         .build();
@@ -44,8 +44,8 @@ pub fn build_nucleo_pinout_panel() -> NucleoPinoutPanelWidgets {
     pinout_header_bar.append(&lbl_pinout_hint);
 
     let pinout_drawing_area = gtk4::DrawingArea::builder()
-        .content_width(1200)
-        .content_height(750)
+        .content_width(1280)
+        .content_height(820)
         .hexpand(true)
         .vexpand(true)
         .build();
