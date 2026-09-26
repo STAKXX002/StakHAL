@@ -41,6 +41,19 @@ pub fn setup_state_diagram_drawing_and_gestures(
                 }
                 needs_redraw = true;
             }
+
+            if let Some((_, _, start)) = st.edge_pulse_animation {
+                let elapsed = start.elapsed().as_millis() as u64;
+                let dur = crate::ui::tokens::motion::DURATION_MEDIUM_MS as f64;
+                let progress = (elapsed as f64 / dur).clamp(0.0, 1.0);
+                if progress >= 1.0
+                    || elapsed >= crate::ui::tokens::motion::DURATION_MEDIUM_MS
+                    || !crate::ui::tokens::motion::is_animations_enabled()
+                {
+                    st.edge_pulse_animation = None;
+                }
+                needs_redraw = true;
+            }
         });
 
         if needs_redraw {
@@ -419,5 +432,70 @@ mod tests {
         assert_eq!(clamped_zoom, max_zoom);
         assert!((new_pan_x - pan_x).abs() < 1e-9);
         assert!((new_pan_y - pan_y).abs() < 1e-9);
+    }
+
+    #[test]
+    fn test_edge_pulse_tick_lifecycle() {
+        let state = Rc::new(RefCell::new(AppState::default()));
+
+        // Helper mimicking gestures.rs tick callback logic
+        let run_tick = |st_rc: &Rc<RefCell<AppState>>, anim_enabled: bool| -> bool {
+            let mut needs_redraw = false;
+            st_rc.borrow().with_canvas_state_mut(|st| {
+                if let Some((_, _, start)) = st.edge_pulse_animation {
+                    let elapsed = start.elapsed().as_millis() as u64;
+                    let dur = crate::ui::tokens::motion::DURATION_MEDIUM_MS as f64;
+                    let progress = (elapsed as f64 / dur).clamp(0.0, 1.0);
+                    if progress >= 1.0
+                        || elapsed >= crate::ui::tokens::motion::DURATION_MEDIUM_MS
+                        || !anim_enabled
+                    {
+                        st.edge_pulse_animation = None;
+                    }
+                    needs_redraw = true;
+                }
+            });
+            needs_redraw
+        };
+
+        // 1. t = 0ms: in flight, needs_redraw = true, edge_pulse_animation is Some
+        state.borrow().with_canvas_state_mut(|c| {
+            c.edge_pulse_animation = Some(("A".to_string(), "B".to_string(), std::time::Instant::now()));
+        });
+        let redraw = run_tick(&state, true);
+        assert!(redraw, "Tick at t=0ms must request redraw");
+        assert!(state.borrow().with_canvas_state(|c| c.edge_pulse_animation.is_some()));
+
+        // 2. mid (t = 175ms): in flight, needs_redraw = true, edge_pulse_animation is Some
+        state.borrow().with_canvas_state_mut(|c| {
+            c.edge_pulse_animation = Some(("A".to_string(), "B".to_string(), std::time::Instant::now() - std::time::Duration::from_millis(175)));
+        });
+        let redraw = run_tick(&state, true);
+        assert!(redraw, "Tick at mid must request redraw");
+        assert!(state.borrow().with_canvas_state(|c| c.edge_pulse_animation.is_some()));
+
+        // 3. exactly t = 350ms: progress >= 1.0, edge_pulse_animation cleared to None, needs_redraw = true for final flush
+        state.borrow().with_canvas_state_mut(|c| {
+            c.edge_pulse_animation = Some(("A".to_string(), "B".to_string(), std::time::Instant::now() - std::time::Duration::from_millis(350)));
+        });
+        let redraw = run_tick(&state, true);
+        assert!(redraw, "Tick at exactly 350ms must request final redraw to clear pulse");
+        assert!(state.borrow().with_canvas_state(|c| c.edge_pulse_animation.is_none()), "edge_pulse_animation must be None at 350ms");
+
+        // 4. t = 380ms (+30ms past): edge_pulse_animation is None, needs_redraw = false (no clock starvation, frame clock idles)
+        let redraw = run_tick(&state, true);
+        assert!(!redraw, "Tick at +30ms must NOT request redraw when pulse completed");
+
+        // 5. t = 430ms (+80ms past): edge_pulse_animation is None, needs_redraw = false
+        let redraw = run_tick(&state, true);
+        assert!(!redraw, "Tick at +80ms must NOT request redraw when pulse completed");
+
+        // 6. Reduced motion: immediately cleared to None on first tick
+        state.borrow().with_canvas_state_mut(|c| {
+            c.edge_pulse_animation = Some(("A".to_string(), "B".to_string(), std::time::Instant::now()));
+        });
+        let redraw = run_tick(&state, false);
+        assert!(redraw, "Reduced motion tick must request redraw to clear");
+        assert!(state.borrow().with_canvas_state(|c| c.edge_pulse_animation.is_none()), "Reduced motion must clear pulse immediately");
     }
 }

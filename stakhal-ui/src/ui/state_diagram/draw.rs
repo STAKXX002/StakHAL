@@ -97,6 +97,7 @@ pub fn draw_state_diagram(
         hovered_node,
         node_flash,
         edge_reveal,
+        edge_pulse,
         selected_sm_idx,
     ) = state.borrow().with_canvas_state(|st| {
         (
@@ -108,6 +109,7 @@ pub fn draw_state_diagram(
             st.hovered_state_node.clone(),
             st.node_flash_animation.clone(),
             st.edge_reveal_animation,
+            st.edge_pulse_animation.clone(),
             st.selected_state_machine,
         )
     });
@@ -149,6 +151,16 @@ pub fn draw_state_diagram(
             tokens::motion::ease_out_cubic(t)
         }
         _ => 1.0,
+    };
+
+    let (pulse_edge, pulse_t) = match edge_pulse {
+        Some((ref from, ref to, start)) if tokens::motion::is_animations_enabled() => {
+            let elapsed = start.elapsed().as_millis() as f64;
+            let dur = tokens::motion::DURATION_MEDIUM_MS as f64;
+            let t = (elapsed / dur).clamp(0.0, 1.0);
+            (Some((from.clone(), to.clone())), t)
+        }
+        _ => (None, 0.0),
     };
 
     // Fill canvas background
@@ -240,28 +252,53 @@ pub fn draw_state_diagram(
             (COLOR_BORDER_DEFAULT.0, COLOR_BORDER_DEFAULT.1, COLOR_BORDER_DEFAULT.2, 0.85)
         };
 
+        let is_pulse_edge = match &pulse_edge {
+            Some((ref from, ref to)) => edge.from == *from && edge.to == *to && pulse_t < 1.0,
+            None => false,
+        };
+
+        let total_len = if edge.waypoints.len() >= 2 {
+            let mut l = 0.0;
+            for i in 0..(edge.waypoints.len() - 1) {
+                let dx = edge.waypoints[i + 1].0 - edge.waypoints[i].0;
+                let dy = edge.waypoints[i + 1].1 - edge.waypoints[i].1;
+                l += (dx * dx + dy * dy).sqrt();
+            }
+            l
+        } else {
+            let dx = edge.end.0 - edge.start.0;
+            let dy = edge.end.1 - edge.start.1;
+            (dx * dx + dy * dy).sqrt().max(10.0)
+        };
+
         cr.set_source_rgba(edge_r, edge_g, edge_b, edge_a);
         cr.set_line_width(tokens::shape::BORDER_WIDTH_HAIR);
         if edge_reveal_progress < 1.0 {
-            let total_len = if edge.waypoints.len() >= 2 {
-                let mut l = 0.0;
-                for i in 0..(edge.waypoints.len() - 1) {
-                    let dx = edge.waypoints[i + 1].0 - edge.waypoints[i].0;
-                    let dy = edge.waypoints[i + 1].1 - edge.waypoints[i].1;
-                    l += (dx * dx + dy * dy).sqrt();
-                }
-                l
-            } else {
-                let dx = edge.end.0 - edge.start.0;
-                let dy = edge.end.1 - edge.start.1;
-                (dx * dx + dy * dy).sqrt().max(10.0)
-            };
             let visible_len = (total_len * edge_reveal_progress).max(0.1);
             cr.set_dash(&[visible_len, total_len * 2.0], 0.0);
-            let _ = cr.stroke();
+            if is_pulse_edge {
+                let _ = cr.stroke_preserve();
+            } else {
+                let _ = cr.stroke();
+            }
             cr.set_dash(&[], 0.0);
         } else {
+            if is_pulse_edge {
+                let _ = cr.stroke_preserve();
+            } else {
+                let _ = cr.stroke();
+            }
+        }
+
+        // Overlay pass: traveling signal pulse along active state transition edge
+        if is_pulse_edge {
+            cr.set_source_rgba(tokens::color::ACCENT.0, tokens::color::ACCENT.1, tokens::color::ACCENT.2, 1.0);
+            cr.set_line_width(2.0);
+            let pulse_len = 24.0_f64.min(total_len * 0.4).max(8.0);
+            cr.set_dash(&[pulse_len, total_len * 2.0], -(pulse_t * total_len));
             let _ = cr.stroke();
+            cr.set_dash(&[], 0.0);
+            cr.set_line_width(tokens::shape::BORDER_WIDTH_HAIR);
         }
 
         // Draw arrowhead at edge.end aligned with the final segment only if reveal is nearly complete
@@ -776,5 +813,97 @@ mod tests {
         });
         let is_revealed2 = state.borrow().with_canvas_state(|c| c.session_revealed_machines.contains(&0));
         assert!(is_revealed2);
+    }
+
+    #[test]
+    fn test_state_diagram_edge_pulse_animation() {
+        let surface = cairo::ImageSurface::create(cairo::Format::ARgb32, 1200, 800)
+            .expect("Failed to create surface");
+        let cr = cairo::Context::new(&surface).expect("Failed to create context");
+        let state = Rc::new(RefCell::new(AppState::default()));
+
+        let fixture_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../stakhal-core/tests/fixtures/docking_firmware");
+        let ioc_path = fixture_dir.join("docking_firmware.ioc");
+        let main_c_path = fixture_dir.join("Core/Src/main.c");
+
+        let project = stakhal_core::ir::schema::load_project(&ioc_path, &main_c_path)
+            .expect("Failed to load docking firmware fixture");
+        state.borrow().project.borrow_mut().loaded_project = Some(project);
+
+        // Select RETURNED state to highlight connecting edges
+        state.borrow().with_canvas_state_mut(|c| {
+            c.selected_state_node = Some("RETURNED".to_string());
+        });
+
+        // 1. Milestone t = 0ms
+        let start_0 = std::time::Instant::now();
+        state.borrow().with_canvas_state_mut(|c| {
+            c.edge_pulse_animation = Some(("RETURNING".to_string(), "RETURNED".to_string(), start_0));
+        });
+        let elapsed_0 = start_0.elapsed().as_millis() as f64;
+        let t_0 = (elapsed_0 / tokens::motion::DURATION_MEDIUM_MS as f64).clamp(0.0, 1.0);
+        assert!(t_0 < 0.05, "Progress at t=0ms must be ~0.0, got {}", t_0);
+        draw_state_diagram(&cr, 1200.0, 800.0, &state);
+        surface.flush();
+
+        // 2. Milestone mid (t = 175ms)
+        let start_mid = std::time::Instant::now() - std::time::Duration::from_millis(175);
+        state.borrow().with_canvas_state_mut(|c| {
+            c.edge_pulse_animation = Some(("RETURNING".to_string(), "RETURNED".to_string(), start_mid));
+        });
+        let elapsed_mid = start_mid.elapsed().as_millis() as f64;
+        let t_mid = (elapsed_mid / tokens::motion::DURATION_MEDIUM_MS as f64).clamp(0.0, 1.0);
+        assert!((t_mid - 0.5).abs() < 0.05, "Progress at mid must be ~0.5, got {}", t_mid);
+        draw_state_diagram(&cr, 1200.0, 800.0, &state);
+        surface.flush();
+
+        // Save visual artifact at midpoint
+        let artifact_dir = std::path::PathBuf::from("/home/stakxx002/.gemini/antigravity-ide/brain/e21edbbd-844e-44ef-9dfa-1af3c8e3a19b");
+        if artifact_dir.exists() {
+            if let Ok(mut f) = std::fs::File::create(artifact_dir.join("state_diagram_edge_pulse_mid.png")) {
+                let _ = surface.write_to_png(&mut f);
+            }
+        }
+
+        // 3. Milestone at exactly t = 350ms
+        let start_350 = std::time::Instant::now() - std::time::Duration::from_millis(350);
+        state.borrow().with_canvas_state_mut(|c| {
+            c.edge_pulse_animation = Some(("RETURNING".to_string(), "RETURNED".to_string(), start_350));
+        });
+        let elapsed_350 = start_350.elapsed().as_millis() as f64;
+        let t_350 = (elapsed_350 / tokens::motion::DURATION_MEDIUM_MS as f64).clamp(0.0, 1.0);
+        assert_eq!(t_350, 1.0, "Progress at exactly 350ms must equal 1.0");
+        draw_state_diagram(&cr, 1200.0, 800.0, &state);
+        surface.flush();
+
+        // 4. Milestone at t = 380ms (+30ms past duration)
+        let start_380 = std::time::Instant::now() - std::time::Duration::from_millis(380);
+        state.borrow().with_canvas_state_mut(|c| {
+            c.edge_pulse_animation = Some(("RETURNING".to_string(), "RETURNED".to_string(), start_380));
+        });
+        let elapsed_380 = start_380.elapsed().as_millis() as f64;
+        let t_380 = (elapsed_380 / tokens::motion::DURATION_MEDIUM_MS as f64).clamp(0.0, 1.0);
+        assert_eq!(t_380, 1.0, "Progress at +30ms (380ms) must be clamped to 1.0");
+        draw_state_diagram(&cr, 1200.0, 800.0, &state);
+        surface.flush();
+
+        // 5. Milestone at t = 430ms (+80ms past duration)
+        let start_430 = std::time::Instant::now() - std::time::Duration::from_millis(430);
+        state.borrow().with_canvas_state_mut(|c| {
+            c.edge_pulse_animation = Some(("RETURNING".to_string(), "RETURNED".to_string(), start_430));
+        });
+        let elapsed_430 = start_430.elapsed().as_millis() as f64;
+        let t_430 = (elapsed_430 / tokens::motion::DURATION_MEDIUM_MS as f64).clamp(0.0, 1.0);
+        assert_eq!(t_430, 1.0, "Progress at +80ms (430ms) must be clamped to 1.0");
+        draw_state_diagram(&cr, 1200.0, 800.0, &state);
+        surface.flush();
+
+        // 6. Reduced-motion path: zero pulse, no rendering artifact
+        state.borrow().with_canvas_state_mut(|c| {
+            c.edge_pulse_animation = None;
+        });
+        draw_state_diagram(&cr, 1200.0, 800.0, &state);
+        surface.flush();
     }
 }

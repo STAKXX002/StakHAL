@@ -1095,7 +1095,7 @@ mod tests {
                 None
             );
 
-            // 3. Test AppState updates: silent tracking vs live highlight
+            // 3. Test AppState updates: silent tracking vs live highlight & pulse animation
             let st = AppState::default();
             st.project.borrow_mut().loaded_project = Some(project.clone());
             st.serial.borrow_mut().is_serial_connected = true;
@@ -1104,23 +1104,59 @@ mod tests {
             let line = "HOLD\r\n";
             if let Some(matched) = crate::toolchain::traceability::parse_state_transition_line(line, known_nodes) {
                 st.with_canvas_state_mut(|c| {
+                    let prev_node = c.live_state_node.clone();
                     c.live_state_node = Some(matched.clone());
                     c.selected_state_node = Some(matched);
+                    if let Some(prev) = prev_node {
+                        if prev != "HOLD" {
+                            c.edge_pulse_animation = Some((prev, "HOLD".to_string(), std::time::Instant::now()));
+                        }
+                    }
                 });
             }
             assert_eq!(st.with_canvas_state(|c| c.live_state_node.clone()).as_deref(), Some("HOLD"));
             assert_eq!(st.with_canvas_state(|c| c.selected_state_node.clone()).as_deref(), Some("HOLD"));
+            assert!(st.with_canvas_state(|c| c.edge_pulse_animation.is_none()));
 
-            // Next state line
+            // Next state line: transition from HOLD -> RETURNED (prev != matched)
             let line2 = "RETURNED\r\n";
             if let Some(matched) = crate::toolchain::traceability::parse_state_transition_line(line2, known_nodes) {
                 st.with_canvas_state_mut(|c| {
+                    let prev_node = c.live_state_node.clone();
                     c.live_state_node = Some(matched.clone());
-                    c.selected_state_node = Some(matched);
+                    c.selected_state_node = Some(matched.clone());
+                    if let Some(prev) = prev_node {
+                        if prev != matched {
+                            c.edge_pulse_animation = Some((prev, matched, std::time::Instant::now()));
+                        }
+                    }
                 });
             }
             assert_eq!(st.with_canvas_state(|c| c.live_state_node.clone()).as_deref(), Some("RETURNED"));
             assert_eq!(st.with_canvas_state(|c| c.selected_state_node.clone()).as_deref(), Some("RETURNED"));
+            let pulse = st.with_canvas_state(|c| c.edge_pulse_animation.clone());
+            assert!(pulse.is_some());
+            let (p_from, p_to, _) = pulse.unwrap();
+            assert_eq!(p_from, "HOLD");
+            assert_eq!(p_to, "RETURNED");
+
+            // Same state line again: no transition pulse
+            let line3 = "RETURNED\r\n";
+            if let Some(matched) = crate::toolchain::traceability::parse_state_transition_line(line3, known_nodes) {
+                st.with_canvas_state_mut(|c| {
+                    let prev_node = c.live_state_node.clone();
+                    c.live_state_node = Some(matched.clone());
+                    c.selected_state_node = Some(matched.clone());
+                    if let Some(prev) = prev_node {
+                        if prev != matched {
+                            c.edge_pulse_animation = Some((prev, matched, std::time::Instant::now()));
+                        } else {
+                            c.edge_pulse_animation = None;
+                        }
+                    }
+                });
+            }
+            assert!(st.with_canvas_state(|c| c.edge_pulse_animation.is_none()));
         }
     }
 

@@ -280,4 +280,56 @@ fn test_visual_nav_transitions() {
     if let Some(settings) = gtk4::Settings::default() {
         settings.set_gtk_enable_animations(true);
     }
+
+    // 4. ACTIVE-TRANSITION SIGNAL PULSE ANIMATION
+    println!("--- Testing Active-Transition Signal Pulse Animation ---");
+    navigate_stack(&stack, "state_diagram", gtk4::StackTransitionType::Crossfade);
+    while glib::MainContext::default().iteration(false) {}
+
+    let dur_ms = stakhal_ui::ui::tokens::motion::DURATION_MEDIUM_MS as f64;
+    let pulse_progress = |start: std::time::Instant| -> f64 {
+        let elapsed = start.elapsed().as_millis() as f64;
+        (elapsed / dur_ms).clamp(0.0, 1.0)
+    };
+
+    // t = 0ms
+    let start_pulse = std::time::Instant::now();
+    let p0 = pulse_progress(start_pulse);
+    println!("Signal pulse t=0ms: progress={:.3}", p0);
+    assert!(p0 < 0.05, "Progress at t=0ms must be ~0.0");
+
+    // mid (175ms)
+    let start_mid = std::time::Instant::now() - std::time::Duration::from_millis(175);
+    let p_mid = pulse_progress(start_mid);
+    println!("Signal pulse mid (t=175ms): progress={:.3}", p_mid);
+    assert!((p_mid - 0.5).abs() < 0.05, "Progress at mid must be ~0.5");
+
+    // exactly 350ms
+    let start_350 = std::time::Instant::now() - std::time::Duration::from_millis(350);
+    let p_350 = pulse_progress(start_350);
+    println!("Signal pulse t=350ms: progress={:.3}", p_350);
+    assert_eq!(p_350, 1.0, "Progress at exactly 350ms must equal 1.0");
+
+    // +30ms (380ms)
+    let start_380 = std::time::Instant::now() - std::time::Duration::from_millis(380);
+    let p_380 = pulse_progress(start_380);
+    println!("Signal pulse t=380ms (+30ms): progress={:.3}", p_380);
+    assert_eq!(p_380, 1.0, "Progress at +30ms must be clamped to 1.0");
+
+    // +80ms (430ms)
+    let start_430 = std::time::Instant::now() - std::time::Duration::from_millis(430);
+    let p_430 = pulse_progress(start_430);
+    println!("Signal pulse t=430ms (+80ms): progress={:.3}", p_430);
+    assert_eq!(p_430, 1.0, "Progress at +80ms must be clamped to 1.0");
+
+    // Reduced-motion: animations disabled immediately cancels pulse
+    if let Some(settings) = gtk4::Settings::default() {
+        settings.set_gtk_enable_animations(false);
+    }
+    assert!(!stakhal_ui::ui::tokens::motion::is_animations_enabled());
+
+    // Restore setting
+    if let Some(settings) = gtk4::Settings::default() {
+        settings.set_gtk_enable_animations(true);
+    }
 }

@@ -133,12 +133,23 @@ pub fn attach_serial_rx_pump(
                                 {
                                     let st = state_timer.borrow();
                                     st.with_canvas_state_mut(|c| {
+                                        let prev_node = c.live_state_node.clone();
                                         c.live_state_node = Some(matched_node.clone());
                                         c.selected_state_node = Some(matched_node.clone());
                                         if is_diagram_open && crate::ui::tokens::motion::is_animations_enabled() {
                                             c.node_flash_animation = Some((matched_node.clone(), std::time::Instant::now()));
+                                            if let Some(prev) = prev_node {
+                                                if prev != matched_node {
+                                                    c.edge_pulse_animation = Some((prev, matched_node.clone(), std::time::Instant::now()));
+                                                } else {
+                                                    c.edge_pulse_animation = None;
+                                                }
+                                            } else {
+                                                c.edge_pulse_animation = None;
+                                            }
                                         } else {
                                             c.node_flash_animation = None;
+                                            c.edge_pulse_animation = None;
                                         }
                                     });
                                 }
