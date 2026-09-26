@@ -25,7 +25,7 @@ pub fn build_nucleo_pinout_panel() -> NucleoPinoutPanelWidgets {
     combo_pinout_module.set_css_classes(&["stakhal-btn", "flat"]);
 
     let lbl_pinout_hint = gtk4::Label::builder()
-        .label("Hover pin markers or gutter callouts for details • Dual-identity pins link Morpho and Arduino")
+        .label("Hover pin markers for signal callout & details • Persistent badges show conflicts • Dual-identity pins link Morpho and Arduino")
         .halign(gtk4::Align::End)
         .css_classes(vec!["dim-label".to_string(), "caption".to_string()])
         .build();

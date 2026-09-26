@@ -296,7 +296,7 @@ pub fn get_pin_marker_pos(conn_name: &str, pin_num: u8, canvas_w: f64, canvas_h:
 }
 
 #[derive(Debug, Clone)]
-pub struct CalloutBadge {
+pub struct ActivePin {
     pub conn_name: &'static str,
     pub pin_num: u8,
     pub mcu_pin: &'static str,
@@ -304,33 +304,30 @@ pub struct CalloutBadge {
     pub signal_text: String,
     pub is_muted: bool,
     pub color: (f64, f64, f64),
+    pub is_conflict: bool,
     pub is_left: bool,
     pub morpho_pos: (f64, f64),
     pub arduino_pos: Option<(f64, f64)>,
     pub route_pos: (f64, f64),
-    pub x: f64,
-    pub y: f64,
-    pub w: f64,
-    pub h: f64,
 }
 
-pub fn compute_callout_badges(
+pub fn get_active_pins(
     canvas_w: f64,
     canvas_h: f64,
     state: &AppState,
-) -> (Vec<CalloutBadge>, Vec<CalloutBadge>) {
+) -> Vec<ActivePin> {
     let (board_x, board_y, board_w, board_h) = get_board_rect(canvas_w, canvas_h);
 
     let project_guard = state.project.borrow();
     let project = match &project_guard.loaded_project {
         Some(p) => p,
-        None => return (Vec::new(), Vec::new()),
+        None => return Vec::new(),
     };
 
     let selected_mod = state.with_canvas_state(|c| c.selected_pinout_module.clone());
     let selected_mod = selected_mod.as_deref();
 
-    let mut raw_callouts = Vec::new();
+    let mut pins = Vec::new();
     let mut seen_mcu = std::collections::HashSet::new();
 
     for pin_cfg in &project.pins {
@@ -381,116 +378,103 @@ pub fn compute_callout_badges(
         let is_left = m_coord.norm_x < 0.5;
         let route_pos = m_pos;
 
-        raw_callouts.push((
-            m_conn,
-            m_pin,
-            mapping.mcu_pin,
-            ard_label,
-            sig_text,
+        pins.push(ActivePin {
+            conn_name: m_conn,
+            pin_num: m_pin,
+            mcu_pin: mapping.mcu_pin,
+            arduino_label: ard_label,
+            signal_text: sig_text,
             is_muted,
             color,
+            is_conflict: reserved.is_some(),
             is_left,
-            m_pos,
-            a_pos,
+            morpho_pos: m_pos,
+            arduino_pos: a_pos,
             route_pos,
-        ));
+        });
     }
 
-    let mut left_raw: Vec<_> = raw_callouts.iter().filter(|c| c.7).cloned().collect();
-    let mut right_raw: Vec<_> = raw_callouts.iter().filter(|c| !c.7).cloned().collect();
+    pins
+}
 
-    left_raw.sort_by(|a, b| a.10.1.partial_cmp(&b.10.1).unwrap_or(std::cmp::Ordering::Equal));
-    right_raw.sort_by(|a, b| a.10.1.partial_cmp(&b.10.1).unwrap_or(std::cmp::Ordering::Equal));
+#[derive(Debug, Clone)]
+pub struct CalloutBadge {
+    pub conn_name: &'static str,
+    pub pin_num: u8,
+    pub mcu_pin: &'static str,
+    pub arduino_label: Option<&'static str>,
+    pub signal_text: String,
+    pub is_muted: bool,
+    pub color: (f64, f64, f64),
+    pub is_left: bool,
+    pub route_pos: (f64, f64),
+    pub x: f64,
+    pub y: f64,
+    pub w: f64,
+    pub h: f64,
+}
+
+pub fn compute_visible_callout_badges(
+    canvas_w: f64,
+    canvas_h: f64,
+    state: &AppState,
+    hovered_pin: Option<&(String, u8)>,
+) -> Vec<CalloutBadge> {
+    let (board_x, board_y, board_w, board_h) = get_board_rect(canvas_w, canvas_h);
+    let active_pins = get_active_pins(canvas_w, canvas_h, state);
 
     let badge_h = 22.0;
-    let spacing = badge_h + 4.0;
     let min_y = board_y + 4.0;
     let max_y = (board_y + board_h - badge_h - 4.0).max(min_y);
 
-    let layout_side = |items: &[(
-        &'static str,
-        u8,
-        &'static str,
-        Option<&'static str>,
-        String,
-        bool,
-        (f64, f64, f64),
-        bool,
-        (f64, f64),
-        Option<(f64, f64)>,
-        (f64, f64),
-    )], is_left: bool| -> Vec<CalloutBadge> {
-        if items.is_empty() {
-            return Vec::new();
+    let mut badges = Vec::new();
+
+    for pin in &active_pins {
+        let is_hovered = is_pin_hovered(pin.conn_name, pin.pin_num, hovered_pin);
+        let show_badge = pin.is_conflict || is_hovered;
+        if !show_badge {
+            continue;
         }
 
-        let mut ys: Vec<f64> = items.iter().map(|item| (item.10.1 - badge_h / 2.0).clamp(min_y, max_y)).collect();
+        let pin_id_str = match pin.arduino_label {
+            Some(ard) => format!("{} / {}", pin.mcu_pin, ard),
+            None => pin.mcu_pin.to_string(),
+        };
+        let text_char_len = pin_id_str.len() + 3 + pin.signal_text.len();
+        let est_w = ((text_char_len as f64) * 7.2 + 20.0).clamp(110.0, 240.0);
 
-        for i in 1..ys.len() {
-            if ys[i] < ys[i - 1] + spacing {
-                ys[i] = ys[i - 1] + spacing;
-            }
-        }
-        if let Some(last) = ys.last_mut() {
-            if *last > max_y {
-                *last = max_y;
-            }
-        }
-        for i in (0..ys.len().saturating_sub(1)).rev() {
-            if ys[i] > ys[i + 1] - spacing {
-                ys[i] = ys[i + 1] - spacing;
-            }
-        }
-        for y in &mut ys {
-            *y = y.clamp(min_y, max_y);
-        }
+        let by = (pin.route_pos.1 - badge_h / 2.0).clamp(min_y, max_y);
 
-        let mut badges = Vec::with_capacity(items.len());
-        for (idx, item) in items.iter().enumerate() {
-            let pin_id_str = match item.3 {
-                Some(ard) => format!("{} / {}", item.2, ard),
-                None => item.2.to_string(),
-            };
-            let text_char_len = pin_id_str.len() + 3 + item.4.len();
-            let est_w = ((text_char_len as f64) * 7.2 + 20.0).clamp(110.0, 240.0);
+        let (bx, bw) = if pin.is_left {
+            let badge_right = board_x - 14.0;
+            let badge_x = (badge_right - est_w).max(12.0);
+            let actual_w = badge_right - badge_x;
+            (badge_x, actual_w)
+        } else {
+            let badge_left = board_x + board_w + 14.0;
+            let max_w = (canvas_w - 12.0 - badge_left).max(60.0);
+            let actual_w = est_w.min(max_w);
+            (badge_left, actual_w)
+        };
 
-            let (bx, by, bw) = if is_left {
-                let badge_right = board_x - 14.0;
-                let badge_x = (badge_right - est_w).max(12.0);
-                let actual_w = badge_right - badge_x;
-                (badge_x, ys[idx], actual_w)
-            } else {
-                let badge_left = board_x + board_w + 14.0;
-                let max_w = (canvas_w - 12.0 - badge_left).max(60.0);
-                let actual_w = est_w.min(max_w);
-                (badge_left, ys[idx], actual_w)
-            };
+        badges.push(CalloutBadge {
+            conn_name: pin.conn_name,
+            pin_num: pin.pin_num,
+            mcu_pin: pin.mcu_pin,
+            arduino_label: pin.arduino_label,
+            signal_text: pin.signal_text.clone(),
+            is_muted: pin.is_muted,
+            color: pin.color,
+            is_left: pin.is_left,
+            route_pos: pin.route_pos,
+            x: bx,
+            y: by,
+            w: bw,
+            h: badge_h,
+        });
+    }
 
-            badges.push(CalloutBadge {
-                conn_name: item.0,
-                pin_num: item.1,
-                mcu_pin: item.2,
-                arduino_label: item.3,
-                signal_text: item.4.clone(),
-                is_muted: item.5,
-                color: item.6,
-                is_left: item.7,
-                morpho_pos: item.8,
-                arduino_pos: item.9,
-                route_pos: item.10,
-                x: bx,
-                y: by,
-                w: bw,
-                h: badge_h,
-            });
-        }
-        badges
-    };
-
-    let left_badges = layout_side(&left_raw, true);
-    let right_badges = layout_side(&right_raw, false);
-
-    (left_badges, right_badges)
+    badges
 }
 
 pub fn find_hit_pin(
@@ -532,9 +516,10 @@ pub fn find_hit_pin(
         return Some((c, p));
     }
 
-    // 2. Check gutter callout badges for active pins
-    let (left_badges, right_badges) = compute_callout_badges(canvas_w, canvas_h, state);
-    for badge in left_badges.iter().chain(right_badges.iter()) {
+    // 2. Check visible gutter callout badges (persistent conflict badges + currently hovered badge)
+    let hovered_pin = state.with_canvas_state(|c| c.hovered_pinout_pin.clone());
+    let badges = compute_visible_callout_badges(canvas_w, canvas_h, state, hovered_pin.as_ref());
+    for badge in &badges {
         if x >= badge.x && x <= badge.x + badge.w && y >= badge.y && y <= badge.y + badge.h {
             return Some((badge.conn_name, badge.pin_num));
         }
@@ -664,23 +649,23 @@ pub fn draw_nucleo_pinout(
     cr.rectangle(board_x, board_y, board_w, board_h);
     let _ = cr.stroke();
 
-    // 4. Compute Gutter Callout Badges
-    let (left_badges, right_badges) = compute_callout_badges(canvas_w, canvas_h, &state.borrow());
+    // 4. Resolve Active Pins
+    let active_pins = get_active_pins(canvas_w, canvas_h, &state.borrow());
 
     // 5. Dual-Identity Linking Hairlines Pass
-    for badge in left_badges.iter().chain(right_badges.iter()) {
-        if let Some(a_pos) = badge.arduino_pos {
-            let (mx, my) = badge.morpho_pos;
+    for pin in &active_pins {
+        if let Some(a_pos) = pin.arduino_pos {
+            let (mx, my) = pin.morpho_pos;
             let (ax, ay) = a_pos;
 
-            let is_hovered = is_pin_hovered(badge.conn_name, badge.pin_num, hovered_pin);
+            let is_hovered = is_pin_hovered(pin.conn_name, pin.pin_num, hovered_pin);
 
             let (r, g, b, alpha, width) = if is_hovered {
                 (tokens::color::ACCENT.0, tokens::color::ACCENT.1, tokens::color::ACCENT.2, 1.0, 1.5)
-            } else if badge.is_muted {
-                (badge.color.0, badge.color.1, badge.color.2, 0.35, 1.0)
+            } else if pin.is_muted {
+                (pin.color.0, pin.color.1, pin.color.2, 0.35, 1.0)
             } else {
-                (badge.color.0, badge.color.1, badge.color.2, 0.70, 1.0)
+                (pin.color.0, pin.color.1, pin.color.2, 0.70, 1.0)
             };
 
             cr.set_source_rgba(r, g, b, alpha);
@@ -693,21 +678,21 @@ pub fn draw_nucleo_pinout(
 
     // 6. Active Pin Markers Pass (Morpho dot + Arduino dot)
     let marker_r = 4.2;
-    for badge in left_badges.iter().chain(right_badges.iter()) {
-        let is_hovered = is_pin_hovered(badge.conn_name, badge.pin_num, hovered_pin);
+    for pin in &active_pins {
+        let is_hovered = is_pin_hovered(pin.conn_name, pin.pin_num, hovered_pin);
 
         let (fill_r, fill_g, fill_b, alpha) = if is_hovered {
             (tokens::color::ACCENT.0, tokens::color::ACCENT.1, tokens::color::ACCENT.2, 1.0)
-        } else if badge.is_muted {
-            (badge.color.0, badge.color.1, badge.color.2, 0.35)
+        } else if pin.is_muted {
+            (pin.color.0, pin.color.1, pin.color.2, 0.35)
         } else {
-            (badge.color.0, badge.color.1, badge.color.2, 1.0)
+            (pin.color.0, pin.color.1, pin.color.2, 1.0)
         };
 
         let current_r = if is_hovered { marker_r + 1.2 } else { marker_r };
 
         // Morpho marker
-        let (mx, my) = badge.morpho_pos;
+        let (mx, my) = pin.morpho_pos;
         cr.set_source_rgba(fill_r, fill_g, fill_b, alpha);
         cr.arc(mx, my, current_r, 0.0, 2.0 * std::f64::consts::PI);
         let _ = cr.fill_preserve();
@@ -716,7 +701,7 @@ pub fn draw_nucleo_pinout(
         let _ = cr.stroke();
 
         // Arduino marker (if dual-identity)
-        if let Some((ax, ay)) = badge.arduino_pos {
+        if let Some((ax, ay)) = pin.arduino_pos {
             cr.set_source_rgba(fill_r, fill_g, fill_b, alpha);
             cr.arc(ax, ay, current_r, 0.0, 2.0 * std::f64::consts::PI);
             let _ = cr.fill_preserve();
@@ -741,8 +726,9 @@ pub fn draw_nucleo_pinout(
         }
     }
 
-    // 8. Gutter Callouts & Leader Lines Pass
-    for badge in left_badges.iter().chain(right_badges.iter()) {
+    // 8. Visible Gutter Callouts & Leader Lines Pass (Persistent Conflict Badges + Hovered Pin Badge)
+    let visible_badges = compute_visible_callout_badges(canvas_w, canvas_h, &state.borrow(), hovered_pin);
+    for badge in &visible_badges {
         let is_hovered = is_pin_hovered(badge.conn_name, badge.pin_num, hovered_pin);
 
         let (border_r, border_g, border_b, alpha, border_w) = if is_hovered {
@@ -1227,13 +1213,28 @@ mod tests {
         // Hit testing far away from any pin
         let hit_far = find_hit_pin(10.0, 10.0, 1280.0, 820.0, &state);
         assert_eq!(hit_far, None);
+
+        // At rest, non-conflict pins do not have visible gutter badges
+        let resting_badges = compute_visible_callout_badges(1280.0, 820.0, &state, None);
+        assert!(resting_badges.is_empty() || resting_badges.iter().all(|b| {
+            stakhal_core::nucleo_pinout::check_reserved(b.mcu_pin).is_some()
+        }));
+
+        // When hovered, the hovered pin gets a badge
+        let hover_badges = compute_visible_callout_badges(1280.0, 820.0, &state, Some(&("CN10".to_string(), 11)));
+        let pa5_badge = hover_badges.iter().find(|b| b.conn_name == "CN10" && b.pin_num == 11);
+        assert!(pa5_badge.is_some(), "Hovered pin must have a visible gutter badge");
+
+        let b = pa5_badge.unwrap();
+        state.with_canvas_state_mut(|c| {
+            c.hovered_pinout_pin = Some(("CN10".to_string(), 11));
+        });
+        let hit_badge = find_hit_pin(b.x + b.w / 2.0, b.y + b.h / 2.0, 1280.0, 820.0, &state);
+        assert_eq!(hit_badge, Some(("CN10", 11)));
     }
 
     #[test]
     fn test_render_board_overlay_verification_screenshot() {
-        let surface = cairo::ImageSurface::create(cairo::Format::ARgb32, 1280, 820).expect("Failed to create surface");
-        let cr = cairo::Context::new(&surface).expect("Failed to create context");
-
         let fixture_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../stakhal-core/tests/fixtures/aa_ns_stm_port");
         let ioc_path = fixture_dir.join("aa_ns_stm_port.ioc");
@@ -1255,22 +1256,50 @@ mod tests {
             modules: Vec::new(),
         });
 
-        let (hover_px, hover_py) = get_pin_marker_pos("CN10", 11, 1280.0, 820.0).unwrap();
+        // 1. Render Resting View (No pin hovered, only persistent conflict badges visible)
+        {
+            let surface = cairo::ImageSurface::create(cairo::Format::ARgb32, 1280, 820).expect("Failed to create surface");
+            let cr = cairo::Context::new(&surface).expect("Failed to create context");
+            let state = AppState::default();
+            state.project.borrow_mut().loaded_project = Some(project.clone());
+            state.with_canvas_state_mut(|c| {
+                c.selected_pinout_module = Some("hatch".to_string());
+                c.hovered_pinout_pin = None;
+                c.hovered_pinout_mouse = None;
+            });
+            let rc_state = Rc::new(RefCell::new(state));
+            draw_nucleo_pinout(&cr, 1280.0, 820.0, &rc_state);
+            surface.flush();
 
-        let state = AppState::default();
-        state.project.borrow_mut().loaded_project = Some(project);
-        state.with_canvas_state_mut(|c| {
-            c.selected_pinout_module = Some("hatch".to_string());
-            c.hovered_pinout_pin = Some(("CN10".to_string(), 11)); // PA5 (D13)
-            c.hovered_pinout_mouse = Some((hover_px, hover_py));
-        });
+            let out_path = "/home/stakxx002/.gemini/antigravity-ide/brain/e21edbbd-844e-44ef-9dfa-1af3c8e3a19b/pinout_board_resting_verification.png";
+            let mut file = std::fs::File::create(out_path).expect("Failed to create output PNG");
+            surface.write_to_png(&mut file).expect("Failed to write PNG");
+        }
 
-        let rc_state = Rc::new(RefCell::new(state));
-        draw_nucleo_pinout(&cr, 1280.0, 820.0, &rc_state);
-        surface.flush();
+        // 2. Render Hover View (PA5 / D13 hovered, showing its gutter badge + leader line + detail card)
+        {
+            let surface = cairo::ImageSurface::create(cairo::Format::ARgb32, 1280, 820).expect("Failed to create surface");
+            let cr = cairo::Context::new(&surface).expect("Failed to create context");
+            let (hover_px, hover_py) = get_pin_marker_pos("CN10", 11, 1280.0, 820.0).unwrap();
 
-        let out_path = "/home/stakxx002/.gemini/antigravity-ide/brain/e21edbbd-844e-44ef-9dfa-1af3c8e3a19b/pinout_board_overlay_verification.png";
-        let mut file = std::fs::File::create(out_path).expect("Failed to create output PNG");
-        surface.write_to_png(&mut file).expect("Failed to write PNG");
+            let state = AppState::default();
+            state.project.borrow_mut().loaded_project = Some(project);
+            state.with_canvas_state_mut(|c| {
+                c.selected_pinout_module = Some("hatch".to_string());
+                c.hovered_pinout_pin = Some(("CN10".to_string(), 11)); // PA5 (D13)
+                c.hovered_pinout_mouse = Some((hover_px, hover_py));
+            });
+            let rc_state = Rc::new(RefCell::new(state));
+            draw_nucleo_pinout(&cr, 1280.0, 820.0, &rc_state);
+            surface.flush();
+
+            let out_path_hover = "/home/stakxx002/.gemini/antigravity-ide/brain/e21edbbd-844e-44ef-9dfa-1af3c8e3a19b/pinout_board_hover_verification.png";
+            let mut file_h = std::fs::File::create(out_path_hover).expect("Failed to create output PNG");
+            surface.write_to_png(&mut file_h).expect("Failed to write PNG");
+
+            let out_path_legacy = "/home/stakxx002/.gemini/antigravity-ide/brain/e21edbbd-844e-44ef-9dfa-1af3c8e3a19b/pinout_board_overlay_verification.png";
+            let mut file_l = std::fs::File::create(out_path_legacy).expect("Failed to create output PNG");
+            surface.write_to_png(&mut file_l).expect("Failed to write PNG");
+        }
     }
 }
