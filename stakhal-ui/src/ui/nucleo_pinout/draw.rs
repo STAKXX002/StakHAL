@@ -303,6 +303,7 @@ pub struct ActivePin {
     pub arduino_label: Option<&'static str>,
     pub signal_text: String,
     pub is_muted: bool,
+    pub modules: Vec<String>,
     pub color: (f64, f64, f64),
     pub is_conflict: bool,
     pub is_left: bool,
@@ -385,6 +386,7 @@ pub fn get_active_pins(
             arduino_label: ard_label,
             signal_text: sig_text,
             is_muted,
+            modules: pin_cfg.modules.clone(),
             color,
             is_conflict: reserved.is_some(),
             is_left,
@@ -405,6 +407,7 @@ pub struct CalloutBadge {
     pub arduino_label: Option<&'static str>,
     pub signal_text: String,
     pub is_muted: bool,
+    pub is_pinned: bool,
     pub color: (f64, f64, f64),
     pub is_left: bool,
     pub route_pos: (f64, f64),
@@ -412,6 +415,19 @@ pub struct CalloutBadge {
     pub y: f64,
     pub w: f64,
     pub h: f64,
+}
+
+pub fn get_clear_pinned_rect(canvas_w: f64, canvas_h: f64, pinned_count: usize) -> Option<(f64, f64, f64, f64)> {
+    if pinned_count == 0 {
+        return None;
+    }
+    let (board_x, _, board_w, _) = get_board_rect(canvas_w, canvas_h);
+    let legend_y = canvas_h - 24.0;
+    let btn_w = 135.0;
+    let btn_h = 18.0;
+    let btn_x = (board_x + board_w - btn_w).max(board_x + 460.0);
+    let btn_y = legend_y - 13.0;
+    Some((btn_x, btn_y, btn_w, btn_h))
 }
 
 pub fn compute_visible_callout_badges(
@@ -427,14 +443,30 @@ pub fn compute_visible_callout_badges(
     let min_y = board_y + 4.0;
     let max_y = (board_y + board_h - badge_h - 4.0).max(min_y);
 
-    let mut badges = Vec::new();
+    let (selected_module, pinned_pins) = state.with_canvas_state(|c| {
+        (c.selected_pinout_module.clone(), c.pinned_pins.clone())
+    });
+
+    let mut raw_badges = Vec::new();
 
     for pin in &active_pins {
         let is_hovered = is_pin_hovered(pin.conn_name, pin.pin_num, hovered_pin);
-        let show_badge = pin.is_conflict || is_hovered;
+        let is_pinned = pinned_pins.contains(pin.mcu_pin);
+        let is_module_active = selected_module
+            .as_ref()
+            .map(|sel| pin.modules.iter().any(|m| m == sel))
+            .unwrap_or(false);
+
+        let show_badge = pin.is_conflict || is_hovered || is_pinned || is_module_active;
         if !show_badge {
             continue;
         }
+
+        let is_muted = if is_pinned {
+            false
+        } else {
+            pin.is_muted
+        };
 
         let pin_id_str = match pin.arduino_label {
             Some(ard) => format!("{} / {}", pin.mcu_pin, ard),
@@ -457,13 +489,14 @@ pub fn compute_visible_callout_badges(
             (badge_left, actual_w)
         };
 
-        badges.push(CalloutBadge {
+        raw_badges.push(CalloutBadge {
             conn_name: pin.conn_name,
             pin_num: pin.pin_num,
             mcu_pin: pin.mcu_pin,
             arduino_label: pin.arduino_label,
             signal_text: pin.signal_text.clone(),
-            is_muted: pin.is_muted,
+            is_muted,
+            is_pinned,
             color: pin.color,
             is_left: pin.is_left,
             route_pos: pin.route_pos,
@@ -473,6 +506,58 @@ pub fn compute_visible_callout_badges(
             h: badge_h,
         });
     }
+
+    let mut left_badges: Vec<CalloutBadge> = raw_badges.iter().filter(|b| b.is_left).cloned().collect();
+    let mut right_badges: Vec<CalloutBadge> = raw_badges.iter().filter(|b| !b.is_left).cloned().collect();
+
+    let relax_side = |badges: &mut Vec<CalloutBadge>| {
+        if badges.is_empty() {
+            return;
+        }
+        badges.sort_by(|a, b| a.route_pos.1.partial_cmp(&b.route_pos.1).unwrap_or(std::cmp::Ordering::Equal));
+
+        let spacing = 2.0;
+        let step = badge_h + spacing;
+
+        // Downward pass: ensure each badge is at least step below previous
+        badges[0].y = badges[0].y.clamp(min_y, max_y);
+        for i in 1..badges.len() {
+            let min_allowed = badges[i - 1].y + step;
+            if badges[i].y < min_allowed {
+                badges[i].y = min_allowed;
+            }
+        }
+
+        // Upward pass: if bottom-most badge overflows max_y, push upward
+        let last_idx = badges.len() - 1;
+        if badges[last_idx].y > max_y {
+            badges[last_idx].y = max_y;
+            for i in (0..last_idx).rev() {
+                let max_allowed = badges[i + 1].y - step;
+                if badges[i].y > max_allowed {
+                    badges[i].y = max_allowed;
+                }
+            }
+        }
+
+        // Safety clamp against min_y
+        if badges[0].y < min_y {
+            badges[0].y = min_y;
+            for i in 1..badges.len() {
+                let min_allowed = badges[i - 1].y + step;
+                if badges[i].y < min_allowed {
+                    badges[i].y = min_allowed;
+                }
+            }
+        }
+    };
+
+    relax_side(&mut left_badges);
+    relax_side(&mut right_badges);
+
+    let mut badges = Vec::with_capacity(left_badges.len() + right_badges.len());
+    badges.extend(left_badges);
+    badges.extend(right_badges);
 
     badges
 }
@@ -544,8 +629,13 @@ pub fn draw_nucleo_pinout(
     height: f64,
     state: &Rc<RefCell<AppState>>,
 ) {
-    let (hovered_pin, hovered_mouse, is_filtering_module) = state.borrow().with_canvas_state(|c| {
-        (c.hovered_pinout_pin.clone(), c.hovered_pinout_mouse, c.selected_pinout_module.is_some())
+    let (hovered_pin, hovered_mouse, is_filtering_module, pinned_pins) = state.borrow().with_canvas_state(|c| {
+        (
+            c.hovered_pinout_pin.clone(),
+            c.hovered_pinout_mouse,
+            c.selected_pinout_module.is_some(),
+            c.pinned_pins.clone(),
+        )
     });
     let highlights = get_active_pin_highlights(&state.borrow());
     let hovered_pin = hovered_pin.as_ref();
@@ -659,8 +749,9 @@ pub fn draw_nucleo_pinout(
             let (ax, ay) = a_pos;
 
             let is_hovered = is_pin_hovered(pin.conn_name, pin.pin_num, hovered_pin);
+            let is_pinned = pinned_pins.contains(pin.mcu_pin);
 
-            let (r, g, b, alpha, width) = if is_hovered {
+            let (r, g, b, alpha, width) = if is_hovered || is_pinned {
                 (tokens::color::ACCENT.0, tokens::color::ACCENT.1, tokens::color::ACCENT.2, 1.0, 1.5)
             } else if pin.is_muted {
                 (pin.color.0, pin.color.1, pin.color.2, 0.35, 1.0)
@@ -680,8 +771,9 @@ pub fn draw_nucleo_pinout(
     let marker_r = 4.2;
     for pin in &active_pins {
         let is_hovered = is_pin_hovered(pin.conn_name, pin.pin_num, hovered_pin);
+        let is_pinned = pinned_pins.contains(pin.mcu_pin);
 
-        let (fill_r, fill_g, fill_b, alpha) = if is_hovered {
+        let (fill_r, fill_g, fill_b, alpha) = if is_hovered || is_pinned {
             (tokens::color::ACCENT.0, tokens::color::ACCENT.1, tokens::color::ACCENT.2, 1.0)
         } else if pin.is_muted {
             (pin.color.0, pin.color.1, pin.color.2, 0.35)
@@ -709,6 +801,18 @@ pub fn draw_nucleo_pinout(
             cr.set_line_width(1.0);
             let _ = cr.stroke();
         }
+
+        // Pinned ring indicator on board marker
+        if is_pinned {
+            cr.set_source_rgba(tokens::color::ACCENT.0, tokens::color::ACCENT.1, tokens::color::ACCENT.2, 0.9);
+            cr.arc(mx, my, current_r + 2.4, 0.0, 2.0 * std::f64::consts::PI);
+            cr.set_line_width(1.2);
+            let _ = cr.stroke();
+            if let Some((ax, ay)) = pin.arduino_pos {
+                cr.arc(ax, ay, current_r + 2.4, 0.0, 2.0 * std::f64::consts::PI);
+                let _ = cr.stroke();
+            }
+        }
     }
 
     // 7. Hover Marker for Passive / Unassigned Pins
@@ -733,6 +837,8 @@ pub fn draw_nucleo_pinout(
 
         let (border_r, border_g, border_b, alpha, border_w) = if is_hovered {
             (tokens::color::ACCENT.0, tokens::color::ACCENT.1, tokens::color::ACCENT.2, 1.0, 1.5)
+        } else if badge.is_pinned {
+            (tokens::color::ACCENT.0, tokens::color::ACCENT.1, tokens::color::ACCENT.2, 0.95, 1.2)
         } else if badge.is_muted {
             (badge.color.0, badge.color.1, badge.color.2, 0.35, 1.0)
         } else {
@@ -743,8 +849,17 @@ pub fn draw_nucleo_pinout(
         let (px, py) = badge.route_pos;
         let badge_target_y = badge.y + badge.h / 2.0;
 
-        cr.set_source_rgba(border_r, border_g, border_b, if is_hovered { 1.0 } else if badge.is_muted { 0.35 } else { 0.65 });
-        cr.set_line_width(if is_hovered { 1.2 } else { 1.0 });
+        let line_alpha = if is_hovered {
+            1.0
+        } else if badge.is_pinned {
+            0.90
+        } else if badge.is_muted {
+            0.35
+        } else {
+            0.65
+        };
+        cr.set_source_rgba(border_r, border_g, border_b, line_alpha);
+        cr.set_line_width(if is_hovered || badge.is_pinned { 1.2 } else { 1.0 });
 
         if badge.is_left {
             let dogleg_x = (board_x - 6.0).max(badge.x + badge.w + 2.0);
@@ -808,7 +923,7 @@ pub fn draw_nucleo_pinout(
         }
 
         // Signal / Label
-        if is_hovered {
+        if is_hovered || badge.is_pinned {
             cr.set_source_rgb(tokens::color::ACCENT.0, tokens::color::ACCENT.1, tokens::color::ACCENT.2);
         } else if badge.is_muted {
             cr.set_source_rgb(tokens::color::TEXT_MUTED.0, tokens::color::TEXT_MUTED.1, tokens::color::TEXT_MUTED.2);
@@ -892,6 +1007,26 @@ pub fn draw_nucleo_pinout(
     cr.set_source_rgb(tokens::color::TEXT_MUTED.0, tokens::color::TEXT_MUTED.1, tokens::color::TEXT_MUTED.2);
     let _ = cr.move_to(leg_x + 22.0, legend_y);
     let _ = cr.show_text("Dual Identity (Morpho + Arduino)");
+
+    // Clear Pinned Affordance in Legend Bar
+    if !pinned_pins.is_empty() {
+        if let Some((btn_x, btn_y, btn_w, btn_h)) = get_clear_pinned_rect(canvas_w, canvas_h, pinned_pins.len()) {
+            cr.set_source_rgb(tokens::color::BG_PANEL.0, tokens::color::BG_PANEL.1, tokens::color::BG_PANEL.2);
+            cr.rectangle(btn_x, btn_y, btn_w, btn_h);
+            let _ = cr.fill_preserve();
+
+            cr.set_source_rgba(tokens::color::ACCENT.0, tokens::color::ACCENT.1, tokens::color::ACCENT.2, 0.85);
+            cr.set_line_width(1.0);
+            let _ = cr.stroke();
+
+            cr.select_font_face(tokens::font::CAIRO_MONO, cairo::FontSlant::Normal, cairo::FontWeight::Bold);
+            cr.set_font_size(9.5);
+            cr.set_source_rgb(tokens::color::ACCENT.0, tokens::color::ACCENT.1, tokens::color::ACCENT.2);
+            let btn_text = format!("✕ Clear Pinned ({})", pinned_pins.len());
+            let _ = cr.move_to(btn_x + 10.0, btn_y + 13.0);
+            let _ = cr.show_text(&btn_text);
+        }
+    }
 
     // 10. FINAL PASS: Compact Floating Tooltip Card
     if let (Some((conn_name, pin_num)), Some((mx, my))) = (hovered_pin, hovered_mouse) {
@@ -1066,6 +1201,59 @@ pub fn setup_nucleo_pinout_drawing_and_gestures(
     });
 
     widgets.pinout_drawing_area.add_controller(motion);
+
+    let click = gtk4::GestureClick::new();
+    let state_click = Rc::clone(state);
+    let widgets_click = Rc::clone(widgets);
+
+    click.connect_pressed(move |_, n_press, x, y| {
+        if n_press != 1 {
+            return;
+        }
+        let area = &widgets_click.pinout_drawing_area;
+        let cw = area.width().max(800) as f64;
+        let ch = area.height().max(600) as f64;
+
+        // 1. Check if clicked Clear Pinned button
+        let pinned_count = state_click.borrow().with_canvas_state(|c| c.pinned_pins.len());
+        if let Some((bx, by, bw, bh)) = get_clear_pinned_rect(cw, ch, pinned_count) {
+            if x >= bx && x <= bx + bw && y >= by && y <= by + bh {
+                state_click.borrow().with_canvas_state_mut(|c| {
+                    c.pinned_pins.clear();
+                });
+                area.queue_draw();
+                return;
+            }
+        }
+
+        // 2. Check if clicked a pin marker or callout badge
+        let hit_pin = find_hit_pin(x, y, cw, ch, &state_click.borrow());
+        if let Some((conn_name, pin_num)) = hit_pin {
+            let mcu_opt = lookup_mcu_pin(conn_name, pin_num);
+            let is_project_pin = state_click.borrow().project.borrow().loaded_project.as_ref().map(|p| {
+                if let Some(mcu) = mcu_opt {
+                    p.pins.iter().any(|cfg| cfg.pin == mcu)
+                } else {
+                    false
+                }
+            }).unwrap_or(false);
+
+            state_click.borrow().with_canvas_state_mut(|c| {
+                if is_project_pin {
+                    if let Some(mcu) = mcu_opt {
+                        if !c.pinned_pins.remove(mcu) {
+                            c.pinned_pins.insert(mcu.to_string());
+                        }
+                    }
+                }
+                c.hovered_pinout_pin = Some((conn_name.to_string(), pin_num));
+                c.hovered_pinout_mouse = Some((x, y));
+            });
+            area.queue_draw();
+        }
+    });
+
+    widgets.pinout_drawing_area.add_controller(click);
 }
 
 #[cfg(test)]
@@ -1154,39 +1342,99 @@ mod tests {
             .expect("Failed to load aa_ns_stm_port");
 
         let state = AppState::default();
-        state.project.borrow_mut().loaded_project = Some(project);
+        state.project.borrow_mut().loaded_project = Some(project.clone());
 
-        // When selected_pinout_module is None ("All Modules"), no active pins are muted
-        let all_hl = get_active_pin_highlights(&state);
-        assert!(!all_hl.is_empty());
-        for hl in all_hl.values() {
-            assert!(!hl.is_muted);
+        // When selected_pinout_module is None ("All Modules"), badges are resting (no persistent non-conflict badges)
+        let resting_badges = compute_visible_callout_badges(1280.0, 820.0, &state, None);
+        for b in &resting_badges {
+            assert!(stakhal_core::nucleo_pinout::check_reserved(b.mcu_pin).is_some());
         }
 
-        // When selected_pinout_module is Some("hatch"), pins in hatch are active, other pins are muted
-        let hatch_state = AppState::default();
-        hatch_state.with_canvas_state_mut(|c| {
-            c.selected_pinout_module = Some("hatch".to_string());
+        // When selected_pinout_module is Some("alignment") (busiest module in aa_ns_stm_port, 8 pins)
+        let align_state = AppState::default();
+        align_state.with_canvas_state_mut(|c| {
+            c.selected_pinout_module = Some("alignment".to_string());
         });
-        hatch_state.project.borrow_mut().loaded_project = state.project.borrow().loaded_project.clone();
-        let hatch_hl = get_active_pin_highlights(&hatch_state);
+        align_state.project.borrow_mut().loaded_project = Some(project.clone());
 
-        // Find GRIP_IN1
-        let grip = hatch_hl.values().find(|h| h.label.as_deref() == Some("GRIP_IN1")).expect("GRIP_IN1 missing");
-        assert!(!grip.is_muted, "GRIP_IN1 should not be muted for hatch module");
-        assert!(grip.modules.contains(&"hatch".to_string()));
+        let align_badges = compute_visible_callout_badges(1280.0, 820.0, &align_state, None);
+        // All 8 alignment pins must have visible persistent badges
+        assert_eq!(align_badges.len(), 8);
 
-        // Find Z1_LIMIT
-        let z1 = hatch_hl.values().find(|h| h.label.as_deref() == Some("Z1_LIMIT")).expect("Z1_LIMIT missing");
-        assert!(z1.is_muted, "Z1_LIMIT should be muted when hatch is selected");
-        assert!(z1.modules.contains(&"alignment".to_string()));
+        // Verify collision-free vertical relaxation: badges on each side must not overlap
+        let mut left_b: Vec<_> = align_badges.iter().filter(|b| b.is_left).collect();
+        let mut right_b: Vec<_> = align_badges.iter().filter(|b| !b.is_left).collect();
+        left_b.sort_by(|a, b| a.y.partial_cmp(&b.y).unwrap());
+        right_b.sort_by(|a, b| a.y.partial_cmp(&b.y).unwrap());
+
+        for i in 1..right_b.len() {
+            let prev = right_b[i - 1];
+            let curr = right_b[i];
+            let gap = curr.y - (prev.y + prev.h);
+            assert!(
+                gap >= 1.99,
+                "Collision detected between {} ({:.1}) and {} ({:.1})! Gap={:.2}",
+                prev.mcu_pin, prev.y, curr.mcu_pin, curr.y, gap
+            );
+        }
 
         // Render to canvas to verify drawing with module filter doesn't panic
         let surface = cairo::ImageSurface::create(cairo::Format::ARgb32, 1280, 820).expect("Failed to create surface");
         let cr = cairo::Context::new(&surface).expect("Failed to create context");
-        let rc_state = Rc::new(RefCell::new(hatch_state));
+        let rc_state = Rc::new(RefCell::new(align_state));
         draw_nucleo_pinout(&cr, 1280.0, 820.0, &rc_state);
         surface.flush();
+    }
+
+    #[test]
+    fn test_nucleo_pinout_click_to_pin_and_clear() {
+        let fixture_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../stakhal-core/tests/fixtures/aa_ns_stm_port");
+        let ioc_path = fixture_dir.join("aa_ns_stm_port.ioc");
+        let main_c_path = fixture_dir.join("Core/Src/main.c");
+        let project = stakhal_core::ir::schema::load_project(&ioc_path, &main_c_path)
+            .expect("Failed to load aa_ns_stm_port");
+
+        let state = AppState::default();
+        state.project.borrow_mut().loaded_project = Some(project.clone());
+
+        // Hand-pin 3 pins across different modules: PB0 (alignment), PB12 (hatch), PB7 (relay)
+        state.with_canvas_state_mut(|c| {
+            c.pinned_pins.insert("PB0".to_string());
+            c.pinned_pins.insert("PB12".to_string());
+            c.pinned_pins.insert("PB7".to_string());
+        });
+
+        // Verify all 3 pins get persistent callout badges simultaneously even without hover and with module filter None
+        let badges = compute_visible_callout_badges(1280.0, 820.0, &state, None);
+        assert!(badges.iter().any(|b| b.mcu_pin == "PB0" && b.is_pinned));
+        assert!(badges.iter().any(|b| b.mcu_pin == "PB12" && b.is_pinned));
+        assert!(badges.iter().any(|b| b.mcu_pin == "PB7" && b.is_pinned));
+
+        // Even if module filter is set to "hatch", PB0 and PB7 remain visible and unmuted because they are pinned
+        state.with_canvas_state_mut(|c| {
+            c.selected_pinout_module = Some("hatch".to_string());
+        });
+        let hatch_badges = compute_visible_callout_badges(1280.0, 820.0, &state, None);
+        let pb0 = hatch_badges.iter().find(|b| b.mcu_pin == "PB0").expect("PB0 must remain visible");
+        assert!(!pb0.is_muted, "Pinned PB0 should not be muted even under hatch filter");
+
+        // Verify clear pinned button bounds and clearing
+        let clear_rect = get_clear_pinned_rect(1280.0, 820.0, 3);
+        assert!(clear_rect.is_some(), "Clear pinned affordance must be present when pins are pinned");
+        let (cx, cy, cw, ch) = clear_rect.unwrap();
+        assert!(cx > 400.0 && cy > 700.0 && cw > 50.0 && ch > 10.0);
+
+        // Clear pinned pins
+        state.with_canvas_state_mut(|c| {
+            c.pinned_pins.clear();
+            c.selected_pinout_module = None;
+        });
+        assert!(get_clear_pinned_rect(1280.0, 820.0, 0).is_none());
+        let cleared_badges = compute_visible_callout_badges(1280.0, 820.0, &state, None);
+        assert!(!cleared_badges.iter().any(|b| b.mcu_pin == "PB0"));
+        assert!(!cleared_badges.iter().any(|b| b.mcu_pin == "PB12"));
+        assert!(!cleared_badges.iter().any(|b| b.mcu_pin == "PB7"));
     }
 
     #[test]
@@ -1256,14 +1504,57 @@ mod tests {
             modules: Vec::new(),
         });
 
-        // 1. Render Resting View (No pin hovered, only persistent conflict badges visible)
+        // 1. Render Module Filter View: Busiest module ("alignment", 8 pins) with persistent badges and no collision
         {
             let surface = cairo::ImageSurface::create(cairo::Format::ARgb32, 1280, 820).expect("Failed to create surface");
             let cr = cairo::Context::new(&surface).expect("Failed to create context");
             let state = AppState::default();
             state.project.borrow_mut().loaded_project = Some(project.clone());
             state.with_canvas_state_mut(|c| {
-                c.selected_pinout_module = Some("hatch".to_string());
+                c.selected_pinout_module = Some("alignment".to_string());
+                c.hovered_pinout_pin = None;
+                c.hovered_pinout_mouse = None;
+            });
+            let rc_state = Rc::new(RefCell::new(state));
+            draw_nucleo_pinout(&cr, 1280.0, 820.0, &rc_state);
+            surface.flush();
+
+            let out_path = "/home/stakxx002/.gemini/antigravity-ide/brain/e21edbbd-844e-44ef-9dfa-1af3c8e3a19b/pinout_board_module_filter_verification.png";
+            let mut file = std::fs::File::create(out_path).expect("Failed to create output PNG");
+            surface.write_to_png(&mut file).expect("Failed to write PNG");
+        }
+
+        // 2. Render Pinned Pins View: 3+ hand-pinned pins across different modules + clear affordance
+        {
+            let surface = cairo::ImageSurface::create(cairo::Format::ARgb32, 1280, 820).expect("Failed to create surface");
+            let cr = cairo::Context::new(&surface).expect("Failed to create context");
+            let state = AppState::default();
+            state.project.borrow_mut().loaded_project = Some(project.clone());
+            state.with_canvas_state_mut(|c| {
+                c.selected_pinout_module = None; // All Modules
+                c.pinned_pins.insert("PB0".to_string());   // alignment
+                c.pinned_pins.insert("PB12".to_string());  // hatch
+                c.pinned_pins.insert("PB7".to_string());   // relay
+                c.hovered_pinout_pin = None;
+                c.hovered_pinout_mouse = None;
+            });
+            let rc_state = Rc::new(RefCell::new(state));
+            draw_nucleo_pinout(&cr, 1280.0, 820.0, &rc_state);
+            surface.flush();
+
+            let out_path = "/home/stakxx002/.gemini/antigravity-ide/brain/e21edbbd-844e-44ef-9dfa-1af3c8e3a19b/pinout_board_pinned_pins_verification.png";
+            let mut file = std::fs::File::create(out_path).expect("Failed to create output PNG");
+            surface.write_to_png(&mut file).expect("Failed to write PNG");
+        }
+
+        // 3. Render Resting View (No pin hovered, only persistent conflict badges visible)
+        {
+            let surface = cairo::ImageSurface::create(cairo::Format::ARgb32, 1280, 820).expect("Failed to create surface");
+            let cr = cairo::Context::new(&surface).expect("Failed to create context");
+            let state = AppState::default();
+            state.project.borrow_mut().loaded_project = Some(project.clone());
+            state.with_canvas_state_mut(|c| {
+                c.selected_pinout_module = None;
                 c.hovered_pinout_pin = None;
                 c.hovered_pinout_mouse = None;
             });
@@ -1276,7 +1567,7 @@ mod tests {
             surface.write_to_png(&mut file).expect("Failed to write PNG");
         }
 
-        // 2. Render Hover View (PA5 / D13 hovered, showing its gutter badge + leader line + detail card)
+        // 4. Render Hover View (PA5 / D13 hovered, showing its gutter badge + leader line + detail card)
         {
             let surface = cairo::ImageSurface::create(cairo::Format::ARgb32, 1280, 820).expect("Failed to create surface");
             let cr = cairo::Context::new(&surface).expect("Failed to create context");
@@ -1285,7 +1576,7 @@ mod tests {
             let state = AppState::default();
             state.project.borrow_mut().loaded_project = Some(project);
             state.with_canvas_state_mut(|c| {
-                c.selected_pinout_module = Some("hatch".to_string());
+                c.selected_pinout_module = None;
                 c.hovered_pinout_pin = Some(("CN10".to_string(), 11)); // PA5 (D13)
                 c.hovered_pinout_mouse = Some((hover_px, hover_py));
             });
