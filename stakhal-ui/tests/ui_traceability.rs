@@ -63,9 +63,10 @@ printf("BOOT\r\n");
         lbl_build_traceability: gtk4::Label::new(None),
         area_traceability_verify: gtk4::DrawingArea::new(),
         lbl_periph_header: gtk4::Label::new(None),
-        lbl_region_header: gtk4::Label::new(None),
+        lbl_board_header: gtk4::Label::new(None),
         list_peripherals: gtk4::ListBox::new(),
-        list_user_regions: gtk4::ListBox::new(),
+        box_board_legend: gtk4::Box::new(gtk4::Orientation::Horizontal, 0),
+        area_board_glance: gtk4::DrawingArea::new(),
         build_log_view: gtk4::TextView::new(),
         lbl_build_status: gtk4::Label::new(None),
         area_flash_verify: gtk4::DrawingArea::new(),
@@ -208,6 +209,23 @@ printf("BOOT\r\n");
     assert!(row0.has_css_class("stagger-reveal-row"));
     assert!(row1.has_css_class("stagger-reveal-row"));
     assert!(widgets.list_peripherals.first_child().is_some());
+
+    // 6. Board Glance Legend verification
+    let fixture_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../stakhal-core/tests/fixtures/aa_ns_stm_port");
+    let ioc_path = fixture_dir.join("aa_ns_stm_port.ioc");
+    let aa_main_c = fixture_dir.join("Core/Src/main.c");
+    let project = stakhal_core::ir::schema::load_project(&ioc_path, &aa_main_c)
+        .expect("Failed to load aa_ns_stm_port");
+
+    stakhal_ui::ui::board_glance::update_board_glance_legend(&widgets.box_board_legend, Some(&project));
+    let mut legend_count = 0;
+    let mut child = widgets.box_board_legend.first_child();
+    while let Some(c) = child {
+        legend_count += 1;
+        child = c.next_sibling();
+    }
+    assert!(legend_count >= 4, "Board glance legend must populate chips for all active modules in project");
 
     let _ = std::fs::remove_dir_all(&temp_dir);
 }

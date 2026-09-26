@@ -11,7 +11,7 @@ use crate::append_log_text;
 use crate::config::{load_app_config, save_app_config};
 use crate::state::{AppState, AppWidgets};
 use crate::toolchain;
-use crate::ui::main_panel::{append_staggered_row, clear_list_box, create_peripheral_row, create_region_row};
+use crate::ui::main_panel::{append_staggered_row, clear_list_box, create_peripheral_row};
 use crate::update_quick_send_buttons;
 use crate::update_traceability_ui;
 
@@ -106,43 +106,16 @@ pub fn do_load_project(state: &Rc<RefCell<AppState>>, widgets: &Rc<AppWidgets>) 
 
             widgets.lbl_periph_header.set_text(&format!("[ PERIPHERALS ({}) ]", project.peripherals.len()));
 
-            let mut total_regions = project.user_regions.len();
-            if project.loop_body.is_some() {
-                total_regions += 1;
-            }
-            widgets.lbl_region_header.set_text(&format!("[ USER REGIONS ({}) ]", total_regions));
+            widgets.lbl_board_header.set_text(&format!("[ NUCLEO-F446RE PINOUT GLANCE ({} PINS) ]", project.pins.len()));
+            crate::ui::board_glance::update_board_glance_legend(&widgets.box_board_legend, Some(&project));
+            widgets.area_board_glance.queue_draw();
 
             clear_list_box(&widgets.list_peripherals);
-            clear_list_box(&widgets.list_user_regions);
 
             let total_peripherals = project.peripherals.len();
             for (idx, p) in project.peripherals.iter().enumerate() {
                 let row = create_peripheral_row(&p.name, p.mode.as_deref(), p.parameters.len());
                 append_staggered_row(&widgets.list_peripherals, &row, idx, total_peripherals);
-            }
-
-            for (idx, r) in project.user_regions.iter().enumerate() {
-                let row = create_region_row(
-                    &r.tag,
-                    r.byte_range.0,
-                    r.byte_range.1,
-                    r.line_range.0,
-                    r.line_range.1,
-                    false,
-                );
-                append_staggered_row(&widgets.list_user_regions, &row, idx, total_regions);
-            }
-
-            if let Some(ref lb) = project.loop_body {
-                let row = create_region_row(
-                    &lb.tag,
-                    lb.byte_range.0,
-                    lb.byte_range.1,
-                    lb.line_range.0,
-                    lb.line_range.1,
-                    true,
-                );
-                append_staggered_row(&widgets.list_user_regions, &row, project.user_regions.len(), total_regions);
             }
 
             let is_f446 = project.meta.mcu_name.to_uppercase().contains("F446");

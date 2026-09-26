@@ -399,9 +399,10 @@ dropdown button {
         lbl_build_traceability,
         area_traceability_verify,
         lbl_periph_header,
-        lbl_region_header,
+        lbl_board_header,
         list_peripherals,
-        list_user_regions,
+        box_board_legend,
+        area_board_glance,
         build_log_view,
         lbl_build_status,
         area_flash_verify,
@@ -499,9 +500,10 @@ dropdown button {
         lbl_build_traceability,
         area_traceability_verify: area_traceability_verify.clone(),
         lbl_periph_header,
-        lbl_region_header,
+        lbl_board_header,
         list_peripherals,
-        list_user_regions,
+        box_board_legend,
+        area_board_glance: area_board_glance.clone(),
         build_log_view: build_log_view.clone(),
         lbl_build_status: lbl_build_status.clone(),
         area_flash_verify: area_flash_verify.clone(),
@@ -538,6 +540,13 @@ dropdown button {
         Rc::clone(&state),
         false,
     );
+
+    // Connect Board Glance Drawing Area
+    let state_board_glance = Rc::clone(&state);
+    area_board_glance.set_draw_func(move |_area, cr, w, h| {
+        let state_borrow = state_board_glance.borrow();
+        ui::board_glance::draw_board_glance(cr, w as f64, h as f64, &state_borrow);
+    });
 
     // Connect Diagram and Navigation
     ui::setup_diagram::setup_diagram_and_navigation(

@@ -23,9 +23,10 @@ pub struct MainPanelWidgets {
     pub lbl_build_traceability: gtk4::Label,
     pub area_traceability_verify: gtk4::DrawingArea,
     pub lbl_periph_header: gtk4::Label,
-    pub lbl_region_header: gtk4::Label,
+    pub lbl_board_header: gtk4::Label,
     pub list_peripherals: gtk4::ListBox,
-    pub list_user_regions: gtk4::ListBox,
+    pub box_board_legend: gtk4::Box,
+    pub area_board_glance: gtk4::DrawingArea,
     pub build_log_view: gtk4::TextView,
     pub lbl_build_status: gtk4::Label,
     pub area_flash_verify: gtk4::DrawingArea,
@@ -199,8 +200,8 @@ pub fn build_main_panel() -> MainPanelWidgets {
         .css_classes(vec!["title-4".to_string()])
         .build();
 
-    let lbl_region_header = gtk4::Label::builder()
-        .label("[ USER REGIONS ]")
+    let lbl_board_header = gtk4::Label::builder()
+        .label("[ NUCLEO-F446RE PINOUT GLANCE ]")
         .halign(gtk4::Align::Start)
         .css_classes(vec!["title-4".to_string()])
         .build();
@@ -209,12 +210,29 @@ pub fn build_main_panel() -> MainPanelWidgets {
         .selection_mode(gtk4::SelectionMode::None)
         .build();
 
-    let list_user_regions = gtk4::ListBox::builder()
-        .selection_mode(gtk4::SelectionMode::None)
+    let box_board_legend = gtk4::Box::builder()
+        .orientation(gtk4::Orientation::Horizontal)
+        .spacing(6)
+        .margin_top(2)
+        .margin_bottom(2)
+        .build();
+
+    let area_board_glance = gtk4::DrawingArea::builder()
+        .hexpand(true)
+        .vexpand(true)
         .build();
 
     let col_peripherals = create_column_box(&lbl_periph_header, &list_peripherals);
-    let col_regions = create_column_box(&lbl_region_header, &list_user_regions);
+
+    let col_board_glance = gtk4::Box::builder()
+        .orientation(gtk4::Orientation::Vertical)
+        .spacing(6)
+        .hexpand(true)
+        .vexpand(true)
+        .build();
+    col_board_glance.append(&lbl_board_header);
+    col_board_glance.append(&box_board_legend);
+    col_board_glance.append(&area_board_glance);
 
     let columns_box = gtk4::Box::builder()
         .orientation(gtk4::Orientation::Horizontal)
@@ -226,7 +244,7 @@ pub fn build_main_panel() -> MainPanelWidgets {
         .margin_bottom(16)
         .build();
     columns_box.append(&col_peripherals);
-    columns_box.append(&col_regions);
+    columns_box.append(&col_board_glance);
 
     // Build & Flash Console Panel
     let lbl_console_header = gtk4::Label::builder()
@@ -317,9 +335,10 @@ pub fn build_main_panel() -> MainPanelWidgets {
         lbl_build_traceability,
         area_traceability_verify,
         lbl_periph_header,
-        lbl_region_header,
+        lbl_board_header,
         list_peripherals,
-        list_user_regions,
+        box_board_legend,
+        area_board_glance,
         build_log_view,
         lbl_build_status,
         area_flash_verify,

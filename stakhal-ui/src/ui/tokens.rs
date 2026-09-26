@@ -27,6 +27,38 @@ pub mod color {
     pub const STATE_ACTIVE: (f64, f64, f64) = (245.0 / 255.0, 166.0 / 255.0, 35.0 / 255.0);
     pub const STATE_ERROR: (f64, f64, f64) = (229.0 / 255.0, 72.0 / 255.0, 77.0 / 255.0);
     pub const ACCENT: (f64, f64, f64) = (79.0 / 255.0, 209.0 / 255.0, 197.0 / 255.0);
+
+    // Categorical module palette for board glance and subsystem tagging
+    pub const PALETTE_CYAN: (f64, f64, f64) = ACCENT;
+    pub const PALETTE_AMBER: (f64, f64, f64) = STATE_ACTIVE;
+    pub const PALETTE_EMERALD: (f64, f64, f64) = STATE_READY;
+    pub const PALETTE_BLUE: (f64, f64, f64) = (96.0 / 255.0, 165.0 / 255.0, 250.0 / 255.0);
+    pub const PALETTE_PURPLE: (f64, f64, f64) = (192.0 / 255.0, 132.0 / 255.0, 252.0 / 255.0);
+    pub const PALETTE_PINK: (f64, f64, f64) = (244.0 / 255.0, 114.0 / 255.0, 182.0 / 255.0);
+    pub const PALETTE_LIME: (f64, f64, f64) = (163.0 / 255.0, 230.0 / 255.0, 53.0 / 255.0);
+    pub const PALETTE_TANGERINE: (f64, f64, f64) = (251.0 / 255.0, 146.0 / 255.0, 60.0 / 255.0);
+
+    pub const MODULE_PALETTE: &[(f64, f64, f64)] = &[
+        PALETTE_CYAN,
+        PALETTE_AMBER,
+        PALETTE_EMERALD,
+        PALETTE_BLUE,
+        PALETTE_PURPLE,
+        PALETTE_PINK,
+        PALETTE_LIME,
+        PALETTE_TANGERINE,
+    ];
+
+    pub const MODULE_PALETTE_HEX: &[&str] = &[
+        "#4FD1C5",
+        "#F5A623",
+        "#34D399",
+        "#60A5FA",
+        "#C084FC",
+        "#F472B6",
+        "#A3E635",
+        "#FB923C",
+    ];
 }
 
 pub mod font {
