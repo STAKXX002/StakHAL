@@ -33,7 +33,7 @@ pub fn build_nucleo_pinout_panel() -> NucleoPinoutPanelWidgets {
     chk_pinout_show_all.set_css_classes(&["caption"]);
 
     let lbl_pinout_hint = gtk4::Label::builder()
-        .label("Hover or click pins to inspect & pin badges • Filter module for persistent badges • Persistent badges show conflicts")
+        .label("Scroll to zoom • Drag to pan • Hover or click pins to inspect & pin badges")
         .halign(gtk4::Align::End)
         .css_classes(vec!["dim-label".to_string(), "caption".to_string()])
         .build();
