@@ -482,12 +482,12 @@ pub fn compute_visible_callout_badges(
         let by = (pin.route_pos.1 - badge_h / 2.0).clamp(min_y, max_y);
 
         let (bx, bw) = if pin.is_left {
-            let badge_right = board_x - 14.0;
+            let badge_right = board_x - 28.0;
             let badge_x = (badge_right - est_w).max(12.0);
             let actual_w = badge_right - badge_x;
             (badge_x, actual_w)
         } else {
-            let badge_left = board_x + board_w + 14.0;
+            let badge_left = board_x + board_w + 28.0;
             let max_w = (canvas_w - 12.0 - badge_left).max(60.0);
             let actual_w = est_w.min(max_w);
             (badge_left, actual_w)
@@ -867,15 +867,19 @@ pub fn draw_nucleo_pinout(
         cr.set_line_width(if is_hovered || badge.is_pinned { 1.2 } else { 1.0 });
 
         if badge.is_left {
-            let dogleg_x = (board_x - 6.0).max(badge.x + badge.w + 2.0);
+            let elbow1_x = board_x - 6.0;
+            let elbow2_x = (badge.x + badge.w + 10.0).min(elbow1_x - 2.0);
             let _ = cr.move_to(px, py);
-            let _ = cr.line_to(dogleg_x, py);
+            let _ = cr.line_to(elbow1_x, py);
+            let _ = cr.line_to(elbow2_x, badge_target_y);
             let _ = cr.line_to(badge.x + badge.w, badge_target_y);
             let _ = cr.stroke();
         } else {
-            let dogleg_x = (board_x + board_w + 6.0).min(badge.x - 2.0);
+            let elbow1_x = board_x + board_w + 6.0;
+            let elbow2_x = (badge.x - 10.0).max(elbow1_x + 2.0);
             let _ = cr.move_to(px, py);
-            let _ = cr.line_to(dogleg_x, py);
+            let _ = cr.line_to(elbow1_x, py);
+            let _ = cr.line_to(elbow2_x, badge_target_y);
             let _ = cr.line_to(badge.x, badge_target_y);
             let _ = cr.stroke();
         }
