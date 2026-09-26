@@ -2,27 +2,9 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 use gtk4::cairo;
-use gtk4::glib;
 use gtk4::prelude::*;
 use crate::state::{AppState, AppWidgets};
 use crate::ui::tokens;
-use super::coords;
-
-thread_local! {
-    static BOARD_SURFACE: std::cell::OnceCell<cairo::ImageSurface> = const { std::cell::OnceCell::new() };
-}
-
-pub fn with_board_surface<R>(f: impl FnOnce(&cairo::ImageSurface) -> R) -> R {
-    BOARD_SURFACE.with(|cell| {
-        let surface = cell.get_or_init(|| {
-            let png_bytes = include_bytes!("../../../assets/nucleo_f446re_board.png");
-            let mut cursor = std::io::Cursor::new(png_bytes);
-            cairo::ImageSurface::create_from_png(&mut cursor)
-                .expect("Failed to load nucleo_f446re_board.png")
-        });
-        f(surface)
-    })
-}
 
 pub struct PinDef {
     pub pin_num: u8,
@@ -35,7 +17,7 @@ pub struct ConnectorDef {
     pub pins: &'static [PinDef],
 }
 
-pub const CN7_PINS: &[PinDef] = &[
+const CN7_PINS: &[PinDef] = &[
     PinDef { pin_num: 1, mcu_pin: "PC10", default_label: None },
     PinDef { pin_num: 2, mcu_pin: "PC11", default_label: None },
     PinDef { pin_num: 3, mcu_pin: "PC12", default_label: None },
@@ -76,7 +58,7 @@ pub const CN7_PINS: &[PinDef] = &[
     PinDef { pin_num: 38, mcu_pin: "PC0", default_label: Some("A5") },
 ];
 
-pub const CN6_PINS: &[PinDef] = &[
+const CN6_PINS: &[PinDef] = &[
     PinDef { pin_num: 1, mcu_pin: "NC", default_label: None },
     PinDef { pin_num: 2, mcu_pin: "IOREF", default_label: None },
     PinDef { pin_num: 3, mcu_pin: "RESET", default_label: None },
@@ -87,7 +69,7 @@ pub const CN6_PINS: &[PinDef] = &[
     PinDef { pin_num: 8, mcu_pin: "VIN", default_label: None },
 ];
 
-pub const CN8_PINS: &[PinDef] = &[
+const CN8_PINS: &[PinDef] = &[
     PinDef { pin_num: 1, mcu_pin: "PA0", default_label: Some("A0") },
     PinDef { pin_num: 2, mcu_pin: "PA1", default_label: Some("A1") },
     PinDef { pin_num: 3, mcu_pin: "PA4", default_label: Some("A2") },
@@ -96,7 +78,7 @@ pub const CN8_PINS: &[PinDef] = &[
     PinDef { pin_num: 6, mcu_pin: "PC0", default_label: Some("A5") },
 ];
 
-pub const CN10_PINS: &[PinDef] = &[
+const CN10_PINS: &[PinDef] = &[
     PinDef { pin_num: 1, mcu_pin: "PC9", default_label: None },
     PinDef { pin_num: 2, mcu_pin: "PC8", default_label: None },
     PinDef { pin_num: 3, mcu_pin: "PB8", default_label: Some("D15") },
@@ -137,7 +119,7 @@ pub const CN10_PINS: &[PinDef] = &[
     PinDef { pin_num: 38, mcu_pin: "NC", default_label: None },
 ];
 
-pub const CN5_PINS: &[PinDef] = &[
+const CN5_PINS: &[PinDef] = &[
     PinDef { pin_num: 1, mcu_pin: "PA9", default_label: Some("D8") },
     PinDef { pin_num: 2, mcu_pin: "PC7", default_label: Some("D9") },
     PinDef { pin_num: 3, mcu_pin: "PB6", default_label: Some("D10") },
@@ -150,7 +132,7 @@ pub const CN5_PINS: &[PinDef] = &[
     PinDef { pin_num: 10, mcu_pin: "PB8", default_label: Some("D15") },
 ];
 
-pub const CN9_PINS: &[PinDef] = &[
+const CN9_PINS: &[PinDef] = &[
     PinDef { pin_num: 1, mcu_pin: "PA3", default_label: Some("D0") },
     PinDef { pin_num: 2, mcu_pin: "PA2", default_label: Some("D1") },
     PinDef { pin_num: 3, mcu_pin: "PA10", default_label: Some("D2") },
@@ -162,12 +144,30 @@ pub const CN9_PINS: &[PinDef] = &[
 ];
 
 pub const CONNECTORS: &[ConnectorDef] = &[
-    ConnectorDef { name: "CN7", pins: CN7_PINS },
-    ConnectorDef { name: "CN6", pins: CN6_PINS },
-    ConnectorDef { name: "CN8", pins: CN8_PINS },
-    ConnectorDef { name: "CN10", pins: CN10_PINS },
-    ConnectorDef { name: "CN5", pins: CN5_PINS },
-    ConnectorDef { name: "CN9", pins: CN9_PINS },
+    ConnectorDef {
+        name: "CN7",
+        pins: CN7_PINS,
+    },
+    ConnectorDef {
+        name: "CN6",
+        pins: CN6_PINS,
+    },
+    ConnectorDef {
+        name: "CN8",
+        pins: CN8_PINS,
+    },
+    ConnectorDef {
+        name: "CN10",
+        pins: CN10_PINS,
+    },
+    ConnectorDef {
+        name: "CN5",
+        pins: CN5_PINS,
+    },
+    ConnectorDef {
+        name: "CN9",
+        pins: CN9_PINS,
+    },
 ];
 
 #[derive(Debug, Clone)]
@@ -235,400 +235,81 @@ pub fn get_active_pin_highlights(state: &AppState) -> HashMap<(&'static str, u8)
     map
 }
 
-pub fn lookup_mcu_pin(conn_name: &str, pin_num: u8) -> Option<&'static str> {
-    CONNECTORS
-        .iter()
-        .find(|c| c.name == conn_name)?
-        .pins
-        .iter()
-        .find(|p| p.pin_num == pin_num)
-        .map(|p| p.mcu_pin)
-}
-
-pub fn is_pin_hovered(
+pub fn get_pin_cell_rect(
     conn_name: &str,
-    pin_num: u8,
-    hovered_pin: Option<&(String, u8)>,
-) -> bool {
-    let Some((h_conn, h_pin)) = hovered_pin else {
-        return false;
-    };
-    if h_conn == conn_name && *h_pin == pin_num {
-        return true;
-    }
-    if let (Some(mcu1), Some(mcu2)) = (lookup_mcu_pin(conn_name, pin_num), lookup_mcu_pin(h_conn, *h_pin)) {
-        if !mcu1.is_empty() && mcu1 != "NC" && mcu1 != "GND" && mcu1 != "+3V3" && mcu1 != "+5V" && mcu1 == mcu2 {
-            return true;
-        }
-    }
-    false
-}
-
-pub fn get_base_board_rect(canvas_w: f64, canvas_h: f64) -> (f64, f64, f64, f64) {
-    let top_reserved = 82.0;
-    let bottom_reserved = 46.0;
-    let min_gutter_w = 160.0;
-    let avail_w = (canvas_w - 2.0 * min_gutter_w).max(200.0);
-    let avail_h = (canvas_h - top_reserved - bottom_reserved).max(200.0);
-
-    let board_aspect = 70.0 / 82.5;
-
-    let (board_w, board_h) = if avail_w / avail_h > board_aspect {
-        let h = avail_h;
-        let w = h * board_aspect;
-        (w, h)
-    } else {
-        let w = avail_w;
-        let h = w / board_aspect;
-        (w, h)
-    };
-
-    let board_x = (canvas_w - board_w) / 2.0;
-    let board_y = top_reserved + (avail_h - board_h) / 2.0;
-    (board_x, board_y, board_w, board_h)
-}
-
-pub fn get_board_rect(canvas_w: f64, canvas_h: f64, state: &AppState) -> (f64, f64, f64, f64) {
-    let (base_x, base_y, base_w, base_h) = get_base_board_rect(canvas_w, canvas_h);
-    let (zoom, pan_x, pan_y) = state.with_canvas_state(|c| (c.pinout_zoom, c.pinout_pan_x, c.pinout_pan_y));
-    let w = base_w * zoom;
-    let h = base_h * zoom;
-    let x = pan_x + base_x * zoom;
-    let y = pan_y + base_y * zoom;
-    (x, y, w, h)
-}
-
-pub fn get_pin_marker_pos(conn_name: &str, pin_num: u8, canvas_w: f64, canvas_h: f64, state: Option<&AppState>) -> Option<(f64, f64)> {
-    let coord = coords::get_pin_coord(conn_name, pin_num)?;
-    let (board_x, board_y, board_w, board_h) = match state {
-        Some(st) => get_board_rect(canvas_w, canvas_h, st),
-        None => get_base_board_rect(canvas_w, canvas_h),
-    };
-    let px = board_x + coord.norm_x * board_w;
-    let py = board_y + coord.norm_y * board_h;
-    Some((px, py))
-}
-
-#[derive(Debug, Clone)]
-pub struct ActivePin {
-    pub conn_name: &'static str,
-    pub pin_num: u8,
-    pub mcu_pin: &'static str,
-    pub arduino_label: Option<&'static str>,
-    pub signal_text: String,
-    pub is_muted: bool,
-    pub modules: Vec<String>,
-    pub color: (f64, f64, f64),
-    pub is_conflict: bool,
-    pub is_left: bool,
-    pub morpho_pos: (f64, f64),
-    pub arduino_pos: Option<(f64, f64)>,
-    pub route_pos: (f64, f64),
-}
-
-pub fn get_active_pins(
+    pin_idx: usize,
     canvas_w: f64,
     canvas_h: f64,
-    state: &AppState,
-) -> Vec<ActivePin> {
-    let (board_x, board_y, board_w, board_h) = get_board_rect(canvas_w, canvas_h, state);
+) -> (f64, f64, f64, f64) {
+    let cw = canvas_w.max(800.0);
+    let ch = canvas_h.max(600.0);
 
-    let project_guard = state.project.borrow();
-    let project = match &project_guard.loaded_project {
-        Some(p) => p,
-        None => return Vec::new(),
-    };
+    let margin_x = (cw * 0.025).max(16.0);
+    let margin_y = (ch * 0.035).max(20.0);
 
-    let selected_mod = state.with_canvas_state(|c| c.selected_pinout_module.clone());
-    let selected_mod = selected_mod.as_deref();
+    let board_x = margin_x;
+    let board_y = margin_y;
+    let board_w = cw - 2.0 * margin_x;
+    let board_h = ch - 2.0 * margin_y;
 
-    let mut pins = Vec::new();
-    let mut seen_mcu = std::collections::HashSet::new();
+    let pad_x = 24.0;
+    let cell_gap = 4.0;
+    let cell_w = ((board_w - 2.0 * pad_x - 36.0) / 7.2).clamp(135.0, 240.0);
 
-    for pin_cfg in &project.pins {
-        let mcu_pin = pin_cfg.pin.as_str();
-        if !seen_mcu.insert(mcu_pin.to_string()) {
-            continue;
+    let row_start_y = board_y + 105.0;
+    let avail_h = board_h - 145.0;
+    let row_h = (avail_h / 19.0).clamp(22.0, 42.0);
+    let cell_h = (row_h - 4.0).clamp(18.0, 36.0);
+
+    let col_cn7_0 = board_x + pad_x;
+    let col_cn7_1 = col_cn7_0 + cell_w + cell_gap;
+    let col_cn6 = col_cn7_1 + cell_w + 16.0;
+
+    let col_cn10_1 = board_x + board_w - pad_x - cell_w;
+    let col_cn10_0 = col_cn10_1 - cell_w - cell_gap;
+    let col_cn5 = col_cn10_0 - 16.0 - cell_w;
+
+    match conn_name {
+        "CN7" => {
+            let r = pin_idx / 2;
+            let c = pin_idx % 2;
+            let cell_x = if c == 0 { col_cn7_0 } else { col_cn7_1 };
+            let cell_y = row_start_y + (r as f64) * row_h;
+            (cell_x, cell_y, cell_w, cell_h)
         }
-
-        let Some(mapping) = coords::lookup_physical_pin_mapping(mcu_pin) else {
-            continue;
-        };
-
-        let (m_conn, m_pin, m_coord) = mapping.morpho;
-        let m_pos = (board_x + m_coord.norm_x * board_w, board_y + m_coord.norm_y * board_h);
-
-        let a_pos = mapping.arduino.map(|(a_conn, a_pin, _lbl, a_coord)| {
-            let _ = (a_conn, a_pin);
-            (board_x + a_coord.norm_x * board_w, board_y + a_coord.norm_y * board_h)
-        });
-
-        let ard_label = mapping.arduino.map(|(_, _, lbl, _)| lbl);
-
-        let is_muted = match selected_mod {
-            None => false,
-            Some(target) => !pin_cfg.modules.iter().any(|m| m == target),
-        };
-
-        let reserved = stakhal_core::nucleo_pinout::check_reserved(mcu_pin);
-        let color = match reserved {
-            Some(res) => match res.severity {
-                stakhal_core::nucleo_pinout::ReservedSeverity::Critical => tokens::color::STATE_ERROR,
-                stakhal_core::nucleo_pinout::ReservedSeverity::Caution => tokens::color::STATE_ACTIVE,
-            },
-            None => tokens::color::STATE_READY,
-        };
-
-        let sig_text = match &pin_cfg.label {
-            Some(lbl) => {
-                if lbl.ends_with("_Pin") {
-                    lbl.clone()
-                } else {
-                    format!("{}_Pin", lbl)
-                }
-            }
-            None => pin_cfg.signal.clone(),
-        };
-
-        let is_left = m_coord.norm_x < 0.5;
-        let route_pos = m_pos;
-
-        pins.push(ActivePin {
-            conn_name: m_conn,
-            pin_num: m_pin,
-            mcu_pin: mapping.mcu_pin,
-            arduino_label: ard_label,
-            signal_text: sig_text,
-            is_muted,
-            modules: pin_cfg.modules.clone(),
-            color,
-            is_conflict: reserved.is_some(),
-            is_left,
-            morpho_pos: m_pos,
-            arduino_pos: a_pos,
-            route_pos,
-        });
+        "CN6" => {
+            let r = 4 + pin_idx;
+            let cell_x = col_cn6;
+            let cell_y = row_start_y + (r as f64) * row_h;
+            (cell_x, cell_y, cell_w, cell_h)
+        }
+        "CN8" => {
+            let r = 13 + pin_idx;
+            let cell_x = col_cn6;
+            let cell_y = row_start_y + (r as f64) * row_h;
+            (cell_x, cell_y, cell_w, cell_h)
+        }
+        "CN10" => {
+            let r = pin_idx / 2;
+            let c = pin_idx % 2;
+            let cell_x = if c == 0 { col_cn10_0 } else { col_cn10_1 };
+            let cell_y = row_start_y + (r as f64) * row_h;
+            (cell_x, cell_y, cell_w, cell_h)
+        }
+        "CN5" => {
+            let r = 9 - pin_idx;
+            let cell_x = col_cn5;
+            let cell_y = row_start_y + (r as f64) * row_h;
+            (cell_x, cell_y, cell_w, cell_h)
+        }
+        "CN9" => {
+            let r = 18 - pin_idx;
+            let cell_x = col_cn5;
+            let cell_y = row_start_y + (r as f64) * row_h;
+            (cell_x, cell_y, cell_w, cell_h)
+        }
+        _ => (0.0, 0.0, cell_w, cell_h),
     }
-
-    pins
-}
-
-#[derive(Debug, Clone)]
-pub struct CalloutBadge {
-    pub conn_name: &'static str,
-    pub pin_num: u8,
-    pub mcu_pin: &'static str,
-    pub arduino_label: Option<&'static str>,
-    pub signal_text: String,
-    pub is_muted: bool,
-    pub is_pinned: bool,
-    pub color: (f64, f64, f64),
-    pub is_left: bool,
-    pub route_pos: (f64, f64),
-    pub x: f64,
-    pub y: f64,
-    pub w: f64,
-    pub h: f64,
-}
-
-pub fn get_clear_pinned_rect(canvas_w: f64, canvas_h: f64, pinned_count: usize) -> Option<(f64, f64, f64, f64)> {
-    if pinned_count == 0 {
-        return None;
-    }
-    let (board_x, _, board_w, _) = get_base_board_rect(canvas_w, canvas_h);
-    let legend_y = canvas_h - 24.0;
-    let btn_w = 135.0;
-    let btn_h = 18.0;
-    let btn_x = (board_x + board_w - btn_w).max(board_x + 460.0);
-    let btn_y = legend_y - 13.0;
-    Some((btn_x, btn_y, btn_w, btn_h))
-}
-
-pub fn compute_visible_callout_badges(
-    canvas_w: f64,
-    canvas_h: f64,
-    state: &AppState,
-    hovered_pin: Option<&(String, u8)>,
-) -> Vec<CalloutBadge> {
-    let (board_x, board_y, board_w, board_h) = get_board_rect(canvas_w, canvas_h, state);
-    let active_pins = get_active_pins(canvas_w, canvas_h, state);
-
-    let badge_h = 22.0;
-    let min_y = board_y + 4.0;
-    let max_y = (board_y + board_h - badge_h - 4.0).max(min_y);
-
-    let (selected_module, pinned_pins, show_all) = state.with_canvas_state(|c| {
-        (
-            c.selected_pinout_module.clone(),
-            c.pinned_pins.clone(),
-            c.pinout_show_all,
-        )
-    });
-
-    let mut raw_badges = Vec::new();
-
-    for pin in &active_pins {
-        let is_hovered = is_pin_hovered(pin.conn_name, pin.pin_num, hovered_pin);
-        let is_pinned = pinned_pins.contains(pin.mcu_pin);
-        let is_module_active = selected_module
-            .as_ref()
-            .map(|sel| pin.modules.iter().any(|m| m == sel))
-            .unwrap_or(false);
-
-        let show_badge = pin.is_conflict || is_hovered || is_pinned || is_module_active || show_all;
-        if !show_badge {
-            continue;
-        }
-
-        let is_muted = if is_pinned || show_all {
-            false
-        } else {
-            pin.is_muted
-        };
-
-        let pin_id_str = match pin.arduino_label {
-            Some(ard) => format!("{} / {}", pin.mcu_pin, ard),
-            None => pin.mcu_pin.to_string(),
-        };
-        let text_char_len = pin_id_str.len() + 3 + pin.signal_text.len();
-        let est_w = ((text_char_len as f64) * 7.2 + 20.0).clamp(110.0, 240.0);
-
-        let by = (pin.route_pos.1 - badge_h / 2.0).clamp(min_y, max_y);
-
-        let (bx, bw) = if pin.is_left {
-            let badge_right = board_x - 28.0;
-            let badge_x = (badge_right - est_w).max(12.0);
-            let actual_w = badge_right - badge_x;
-            (badge_x, actual_w)
-        } else {
-            let badge_left = board_x + board_w + 28.0;
-            let max_w = (canvas_w - 12.0 - badge_left).max(60.0);
-            let actual_w = est_w.min(max_w);
-            (badge_left, actual_w)
-        };
-
-        raw_badges.push(CalloutBadge {
-            conn_name: pin.conn_name,
-            pin_num: pin.pin_num,
-            mcu_pin: pin.mcu_pin,
-            arduino_label: pin.arduino_label,
-            signal_text: pin.signal_text.clone(),
-            is_muted,
-            is_pinned,
-            color: pin.color,
-            is_left: pin.is_left,
-            route_pos: pin.route_pos,
-            x: bx,
-            y: by,
-            w: bw,
-            h: badge_h,
-        });
-    }
-
-    let mut left_badges: Vec<CalloutBadge> = raw_badges.iter().filter(|b| b.is_left).cloned().collect();
-    let mut right_badges: Vec<CalloutBadge> = raw_badges.iter().filter(|b| !b.is_left).cloned().collect();
-
-    let relax_side = |badges: &mut Vec<CalloutBadge>| {
-        if badges.is_empty() {
-            return;
-        }
-        badges.sort_by(|a, b| a.route_pos.1.partial_cmp(&b.route_pos.1).unwrap_or(std::cmp::Ordering::Equal));
-
-        let spacing = 2.0;
-        let step = badge_h + spacing;
-
-        // Downward pass: ensure each badge is at least step below previous
-        badges[0].y = badges[0].y.clamp(min_y, max_y);
-        for i in 1..badges.len() {
-            let min_allowed = badges[i - 1].y + step;
-            if badges[i].y < min_allowed {
-                badges[i].y = min_allowed;
-            }
-        }
-
-        // Upward pass: if bottom-most badge overflows max_y, push upward
-        let last_idx = badges.len() - 1;
-        if badges[last_idx].y > max_y {
-            badges[last_idx].y = max_y;
-            for i in (0..last_idx).rev() {
-                let max_allowed = badges[i + 1].y - step;
-                if badges[i].y > max_allowed {
-                    badges[i].y = max_allowed;
-                }
-            }
-        }
-
-        // Safety clamp against min_y
-        if badges[0].y < min_y {
-            badges[0].y = min_y;
-            for i in 1..badges.len() {
-                let min_allowed = badges[i - 1].y + step;
-                if badges[i].y < min_allowed {
-                    badges[i].y = min_allowed;
-                }
-            }
-        }
-    };
-
-    relax_side(&mut left_badges);
-    relax_side(&mut right_badges);
-
-    let mut badges = Vec::with_capacity(left_badges.len() + right_badges.len());
-    badges.extend(left_badges);
-    badges.extend(right_badges);
-
-    badges
-}
-
-pub fn find_hit_pin(
-    x: f64,
-    y: f64,
-    canvas_w: f64,
-    canvas_h: f64,
-    state: &AppState,
-) -> Option<(&'static str, u8)> {
-    let (board_x, board_y, board_w, board_h) = get_board_rect(canvas_w, canvas_h, state);
-    let hit_radius = 12.0;
-    let hit_radius_sq = hit_radius * hit_radius;
-
-    let mut closest_pin: Option<(&'static str, u8, f64)> = None;
-
-    // 1. Check all physical pin markers
-    for conn in CONNECTORS {
-        for p in conn.pins {
-            if let Some(coord) = coords::get_pin_coord(conn.name, p.pin_num) {
-                let px = board_x + coord.norm_x * board_w;
-                let py = board_y + coord.norm_y * board_h;
-                let d2 = (x - px) * (x - px) + (y - py) * (y - py);
-                if d2 <= hit_radius_sq {
-                    match closest_pin {
-                        Some((_, _, best_d2)) if d2 < best_d2 => {
-                            closest_pin = Some((conn.name, p.pin_num, d2));
-                        }
-                        None => {
-                            closest_pin = Some((conn.name, p.pin_num, d2));
-                        }
-                        _ => {}
-                    }
-                }
-            }
-        }
-    }
-
-    if let Some((c, p, _)) = closest_pin {
-        return Some((c, p));
-    }
-
-    // 2. Check visible gutter callout badges (persistent conflict badges + currently hovered badge)
-    let hovered_pin = state.with_canvas_state(|c| c.hovered_pinout_pin.clone());
-    let badges = compute_visible_callout_badges(canvas_w, canvas_h, state, hovered_pin.as_ref());
-    for badge in &badges {
-        if x >= badge.x && x <= badge.x + badge.w && y >= badge.y && y <= badge.y + badge.h {
-            return Some((badge.conn_name, badge.pin_num));
-        }
-    }
-
-    None
 }
 
 pub fn draw_nucleo_pinout_canvas(
@@ -647,14 +328,8 @@ pub fn draw_nucleo_pinout(
     height: f64,
     state: &Rc<RefCell<AppState>>,
 ) {
-    let (hovered_pin, hovered_mouse, is_filtering_module, pinned_pins, show_all) = state.borrow().with_canvas_state(|c| {
-        (
-            c.hovered_pinout_pin.clone(),
-            c.hovered_pinout_mouse,
-            c.selected_pinout_module.is_some(),
-            c.pinned_pins.clone(),
-            c.pinout_show_all,
-        )
+    let (hovered_pin, hovered_mouse, is_filtering_module) = state.borrow().with_canvas_state(|c| {
+        (c.hovered_pinout_pin.clone(), c.hovered_pinout_mouse, c.selected_pinout_module.is_some())
     });
     let highlights = get_active_pin_highlights(&state.borrow());
     let hovered_pin = hovered_pin.as_ref();
@@ -677,266 +352,95 @@ pub fn draw_nucleo_pinout(
 
     let canvas_w = width.max(800.0);
     let canvas_h = height.max(600.0);
-    let (board_x, board_y, board_w, board_h) = get_board_rect(canvas_w, canvas_h, &state.borrow());
 
-    // 1. Canvas Background
+    let margin_x = (canvas_w * 0.025).max(16.0);
+    let margin_y = (canvas_h * 0.035).max(20.0);
+
+    let board_x = margin_x;
+    let board_y = margin_y;
+    let board_w = canvas_w - 2.0 * margin_x;
+    let board_h = canvas_h - 2.0 * margin_y;
+
+    let pad_x = 24.0;
+    let cell_gap = 4.0;
+    let cell_w = ((board_w - 2.0 * pad_x - 36.0) / 7.2).clamp(135.0, 240.0);
+
+    let row_start_y = board_y + 105.0;
+    let avail_h = board_h - 145.0;
+    let row_h = (avail_h / 19.0).clamp(22.0, 42.0);
+
+    let col_cn7_0 = board_x + pad_x;
+    let col_cn7_1 = col_cn7_0 + cell_w + cell_gap;
+    let col_cn6 = col_cn7_1 + cell_w + 16.0;
+
+    let col_cn10_1 = board_x + board_w - pad_x - cell_w;
+    let col_cn10_0 = col_cn10_1 - cell_w - cell_gap;
+    let col_cn5 = col_cn10_0 - 16.0 - cell_w;
+
+    // Canvas Background
     cr.set_source_rgb(tokens::color::BG_VOID.0, tokens::color::BG_VOID.1, tokens::color::BG_VOID.2);
     cr.rectangle(0.0, 0.0, canvas_w, canvas_h);
     let _ = cr.fill();
 
-    // 2. Render Cached Board Background Surface
-    with_board_surface(|board_surface| {
-        let img_w = board_surface.width() as f64;
-        let img_h = board_surface.height() as f64;
-
-        // Soft drop shadow behind board
-        cr.set_source_rgba(0.0, 0.0, 0.0, 0.35);
-        cr.rectangle(board_x - 3.0, board_y - 2.0, board_w + 6.0, board_h + 6.0);
-        let _ = cr.fill();
-
-        if let Ok(()) = cr.save() {
-            let _ = cr.translate(board_x, board_y);
-            let _ = cr.scale(board_w / img_w, board_h / img_h);
-            cr.set_source_surface(board_surface, 0.0, 0.0).ok();
-            let _ = cr.paint();
-            let _ = cr.restore();
-        }
-    });
-
-    // Crisp framing hairline around board
-    cr.set_source_rgba(tokens::color::BORDER_HAIR.0, tokens::color::BORDER_HAIR.1, tokens::color::BORDER_HAIR.2, 0.4);
-    cr.set_line_width(tokens::shape::BORDER_WIDTH_HAIR);
+    // 1. Board Silhouette (PCB Outline) - Surface BG_PANEL, hairline border BORDER_HAIR, 0px sharp corners
+    cr.set_source_rgb(tokens::color::BG_PANEL.0, tokens::color::BG_PANEL.1, tokens::color::BG_PANEL.2);
     cr.rectangle(board_x, board_y, board_w, board_h);
+    let _ = cr.fill_preserve();
+    cr.set_source_rgb(tokens::color::BORDER_HAIR.0, tokens::color::BORDER_HAIR.1, tokens::color::BORDER_HAIR.2);
+    cr.set_line_width(tokens::shape::BORDER_WIDTH_HAIR);
     let _ = cr.stroke();
 
-    // 4. Resolve Active Pins
-    let active_pins = get_active_pins(canvas_w, canvas_h, &state.borrow());
-
-    // 5. Dual-Identity Linking Hairlines Pass
-    for pin in &active_pins {
-        if let Some(a_pos) = pin.arduino_pos {
-            let (mx, my) = pin.morpho_pos;
-            let (ax, ay) = a_pos;
-
-            let is_hovered = is_pin_hovered(pin.conn_name, pin.pin_num, hovered_pin);
-            let is_pinned = pinned_pins.contains(pin.mcu_pin);
-
-            let (r, g, b, alpha, width) = if is_hovered || is_pinned {
-                (tokens::color::ACCENT.0, tokens::color::ACCENT.1, tokens::color::ACCENT.2, 1.0, 1.5)
-            } else if !show_all && pin.is_muted {
-                (pin.color.0, pin.color.1, pin.color.2, 0.35, 1.0)
-            } else {
-                (pin.color.0, pin.color.1, pin.color.2, 0.70, 1.0)
-            };
-
-            cr.set_source_rgba(r, g, b, alpha);
-            cr.set_line_width(width);
-            let _ = cr.move_to(mx, my);
-            let _ = cr.line_to(ax, ay);
-            let _ = cr.stroke();
-        }
-    }
-
-    // 6. Active Pin Markers Pass (Morpho dot + Arduino dot)
-    let marker_r = 4.2;
-    for pin in &active_pins {
-        let is_hovered = is_pin_hovered(pin.conn_name, pin.pin_num, hovered_pin);
-        let is_pinned = pinned_pins.contains(pin.mcu_pin);
-
-        let (fill_r, fill_g, fill_b, alpha) = if is_hovered || is_pinned {
-            (tokens::color::ACCENT.0, tokens::color::ACCENT.1, tokens::color::ACCENT.2, 1.0)
-        } else if !show_all && pin.is_muted {
-            (pin.color.0, pin.color.1, pin.color.2, 0.35)
-        } else {
-            (pin.color.0, pin.color.1, pin.color.2, 1.0)
-        };
-
-        let current_r = if is_hovered { marker_r + 1.2 } else { marker_r };
-
-        // Morpho marker
-        let (mx, my) = pin.morpho_pos;
-        cr.set_source_rgba(fill_r, fill_g, fill_b, alpha);
-        cr.arc(mx, my, current_r, 0.0, 2.0 * std::f64::consts::PI);
-        let _ = cr.fill_preserve();
-        cr.set_source_rgba(tokens::color::BG_VOID.0, tokens::color::BG_VOID.1, tokens::color::BG_VOID.2, alpha);
-        cr.set_line_width(1.0);
+    // Subtle PCB Grid Accent Texture Lines
+    cr.set_source_rgba(tokens::color::BORDER_HAIR.0, tokens::color::BORDER_HAIR.1, tokens::color::BORDER_HAIR.2, 0.25);
+    cr.set_line_width(tokens::shape::BORDER_WIDTH_HAIR);
+    let mut gy = board_y + 40.0;
+    while gy < board_y + board_h {
+        let _ = cr.move_to(board_x + 10.0, gy);
+        let _ = cr.line_to(board_x + board_w - 10.0, gy);
         let _ = cr.stroke();
-
-        // Arduino marker (if dual-identity)
-        if let Some((ax, ay)) = pin.arduino_pos {
-            cr.set_source_rgba(fill_r, fill_g, fill_b, alpha);
-            cr.arc(ax, ay, current_r, 0.0, 2.0 * std::f64::consts::PI);
-            let _ = cr.fill_preserve();
-            cr.set_source_rgba(tokens::color::BG_VOID.0, tokens::color::BG_VOID.1, tokens::color::BG_VOID.2, alpha);
-            cr.set_line_width(1.0);
-            let _ = cr.stroke();
-        }
-
-        // Pinned ring indicator on board marker
-        if is_pinned {
-            cr.set_source_rgba(tokens::color::ACCENT.0, tokens::color::ACCENT.1, tokens::color::ACCENT.2, 0.9);
-            cr.arc(mx, my, current_r + 2.4, 0.0, 2.0 * std::f64::consts::PI);
-            cr.set_line_width(1.2);
-            let _ = cr.stroke();
-            if let Some((ax, ay)) = pin.arduino_pos {
-                cr.arc(ax, ay, current_r + 2.4, 0.0, 2.0 * std::f64::consts::PI);
-                let _ = cr.stroke();
-            }
-        }
+        gy += 40.0;
     }
 
-    // 7. Hover Marker for Passive / Unassigned Pins
-    if let Some((h_conn, h_pin)) = hovered_pin {
-        let is_already_active = highlights.contains_key(&(h_conn.as_str(), *h_pin));
-        if !is_already_active {
-            if let Some((hx, hy)) = get_pin_marker_pos(h_conn, *h_pin, canvas_w, canvas_h, Some(&state.borrow())) {
-                cr.set_source_rgb(tokens::color::ACCENT.0, tokens::color::ACCENT.1, tokens::color::ACCENT.2);
-                cr.arc(hx, hy, 5.0, 0.0, 2.0 * std::f64::consts::PI);
-                let _ = cr.fill_preserve();
-                cr.set_source_rgb(tokens::color::TEXT_PRIMARY.0, tokens::color::TEXT_PRIMARY.1, tokens::color::TEXT_PRIMARY.2);
-                cr.set_line_width(1.0);
-                let _ = cr.stroke();
-            }
-        }
-    }
-
-    // 8. Visible Gutter Callouts & Leader Lines Pass (Persistent Conflict Badges + Hovered Pin Badge)
-    let visible_badges = compute_visible_callout_badges(canvas_w, canvas_h, &state.borrow(), hovered_pin);
-    for badge in &visible_badges {
-        let is_hovered = is_pin_hovered(badge.conn_name, badge.pin_num, hovered_pin);
-
-        let (border_r, border_g, border_b, alpha, border_w) = if is_hovered {
-            (tokens::color::ACCENT.0, tokens::color::ACCENT.1, tokens::color::ACCENT.2, 1.0, 1.5)
-        } else if badge.is_pinned {
-            (tokens::color::ACCENT.0, tokens::color::ACCENT.1, tokens::color::ACCENT.2, 0.95, 1.2)
-        } else if badge.is_muted {
-            (badge.color.0, badge.color.1, badge.color.2, 0.35, 1.0)
-        } else {
-            (badge.color.0, badge.color.1, badge.color.2, 0.85, 1.0)
-        };
-
-        // Leader line
-        let (px, py) = badge.route_pos;
-        let badge_target_y = badge.y + badge.h / 2.0;
-
-        let line_alpha = if is_hovered {
-            1.0
-        } else if badge.is_pinned {
-            0.90
-        } else if badge.is_muted {
-            0.35
-        } else {
-            0.65
-        };
-        cr.set_source_rgba(border_r, border_g, border_b, line_alpha);
-        cr.set_line_width(if is_hovered || badge.is_pinned { 1.2 } else { 1.0 });
-
-        if badge.is_left {
-            let elbow1_x = board_x - 6.0;
-            let elbow2_x = (badge.x + badge.w + 10.0).min(elbow1_x - 2.0);
-            let _ = cr.move_to(px, py);
-            let _ = cr.line_to(elbow1_x, py);
-            let _ = cr.line_to(elbow2_x, badge_target_y);
-            let _ = cr.line_to(badge.x + badge.w, badge_target_y);
-            let _ = cr.stroke();
-        } else {
-            let elbow1_x = board_x + board_w + 6.0;
-            let elbow2_x = (badge.x - 10.0).max(elbow1_x + 2.0);
-            let _ = cr.move_to(px, py);
-            let _ = cr.line_to(elbow1_x, py);
-            let _ = cr.line_to(elbow2_x, badge_target_y);
-            let _ = cr.line_to(badge.x, badge_target_y);
-            let _ = cr.stroke();
-        }
-
-        // Small anchor dot at marker
-        cr.set_source_rgba(border_r, border_g, border_b, alpha);
-        cr.arc(px, py, 2.0, 0.0, 2.0 * std::f64::consts::PI);
-        let _ = cr.fill();
-
-        // Badge Box Background & Border (sharp 0px corners)
-        cr.set_source_rgb(tokens::color::BG_PANEL.0, tokens::color::BG_PANEL.1, tokens::color::BG_PANEL.2);
-        cr.rectangle(badge.x, badge.y, badge.w, badge.h);
-        let _ = cr.fill_preserve();
-
-        cr.set_source_rgba(border_r, border_g, border_b, alpha);
-        cr.set_line_width(border_w);
-        let _ = cr.stroke();
-
-        // Badge Text: Pin ID • Signal/Label
-        let pin_id_str = match badge.arduino_label {
-            Some(ard) => format!("{} / {}", badge.mcu_pin, ard),
-            None => badge.mcu_pin.to_string(),
-        };
-
-        cr.select_font_face(tokens::font::CAIRO_MONO, cairo::FontSlant::Normal, cairo::FontWeight::Bold);
-        cr.set_font_size(9.5);
-
-        let text_y = badge.y + badge.h * 0.68;
-        let mut cur_x = badge.x + 8.0;
-
-        // Pin ID
-        if badge.is_muted {
-            cr.set_source_rgb(tokens::color::TEXT_MUTED.0, tokens::color::TEXT_MUTED.1, tokens::color::TEXT_MUTED.2);
-        } else {
-            cr.set_source_rgb(tokens::color::TEXT_PRIMARY.0, tokens::color::TEXT_PRIMARY.1, tokens::color::TEXT_PRIMARY.2);
-        }
-        let _ = cr.move_to(cur_x, text_y);
-        let _ = cr.show_text(&pin_id_str);
-        if let Ok(ext) = cr.text_extents(&pin_id_str) {
-            cur_x += ext.x_advance();
-        }
-
-        // Bullet
-        cr.set_source_rgb(tokens::color::TEXT_MUTED.0, tokens::color::TEXT_MUTED.1, tokens::color::TEXT_MUTED.2);
-        let bullet = " • ";
-        let _ = cr.move_to(cur_x, text_y);
-        let _ = cr.show_text(bullet);
-        if let Ok(ext) = cr.text_extents(bullet) {
-            cur_x += ext.x_advance();
-        }
-
-        // Signal / Label
-        if is_hovered || badge.is_pinned {
-            cr.set_source_rgb(tokens::color::ACCENT.0, tokens::color::ACCENT.1, tokens::color::ACCENT.2);
-        } else if badge.is_muted {
-            cr.set_source_rgb(tokens::color::TEXT_MUTED.0, tokens::color::TEXT_MUTED.1, tokens::color::TEXT_MUTED.2);
-        } else {
-            cr.set_source_rgb(badge.color.0, badge.color.1, badge.color.2);
-        }
-        let _ = cr.move_to(cur_x, text_y);
-        let _ = cr.show_text(&badge.signal_text);
-    }
-
-    // 8.5 Top Header Title & Conflict Banner Overlay
-    let pinout_zoom = state.borrow().with_canvas_state(|c| c.pinout_zoom);
-    if pinout_zoom > 1.05 || board_y < 75.0 {
-        cr.set_source_rgba(tokens::color::BG_VOID.0, tokens::color::BG_VOID.1, tokens::color::BG_VOID.2, 0.88);
-        cr.rectangle(0.0, 0.0, canvas_w, 76.0);
-        let _ = cr.fill();
-    }
+    // 2. ST-LINK Debugger Top Section Notch - 0px sharp corners
+    let notch_w = (board_w * 0.24).clamp(220.0, 380.0);
+    let notch_x = board_x + (board_w - notch_w) / 2.0;
+    let notch_y = board_y + 8.0;
+    cr.set_source_rgb(tokens::color::BG_VOID.0, tokens::color::BG_VOID.1, tokens::color::BG_VOID.2);
+    cr.rectangle(notch_x, notch_y, notch_w, 20.0);
+    let _ = cr.fill_preserve();
+    cr.set_source_rgb(tokens::color::BORDER_HAIR.0, tokens::color::BORDER_HAIR.1, tokens::color::BORDER_HAIR.2);
+    cr.set_line_width(tokens::shape::BORDER_WIDTH_HAIR);
+    let _ = cr.stroke();
 
     cr.select_font_face(tokens::font::CAIRO_SANS, cairo::FontSlant::Normal, cairo::FontWeight::Bold);
-    cr.set_font_size(15.0);
+    cr.set_font_size(9.0);
+    cr.set_source_rgb(tokens::color::TEXT_MUTED.0, tokens::color::TEXT_MUTED.1, tokens::color::TEXT_MUTED.2);
+    if let Ok(ext) = cr.text_extents("ST-LINK V2-1 ON-BOARD DEBUGGER") {
+        let _ = cr.move_to(notch_x + (notch_w - ext.width()) / 2.0, notch_y + 14.0);
+        let _ = cr.show_text("ST-LINK V2-1 ON-BOARD DEBUGGER");
+    }
+
+    // 3. Board Header Banner Silkscreen - TEXT_PRIMARY title, TEXT_MUTED subtitle
+    cr.select_font_face(tokens::font::CAIRO_SANS, cairo::FontSlant::Normal, cairo::FontWeight::Bold);
+    cr.set_font_size(16.0);
     cr.set_source_rgb(tokens::color::TEXT_PRIMARY.0, tokens::color::TEXT_PRIMARY.1, tokens::color::TEXT_PRIMARY.2);
     let title_str = "STMicroelectronics NUCLEO-F446RE";
-    let title_y = 26.0;
+    let title_y = board_y + 46.0;
     if let Ok(ext) = cr.text_extents(title_str) {
-        let _ = cr.move_to((canvas_w - ext.width()) / 2.0, title_y);
+        let _ = cr.move_to(board_x + (board_w - ext.width()) / 2.0, title_y);
         let _ = cr.show_text(title_str);
     }
 
     cr.select_font_face(tokens::font::CAIRO_MONO, cairo::FontSlant::Normal, cairo::FontWeight::Normal);
-    cr.set_font_size(10.0);
+    cr.set_font_size(10.5);
     cr.set_source_rgb(tokens::color::TEXT_MUTED.0, tokens::color::TEXT_MUTED.1, tokens::color::TEXT_MUTED.2);
-    let subtitle_str = "ARM® Cortex®-M4 MCU @ 180MHz • Physical Board Pinout Overlay";
-    let subtitle_y = title_y + 17.0;
+    let subtitle_str = "ARM® Cortex®-M4 MCU @ 180MHz • Physical 64-Pin Connector Pinout";
+    let subtitle_y = title_y + 20.0;
     if let Ok(ext) = cr.text_extents(subtitle_str) {
-        let _ = cr.move_to((canvas_w - ext.width()) / 2.0, subtitle_y);
+        let _ = cr.move_to(board_x + (board_w - ext.width()) / 2.0, subtitle_y);
         let _ = cr.show_text(subtitle_str);
     }
 
-    // Conflict Banner if detected
     if !active_conflicts.is_empty() {
         let count = active_conflicts.len();
         let has_critical = active_conflicts
@@ -955,116 +459,371 @@ pub fn draw_nucleo_pinout(
         };
 
         cr.select_font_face(tokens::font::CAIRO_SANS, cairo::FontSlant::Normal, cairo::FontWeight::Bold);
-        cr.set_font_size(10.5);
+        cr.set_font_size(11.0);
         cr.set_source_rgb(cr_r, cr_g, cr_b);
         if let Ok(ext) = cr.text_extents(&banner_str) {
-            let banner_y = subtitle_y + 17.0;
-            let _ = cr.move_to((canvas_w - ext.width()) / 2.0, banner_y);
+            let _ = cr.move_to(board_x + (board_w - ext.width()) / 2.0, subtitle_y + 18.0);
             let _ = cr.show_text(&banner_str);
         }
     }
 
-    // 9. Footer Legend Bar
-    if pinout_zoom > 1.05 || board_y + board_h > canvas_h - 40.0 {
-        cr.set_source_rgba(tokens::color::BG_VOID.0, tokens::color::BG_VOID.1, tokens::color::BG_VOID.2, 0.88);
-        cr.rectangle(0.0, canvas_h - 40.0, canvas_w, 40.0);
-        let _ = cr.fill();
+    // 4. Center Component Graphics (MCU IC Chip, Buttons & LEDs)
+    let center_left = col_cn6 + cell_w;
+    let center_right = col_cn5;
+    let center_avail_w = center_right - center_left;
+    let mcu_w = (center_avail_w * 0.65).clamp(90.0, 180.0);
+    let mcu_x = center_left + (center_avail_w - mcu_w) / 2.0;
+
+    let mcu_y = row_start_y + 7.5 * row_h;
+    let mcu_h = (4.5 * row_h).clamp(100.0, 180.0);
+
+    // MCU LQFP64 Chip Frame - Sharp 0px corners, BG_VOID fill, 1px BORDER_HAIR
+    cr.set_source_rgb(tokens::color::BG_VOID.0, tokens::color::BG_VOID.1, tokens::color::BG_VOID.2);
+    cr.rectangle(mcu_x, mcu_y, mcu_w, mcu_h);
+    let _ = cr.fill_preserve();
+    cr.set_source_rgb(tokens::color::BORDER_HAIR.0, tokens::color::BORDER_HAIR.1, tokens::color::BORDER_HAIR.2);
+    cr.set_line_width(tokens::shape::BORDER_WIDTH_HAIR);
+    let _ = cr.stroke();
+
+    // MCU Orientation Pin 1 Dot
+    cr.set_source_rgb(tokens::color::TEXT_MUTED.0, tokens::color::TEXT_MUTED.1, tokens::color::TEXT_MUTED.2);
+    cr.arc(mcu_x + 14.0, mcu_y + 14.0, 3.5, 0.0, 2.0 * std::f64::consts::PI);
+    let _ = cr.fill();
+
+    // MCU Text Labels (Data -> JetBrains Mono)
+    cr.select_font_face(tokens::font::CAIRO_MONO, cairo::FontSlant::Normal, cairo::FontWeight::Bold);
+    cr.set_font_size(11.0);
+    cr.set_source_rgb(tokens::color::TEXT_PRIMARY.0, tokens::color::TEXT_PRIMARY.1, tokens::color::TEXT_PRIMARY.2);
+    if let Ok(ext) = cr.text_extents("STM32F446") {
+        let _ = cr.move_to(mcu_x + (mcu_w - ext.width()) / 2.0, mcu_y + mcu_h * 0.42);
+        let _ = cr.show_text("STM32F446");
     }
-    let legend_y = canvas_h - 24.0;
+    cr.set_font_size(10.0);
+    cr.set_source_rgb(tokens::color::TEXT_PRIMARY.0, tokens::color::TEXT_PRIMARY.1, tokens::color::TEXT_PRIMARY.2);
+    if let Ok(ext) = cr.text_extents("RET6") {
+        let _ = cr.move_to(mcu_x + (mcu_w - ext.width()) / 2.0, mcu_y + mcu_h * 0.55);
+        let _ = cr.show_text("RET6");
+    }
+    cr.set_font_size(9.0);
+    cr.set_source_rgb(tokens::color::TEXT_MUTED.0, tokens::color::TEXT_MUTED.1, tokens::color::TEXT_MUTED.2);
+    if let Ok(ext) = cr.text_extents("LQFP64") {
+        let _ = cr.move_to(mcu_x + (mcu_w - ext.width()) / 2.0, mcu_y + mcu_h * 0.68);
+        let _ = cr.show_text("LQFP64");
+    }
+
+    // User LED (LD2 - Green STATE_READY) Indicator Box - sharp 0px corners
+    let is_pa5_active = highlights.contains_key(&("CN10", 11)) || highlights.contains_key(&("CN5", 6));
+    let led_y = row_start_y + 2.0 * row_h;
+    let led_h = (1.2 * row_h).clamp(30.0, 42.0);
+    cr.set_source_rgb(tokens::color::BG_PANEL.0, tokens::color::BG_PANEL.1, tokens::color::BG_PANEL.2);
+    cr.rectangle(mcu_x, led_y, mcu_w, led_h);
+    let _ = cr.fill_preserve();
+
+    if is_pa5_active {
+        cr.set_source_rgb(tokens::color::STATE_READY.0, tokens::color::STATE_READY.1, tokens::color::STATE_READY.2);
+        cr.set_line_width(tokens::shape::BORDER_WIDTH_HAIR);
+        let _ = cr.stroke();
+
+        cr.set_source_rgb(tokens::color::STATE_READY.0, tokens::color::STATE_READY.1, tokens::color::STATE_READY.2);
+        cr.arc(mcu_x + 18.0, led_y + led_h / 2.0, 6.0, 0.0, 2.0 * std::f64::consts::PI);
+        let _ = cr.fill();
+
+        cr.select_font_face(tokens::font::CAIRO_MONO, cairo::FontSlant::Normal, cairo::FontWeight::Bold);
+        cr.set_font_size(10.0);
+        cr.set_source_rgb(tokens::color::STATE_READY.0, tokens::color::STATE_READY.1, tokens::color::STATE_READY.2);
+        let _ = cr.move_to(mcu_x + 32.0, led_y + led_h / 2.0 + 4.0);
+        let _ = cr.show_text("LD2 [ON]");
+    } else {
+        cr.set_source_rgb(tokens::color::BORDER_HAIR.0, tokens::color::BORDER_HAIR.1, tokens::color::BORDER_HAIR.2);
+        cr.set_line_width(tokens::shape::BORDER_WIDTH_HAIR);
+        let _ = cr.stroke();
+
+        cr.set_source_rgb(tokens::color::BORDER_HAIR.0, tokens::color::BORDER_HAIR.1, tokens::color::BORDER_HAIR.2);
+        cr.arc(mcu_x + 18.0, led_y + led_h / 2.0, 5.0, 0.0, 2.0 * std::f64::consts::PI);
+        let _ = cr.fill();
+
+        cr.select_font_face(tokens::font::CAIRO_MONO, cairo::FontSlant::Normal, cairo::FontWeight::Normal);
+        cr.set_font_size(9.5);
+        cr.set_source_rgb(tokens::color::TEXT_MUTED.0, tokens::color::TEXT_MUTED.1, tokens::color::TEXT_MUTED.2);
+        let _ = cr.move_to(mcu_x + 32.0, led_y + led_h / 2.0 + 4.0);
+        let _ = cr.show_text("LD2 (PA5)");
+    }
+
+    // User Button (B1 USER) & Reset Button (B2 RESET) - Sharp 0px corners, 1px border
+    let btn_y = row_start_y + 13.0 * row_h;
+    let btn_h = (1.0 * row_h).clamp(26.0, 34.0);
+    let b1_w = (mcu_w - 6.0) / 2.0;
+
+    // B1 Button (PC13)
+    cr.set_source_rgb(tokens::color::BG_PANEL.0, tokens::color::BG_PANEL.1, tokens::color::BG_PANEL.2);
+    cr.rectangle(mcu_x, btn_y, b1_w, btn_h);
+    let _ = cr.fill_preserve();
+    cr.set_source_rgb(tokens::color::BORDER_HAIR.0, tokens::color::BORDER_HAIR.1, tokens::color::BORDER_HAIR.2);
+    cr.set_line_width(tokens::shape::BORDER_WIDTH_HAIR);
+    let _ = cr.stroke();
+    cr.select_font_face(tokens::font::CAIRO_SANS, cairo::FontSlant::Normal, cairo::FontWeight::Bold);
+    cr.set_font_size(9.0);
+    cr.set_source_rgb(tokens::color::TEXT_PRIMARY.0, tokens::color::TEXT_PRIMARY.1, tokens::color::TEXT_PRIMARY.2);
+    let _ = cr.move_to(mcu_x + 8.0, btn_y + btn_h / 2.0 + 3.0);
+    let _ = cr.show_text("B1 USER");
+
+    // B2 Button (RESET)
+    cr.set_source_rgb(tokens::color::BG_PANEL.0, tokens::color::BG_PANEL.1, tokens::color::BG_PANEL.2);
+    cr.rectangle(mcu_x + b1_w + 6.0, btn_y, b1_w, btn_h);
+    let _ = cr.fill_preserve();
+    cr.set_source_rgb(tokens::color::BORDER_HAIR.0, tokens::color::BORDER_HAIR.1, tokens::color::BORDER_HAIR.2);
+    cr.set_line_width(tokens::shape::BORDER_WIDTH_HAIR);
+    let _ = cr.stroke();
+    cr.select_font_face(tokens::font::CAIRO_SANS, cairo::FontSlant::Normal, cairo::FontWeight::Bold);
+    cr.set_font_size(9.0);
+    cr.set_source_rgb(tokens::color::TEXT_PRIMARY.0, tokens::color::TEXT_PRIMARY.1, tokens::color::TEXT_PRIMARY.2);
+    let _ = cr.move_to(mcu_x + b1_w + 10.0, btn_y + btn_h / 2.0 + 3.0);
+    let _ = cr.show_text("B2 RESET");
+
+    // 5. Draw Connector Header Titles & Active Counts with Text Tags [MORPHO] / [ARDUINO]
+    for conn in CONNECTORS {
+        let is_morpho = conn.name == "CN7" || conn.name == "CN10";
+        let top_pin_idx = match conn.name {
+            "CN5" => 9,
+            "CN9" => 7,
+            _ => 0,
+        };
+
+        let (cell_x, cell_y, cell_w, _cell_h) = get_pin_cell_rect(conn.name, top_pin_idx, canvas_w, canvas_h);
+        let hy = cell_y - 8.0;
+
+        let type_title = match conn.name {
+            "CN7" => "Morpho Left",
+            "CN6" => "Power",
+            "CN8" => "Analog In",
+            "CN10" => "Morpho Right",
+            "CN5" => "Digital High",
+            "CN9" => "Digital Low",
+            _ => "",
+        };
+
+        let active_count = conn
+            .pins
+            .iter()
+            .filter(|p| highlights.contains_key(&(conn.name, p.pin_num)))
+            .count();
+
+        let tag = if is_morpho { "[MORPHO]" } else { "[ARDUINO]" };
+        let header_text = format!("{} {} • {} ({} active)", conn.name, tag, type_title, active_count);
+
+        cr.select_font_face(tokens::font::CAIRO_MONO, cairo::FontSlant::Normal, cairo::FontWeight::Bold);
+        cr.set_font_size(10.5);
+        cr.set_source_rgb(tokens::color::TEXT_PRIMARY.0, tokens::color::TEXT_PRIMARY.1, tokens::color::TEXT_PRIMARY.2);
+
+        if conn.name == "CN10" {
+            let morpho_right_edge = col_cn10_1 + cell_w;
+            if let Ok(ext) = cr.text_extents(&header_text) {
+                let hx = morpho_right_edge - ext.width();
+                let _ = cr.move_to(hx, hy);
+                let _ = cr.show_text(&header_text);
+            }
+        } else {
+            let _ = cr.move_to(cell_x, hy);
+            let _ = cr.show_text(&header_text);
+        }
+    }
+
+    // 6. Draw Pin Cells for All Connectors - BG_PANEL surface, STATE_READY for active, ACCENT for hover/selection
+    for conn in CONNECTORS {
+        for (idx, p) in conn.pins.iter().enumerate() {
+            let (cell_x, cell_y, cell_w, cell_h) = get_pin_cell_rect(conn.name, idx, canvas_w, canvas_h);
+
+            let is_hl = highlights.get(&(conn.name, p.pin_num));
+            let is_hovered = hovered_pin.map_or(false, |(c_name, p_num)| {
+                c_name == conn.name && *p_num == p.pin_num
+            });
+
+            if let Some(hl_info) = is_hl {
+                let reserved_info = stakhal_core::nucleo_pinout::check_reserved(p.mcu_pin);
+                let (hl_r, hl_g, hl_b) = match reserved_info {
+                    Some(res) => match res.severity {
+                        stakhal_core::nucleo_pinout::ReservedSeverity::Critical => tokens::color::STATE_ERROR,
+                        stakhal_core::nucleo_pinout::ReservedSeverity::Caution => tokens::color::STATE_ACTIVE,
+                    },
+                    None => tokens::color::STATE_READY,
+                };
+
+                // Highlighted Pin (Active in loaded project) - background BG_PANEL
+                cr.set_source_rgb(tokens::color::BG_PANEL.0, tokens::color::BG_PANEL.1, tokens::color::BG_PANEL.2);
+                cr.rectangle(cell_x, cell_y, cell_w, cell_h);
+                let _ = cr.fill_preserve();
+
+                // Interactive/Selection ONLY uses ACCENT
+                if is_hovered {
+                    cr.set_source_rgb(tokens::color::ACCENT.0, tokens::color::ACCENT.1, tokens::color::ACCENT.2);
+                } else if hl_info.is_muted {
+                    cr.set_source_rgba(hl_r, hl_g, hl_b, 0.35);
+                } else {
+                    cr.set_source_rgb(hl_r, hl_g, hl_b);
+                }
+                cr.set_line_width(tokens::shape::BORDER_WIDTH_HAIR);
+                let _ = cr.stroke();
+
+                // Pin Number Badge Box - sharp 0px corners
+                let badge_w = (cell_w * 0.16).clamp(24.0, 32.0);
+                if hl_info.is_muted {
+                    cr.set_source_rgb(tokens::color::BG_VOID.0, tokens::color::BG_VOID.1, tokens::color::BG_VOID.2);
+                    cr.rectangle(cell_x + 3.0, cell_y + 3.0, badge_w, cell_h - 6.0);
+                    let _ = cr.fill_preserve();
+                    cr.set_source_rgba(hl_r, hl_g, hl_b, 0.35);
+                    cr.set_line_width(tokens::shape::BORDER_WIDTH_HAIR);
+                    let _ = cr.stroke();
+
+                    cr.select_font_face(tokens::font::CAIRO_MONO, cairo::FontSlant::Normal, cairo::FontWeight::Normal);
+                    cr.set_font_size(9.5);
+                    cr.set_source_rgb(tokens::color::TEXT_MUTED.0, tokens::color::TEXT_MUTED.1, tokens::color::TEXT_MUTED.2);
+                } else {
+                    cr.set_source_rgb(hl_r, hl_g, hl_b);
+                    cr.rectangle(cell_x + 3.0, cell_y + 3.0, badge_w, cell_h - 6.0);
+                    let _ = cr.fill();
+
+                    cr.select_font_face(tokens::font::CAIRO_MONO, cairo::FontSlant::Normal, cairo::FontWeight::Bold);
+                    cr.set_font_size(9.5);
+                    cr.set_source_rgb(tokens::color::BG_VOID.0, tokens::color::BG_VOID.1, tokens::color::BG_VOID.2);
+                }
+
+                let pnum_str = format!("{}", p.pin_num);
+                if let Ok(ext) = cr.text_extents(&pnum_str) {
+                    let tx = cell_x + 3.0 + (badge_w - ext.width()) / 2.0;
+                    let _ = cr.move_to(tx, cell_y + cell_h * 0.64);
+                    let _ = cr.show_text(&pnum_str);
+                }
+
+                // MCU Pin Text
+                cr.set_font_size(9.5);
+                if hl_info.is_muted {
+                    cr.set_source_rgb(tokens::color::TEXT_MUTED.0, tokens::color::TEXT_MUTED.1, tokens::color::TEXT_MUTED.2);
+                } else {
+                    cr.set_source_rgb(tokens::color::TEXT_PRIMARY.0, tokens::color::TEXT_PRIMARY.1, tokens::color::TEXT_PRIMARY.2);
+                }
+                let mcu_pin_x = cell_x + badge_w + 8.0;
+                let _ = cr.move_to(mcu_pin_x, cell_y + cell_h * 0.64);
+                let _ = cr.show_text(p.mcu_pin);
+
+                let mcu_ext_w = cr.text_extents(p.mcu_pin).map(|e| e.width()).unwrap_or(24.0);
+
+                // Primary Text: #define Label if present, else Signal Name
+                let primary_text = match &hl_info.label {
+                    Some(lbl) => {
+                        if lbl.ends_with("_Pin") {
+                            lbl.clone()
+                        } else {
+                            format!("{}_Pin", lbl)
+                        }
+                    }
+                    None => hl_info.signal.clone(),
+                };
+
+                if hl_info.is_muted {
+                    cr.select_font_face(tokens::font::CAIRO_MONO, cairo::FontSlant::Normal, cairo::FontWeight::Normal);
+                    cr.set_font_size(9.0);
+                    cr.set_source_rgb(tokens::color::TEXT_MUTED.0, tokens::color::TEXT_MUTED.1, tokens::color::TEXT_MUTED.2);
+                } else {
+                    cr.select_font_face(tokens::font::CAIRO_MONO, cairo::FontSlant::Normal, cairo::FontWeight::Bold);
+                    cr.set_font_size(9.0);
+                    cr.set_source_rgb(hl_r, hl_g, hl_b);
+                }
+                if let Ok(ext) = cr.text_extents(&primary_text) {
+                    let min_x = mcu_pin_x + mcu_ext_w + 6.0;
+                    let right_x = cell_x + cell_w - ext.width() - 6.0;
+                    let text_x = right_x.max(min_x);
+                    let _ = cr.move_to(text_x, cell_y + cell_h * 0.64);
+                    let _ = cr.show_text(&primary_text);
+                }
+            } else {
+                // Neutral / Unused Pin - background BG_PANEL, border BORDER_HAIR
+                cr.set_source_rgb(tokens::color::BG_PANEL.0, tokens::color::BG_PANEL.1, tokens::color::BG_PANEL.2);
+                cr.rectangle(cell_x, cell_y, cell_w, cell_h);
+                let _ = cr.fill_preserve();
+
+                // Interactive/Selection ONLY uses ACCENT
+                if is_hovered {
+                    cr.set_source_rgb(tokens::color::ACCENT.0, tokens::color::ACCENT.1, tokens::color::ACCENT.2);
+                } else {
+                    cr.set_source_rgb(tokens::color::BORDER_HAIR.0, tokens::color::BORDER_HAIR.1, tokens::color::BORDER_HAIR.2);
+                }
+                cr.set_line_width(tokens::shape::BORDER_WIDTH_HAIR);
+                let _ = cr.stroke();
+
+                // Pin Number Box for Neutral Cell - sharp 0px corners
+                let badge_w = (cell_w * 0.16).clamp(26.0, 34.0);
+                cr.set_source_rgb(tokens::color::BG_VOID.0, tokens::color::BG_VOID.1, tokens::color::BG_VOID.2);
+                cr.rectangle(cell_x + 4.0, cell_y + 4.0, badge_w, cell_h - 8.0);
+                let _ = cr.fill();
+
+                cr.select_font_face(tokens::font::CAIRO_MONO, cairo::FontSlant::Normal, cairo::FontWeight::Normal);
+                cr.set_font_size(9.5);
+                if is_hovered {
+                    cr.set_source_rgb(tokens::color::TEXT_PRIMARY.0, tokens::color::TEXT_PRIMARY.1, tokens::color::TEXT_PRIMARY.2);
+                } else {
+                    cr.set_source_rgb(tokens::color::TEXT_MUTED.0, tokens::color::TEXT_MUTED.1, tokens::color::TEXT_MUTED.2);
+                }
+                let pnum_str = format!("{}", p.pin_num);
+                if let Ok(ext) = cr.text_extents(&pnum_str) {
+                    let tx = cell_x + 4.0 + (badge_w - ext.width()) / 2.0;
+                    let _ = cr.move_to(tx, cell_y + cell_h * 0.60);
+                    let _ = cr.show_text(&pnum_str);
+                }
+
+                // MCU Pin & Label Text
+                if is_hovered {
+                    cr.set_source_rgb(tokens::color::TEXT_PRIMARY.0, tokens::color::TEXT_PRIMARY.1, tokens::color::TEXT_PRIMARY.2);
+                } else {
+                    cr.set_source_rgb(tokens::color::TEXT_PRIMARY.0, tokens::color::TEXT_PRIMARY.1, tokens::color::TEXT_PRIMARY.2);
+                }
+                let label_part = match p.default_label {
+                    Some(lbl) => format!(" ({})", lbl),
+                    None => "".to_string(),
+                };
+                let left_str = format!("{}{}", p.mcu_pin, label_part);
+                let text_start_x = cell_x + badge_w + 10.0;
+                let _ = cr.move_to(text_start_x, cell_y + cell_h * 0.60);
+                let _ = cr.show_text(&left_str);
+            }
+        }
+    }
+
+    // 7. Footer Legend Bar inside Board Outline
+    let legend_y = board_y + board_h - 28.0;
     cr.select_font_face(tokens::font::CAIRO_SANS, cairo::FontSlant::Normal, cairo::FontWeight::Bold);
     cr.set_font_size(10.0);
 
-    let (base_x, _, _, _) = get_base_board_rect(canvas_w, canvas_h);
-    let mut leg_x = base_x;
+    let leg_x = board_x + (board_w * 0.02).max(16.0);
 
-    // Active Signal in Loaded Project
+    // Active Signal Legend
     cr.set_source_rgb(tokens::color::STATE_READY.0, tokens::color::STATE_READY.1, tokens::color::STATE_READY.2);
-    cr.rectangle(leg_x, legend_y - 9.0, 11.0, 11.0);
+    cr.rectangle(leg_x, legend_y, 14.0, 14.0);
     let _ = cr.fill();
 
     cr.set_source_rgb(tokens::color::TEXT_PRIMARY.0, tokens::color::TEXT_PRIMARY.1, tokens::color::TEXT_PRIMARY.2);
+    let _ = cr.move_to(leg_x + 22.0, legend_y + 11.0);
     let active_label = if is_filtering_module {
         "Active in Module"
     } else {
         "Active Signal in Loaded Project"
     };
-    let _ = cr.move_to(leg_x + 16.0, legend_y);
     let _ = cr.show_text(active_label);
-    if let Ok(ext) = cr.text_extents(active_label) {
-        leg_x += ext.width() + 32.0;
-    }
 
     if is_filtering_module {
+        let leg_x2 = leg_x + 150.0;
         cr.set_source_rgb(tokens::color::BG_PANEL.0, tokens::color::BG_PANEL.1, tokens::color::BG_PANEL.2);
-        cr.rectangle(leg_x, legend_y - 9.0, 11.0, 11.0);
+        cr.rectangle(leg_x2, legend_y, 14.0, 14.0);
         let _ = cr.fill_preserve();
         cr.set_source_rgba(tokens::color::STATE_READY.0, tokens::color::STATE_READY.1, tokens::color::STATE_READY.2, 0.35);
         cr.set_line_width(tokens::shape::BORDER_WIDTH_HAIR);
         let _ = cr.stroke();
 
         cr.set_source_rgb(tokens::color::TEXT_MUTED.0, tokens::color::TEXT_MUTED.1, tokens::color::TEXT_MUTED.2);
-        let _ = cr.move_to(leg_x + 16.0, legend_y);
+        let _ = cr.move_to(leg_x2 + 22.0, legend_y + 11.0);
         let _ = cr.show_text("Active Elsewhere in Project");
-        if let Ok(ext) = cr.text_extents("Active Elsewhere in Project") {
-            leg_x += ext.width() + 32.0;
-        }
     }
 
-    if !active_conflicts.is_empty() {
-        let has_critical = active_conflicts
-            .iter()
-            .any(|(_, r)| r.severity == stakhal_core::nucleo_pinout::ReservedSeverity::Critical);
-        let (cr_r, cr_g, cr_b) = if has_critical {
-            tokens::color::STATE_ERROR
-        } else {
-            tokens::color::STATE_ACTIVE
-        };
-        cr.set_source_rgb(cr_r, cr_g, cr_b);
-        cr.rectangle(leg_x, legend_y - 9.0, 11.0, 11.0);
-        let _ = cr.fill();
-
-        cr.set_source_rgb(tokens::color::TEXT_PRIMARY.0, tokens::color::TEXT_PRIMARY.1, tokens::color::TEXT_PRIMARY.2);
-        let _ = cr.move_to(leg_x + 16.0, legend_y);
-        let _ = cr.show_text("Pin Conflict");
-        if let Ok(ext) = cr.text_extents("Pin Conflict") {
-            leg_x += ext.width() + 32.0;
-        }
-    }
-    cr.set_source_rgba(tokens::color::TEXT_PRIMARY.0, tokens::color::TEXT_PRIMARY.1, tokens::color::TEXT_PRIMARY.2, 0.7);
-    cr.set_line_width(1.2);
-    let _ = cr.move_to(leg_x, legend_y - 3.5);
-    let _ = cr.line_to(leg_x + 16.0, legend_y - 3.5);
-    let _ = cr.stroke();
-    cr.arc(leg_x, legend_y - 3.5, 2.5, 0.0, 2.0 * std::f64::consts::PI);
-    let _ = cr.fill();
-    cr.arc(leg_x + 16.0, legend_y - 3.5, 2.5, 0.0, 2.0 * std::f64::consts::PI);
-    let _ = cr.fill();
-
-    cr.set_source_rgb(tokens::color::TEXT_MUTED.0, tokens::color::TEXT_MUTED.1, tokens::color::TEXT_MUTED.2);
-    let _ = cr.move_to(leg_x + 22.0, legend_y);
-    let _ = cr.show_text("Dual Identity (Morpho + Arduino)");
-
-    // Clear Pinned Affordance in Legend Bar
-    if !pinned_pins.is_empty() {
-        if let Some((btn_x, btn_y, btn_w, btn_h)) = get_clear_pinned_rect(canvas_w, canvas_h, pinned_pins.len()) {
-            cr.set_source_rgb(tokens::color::BG_PANEL.0, tokens::color::BG_PANEL.1, tokens::color::BG_PANEL.2);
-            cr.rectangle(btn_x, btn_y, btn_w, btn_h);
-            let _ = cr.fill_preserve();
-
-            cr.set_source_rgba(tokens::color::ACCENT.0, tokens::color::ACCENT.1, tokens::color::ACCENT.2, 0.85);
-            cr.set_line_width(1.0);
-            let _ = cr.stroke();
-
-            cr.select_font_face(tokens::font::CAIRO_MONO, cairo::FontSlant::Normal, cairo::FontWeight::Bold);
-            cr.set_font_size(9.5);
-            cr.set_source_rgb(tokens::color::ACCENT.0, tokens::color::ACCENT.1, tokens::color::ACCENT.2);
-            let btn_text = format!("✕ Clear Pinned ({})", pinned_pins.len());
-            let _ = cr.move_to(btn_x + 10.0, btn_y + 13.0);
-            let _ = cr.show_text(&btn_text);
-        }
-    }
-
-    // 10. FINAL PASS: Compact Floating Tooltip Card
+    // 8. FINAL PASS: Compact Floating Tooltip Card - sharp 0px corners, BG_PANEL, 1px hairline border
     if let (Some((conn_name, pin_num)), Some((mx, my))) = (hovered_pin, hovered_mouse) {
         if let Some(conn) = CONNECTORS.iter().find(|c| c.name == conn_name) {
             if let Some(p) = conn.pins.iter().find(|p| p.pin_num == *pin_num) {
@@ -1118,24 +877,26 @@ pub fn draw_nucleo_pinout(
                 let tt_w = (w1.max(w2).max(w3) + 24.0).max(160.0);
                 let tt_h = if line3.is_some() { 58.0 } else { 42.0 };
 
-                let tt_x = if mx > canvas_w / 2.0 {
-                    (mx - tt_w - 12.0).max(15.0)
-                } else {
-                    (mx + 12.0).min(canvas_w - tt_w - 15.0)
-                };
-
+                // Compact Floating Position offset near cursor
+                let mut tt_x = mx + 12.0;
                 let mut tt_y = my - (tt_h + 6.0);
-                if tt_y < 15.0 {
-                    tt_y = my + 14.0;
+
+                if tt_x + tt_w > board_x + board_w - 15.0 {
+                    tt_x = (mx - tt_w - 12.0).max(board_x + 15.0);
                 }
-                if tt_y + tt_h > canvas_h - 15.0 {
-                    tt_y = (my - tt_h - 8.0).max(15.0);
+                if tt_y < board_y + 15.0 {
+                    tt_y = my + 20.0;
+                }
+                if tt_y + tt_h > board_y + board_h - 15.0 {
+                    tt_y = (my - tt_h - 8.0).max(board_y + 15.0);
                 }
 
+                // Card Background BG_PANEL, sharp 0px corners
                 cr.set_source_rgb(tokens::color::BG_PANEL.0, tokens::color::BG_PANEL.1, tokens::color::BG_PANEL.2);
                 cr.rectangle(tt_x, tt_y, tt_w, tt_h);
                 let _ = cr.fill_preserve();
 
+                // Border color (1px hairline)
                 let (border_r, border_g, border_b) = match reserved_info {
                     Some(res) => match res.severity {
                         stakhal_core::nucleo_pinout::ReservedSeverity::Critical => tokens::color::STATE_ERROR,
@@ -1154,12 +915,14 @@ pub fn draw_nucleo_pinout(
                 cr.set_line_width(tokens::shape::BORDER_WIDTH_HAIR);
                 let _ = cr.stroke();
 
+                // Line 1: Header Info (TEXT_PRIMARY, JetBrains Mono)
                 cr.select_font_face(tokens::font::CAIRO_MONO, cairo::FontSlant::Normal, cairo::FontWeight::Bold);
                 cr.set_font_size(10.0);
                 cr.set_source_rgb(tokens::color::TEXT_PRIMARY.0, tokens::color::TEXT_PRIMARY.1, tokens::color::TEXT_PRIMARY.2);
                 let _ = cr.move_to(tt_x + 10.0, tt_y + 16.0);
                 let _ = cr.show_text(&line1);
 
+                // Line 2: Signal / Status Info
                 cr.select_font_face(tokens::font::CAIRO_MONO, cairo::FontSlant::Normal, cairo::FontWeight::Bold);
                 cr.set_font_size(9.5);
                 if is_hl.is_some() {
@@ -1170,6 +933,7 @@ pub fn draw_nucleo_pinout(
                 let _ = cr.move_to(tt_x + 10.0, tt_y + 32.0);
                 let _ = cr.show_text(&line2);
 
+                // Line 3: Conflict Reason Warning
                 if let Some(ref l3) = line3 {
                     cr.select_font_face(tokens::font::CAIRO_MONO, cairo::FontSlant::Normal, cairo::FontWeight::Bold);
                     cr.set_font_size(9.5);
@@ -1200,10 +964,24 @@ pub fn setup_nucleo_pinout_drawing_and_gestures(
         let cw = area.width().max(800) as f64;
         let ch = area.height().max(600) as f64;
 
-        let hit_pin = find_hit_pin(x, y, cw, ch, &state_motion.borrow());
+        let mut hit_pin: Option<(&'static str, u8, &'static str, Option<&'static str>)> = None;
+
+        for conn in CONNECTORS {
+            for (idx, p) in conn.pins.iter().enumerate() {
+                let (cell_x, cell_y, cell_w, cell_h) = get_pin_cell_rect(conn.name, idx, cw, ch);
+
+                if x >= cell_x && x <= cell_x + cell_w && y >= cell_y && y <= cell_y + cell_h {
+                    hit_pin = Some((conn.name, p.pin_num, p.mcu_pin, p.default_label));
+                    break;
+                }
+            }
+            if hit_pin.is_some() {
+                break;
+            }
+        }
 
         match hit_pin {
-            Some((conn_name, pin_num)) => {
+            Some((conn_name, pin_num, _mcu_pin, _default_label)) => {
                 let mut needs_draw = false;
                 state_motion.borrow().with_canvas_state_mut(|c| {
                     let current_hovered = c.hovered_pinout_pin.clone();
@@ -1237,137 +1015,6 @@ pub fn setup_nucleo_pinout_drawing_and_gestures(
     });
 
     widgets.pinout_drawing_area.add_controller(motion);
-
-    // 1. Drag Controller for Panning
-    let drag = gtk4::GestureDrag::new();
-    drag.set_button(1);
-    let state_drag_begin = Rc::clone(state);
-    drag.connect_drag_begin(move |_, _x, _y| {
-        state_drag_begin.borrow().with_canvas_state_mut(|st| {
-            st.pinout_drag_start_pan = (st.pinout_pan_x, st.pinout_pan_y);
-        });
-    });
-
-    let state_drag_update = Rc::clone(state);
-    let widgets_drag = Rc::clone(widgets);
-    drag.connect_drag_update(move |_, offset_x, offset_y| {
-        if offset_x.abs() > 1.5 || offset_y.abs() > 1.5 {
-            state_drag_update.borrow().with_canvas_state_mut(|st| {
-                st.pinout_pan_x = st.pinout_drag_start_pan.0 + offset_x;
-                st.pinout_pan_y = st.pinout_drag_start_pan.1 + offset_y;
-            });
-            widgets_drag.pinout_drawing_area.queue_draw();
-        }
-    });
-
-    widgets.pinout_drawing_area.add_controller(drag);
-
-    // 2. Scroll Controller for Zooming Anchored to Mouse Cursor
-    let scroll = gtk4::EventControllerScroll::new(
-        gtk4::EventControllerScrollFlags::VERTICAL,
-    );
-    let state_scroll = Rc::clone(state);
-    let widgets_scroll = Rc::clone(widgets);
-    scroll.connect_scroll(move |controller, _, dy| {
-        state_scroll.borrow().with_canvas_state_mut(|st| {
-            let (cursor_x, cursor_y) = st
-                .hovered_pinout_mouse
-                .or_else(|| controller.current_event().and_then(|e| e.position()))
-                .unwrap_or_else(|| {
-                    (
-                        widgets_scroll.pinout_drawing_area.width().max(800) as f64 * 0.5,
-                        widgets_scroll.pinout_drawing_area.height().max(600) as f64 * 0.5,
-                    )
-                });
-
-            let factor = if dy < 0.0 { 1.15 } else { 1.0 / 1.15 };
-            let (new_zoom, new_pan_x, new_pan_y) = crate::ui::state_diagram::gestures::calculate_zoom_at_cursor(
-                st.pinout_zoom,
-                st.pinout_pan_x,
-                st.pinout_pan_y,
-                cursor_x,
-                cursor_y,
-                factor,
-                0.5,
-                3.5,
-            );
-
-            st.pinout_zoom = new_zoom;
-            st.pinout_pan_x = new_pan_x;
-            st.pinout_pan_y = new_pan_y;
-        });
-
-        widgets_scroll.pinout_drawing_area.queue_draw();
-        glib::Propagation::Stop
-    });
-
-    widgets.pinout_drawing_area.add_controller(scroll);
-
-    // 3. Click Gesture for Pin Marker Inspection & Pinning
-    let click = gtk4::GestureClick::new();
-    let state_click = Rc::clone(state);
-    let widgets_click = Rc::clone(widgets);
-
-    click.connect_released(move |_, n_press, x, y| {
-        if n_press != 1 {
-            return;
-        }
-
-        // Avoid triggering pin selection if this was a pan drag
-        let was_drag = state_click.borrow().with_canvas_state_mut(|st| {
-            let (sx, sy) = st.pinout_drag_start_pan;
-            let dist = (st.pinout_pan_x - sx).hypot(st.pinout_pan_y - sy);
-            st.pinout_drag_start_pan = (st.pinout_pan_x, st.pinout_pan_y);
-            dist > 4.0
-        });
-        if was_drag {
-            return;
-        }
-
-        let area = &widgets_click.pinout_drawing_area;
-        let cw = area.width().max(800) as f64;
-        let ch = area.height().max(600) as f64;
-
-        // 1. Check if clicked Clear Pinned button
-        let pinned_count = state_click.borrow().with_canvas_state(|c| c.pinned_pins.len());
-        if let Some((bx, by, bw, bh)) = get_clear_pinned_rect(cw, ch, pinned_count) {
-            if x >= bx && x <= bx + bw && y >= by && y <= by + bh {
-                state_click.borrow().with_canvas_state_mut(|c| {
-                    c.pinned_pins.clear();
-                });
-                area.queue_draw();
-                return;
-            }
-        }
-
-        // 2. Check if clicked a pin marker or callout badge
-        let hit_pin = find_hit_pin(x, y, cw, ch, &state_click.borrow());
-        if let Some((conn_name, pin_num)) = hit_pin {
-            let mcu_opt = lookup_mcu_pin(conn_name, pin_num);
-            let is_project_pin = state_click.borrow().project.borrow().loaded_project.as_ref().map(|p| {
-                if let Some(mcu) = mcu_opt {
-                    p.pins.iter().any(|cfg| cfg.pin == mcu)
-                } else {
-                    false
-                }
-            }).unwrap_or(false);
-
-            state_click.borrow().with_canvas_state_mut(|c| {
-                if is_project_pin {
-                    if let Some(mcu) = mcu_opt {
-                        if !c.pinned_pins.remove(mcu) {
-                            c.pinned_pins.insert(mcu.to_string());
-                        }
-                    }
-                }
-                c.hovered_pinout_pin = Some((conn_name.to_string(), pin_num));
-                c.hovered_pinout_mouse = Some((x, y));
-            });
-            area.queue_draw();
-        }
-    });
-
-    widgets.pinout_drawing_area.add_controller(click);
 }
 
 #[cfg(test)]
@@ -1394,25 +1041,21 @@ mod tests {
     }
 
     #[test]
-    fn test_pin_marker_bounds() {
-        let (bx, by, bw, bh) = get_base_board_rect(1280.0, 820.0);
-        assert!(bw > 300.0);
-        assert!(bh > 300.0);
-
+    fn test_get_pin_cell_rect_bounds() {
         for conn in CONNECTORS {
-            for p in conn.pins {
-                let pos = get_pin_marker_pos(conn.name, p.pin_num, 1280.0, 820.0, None);
-                assert!(pos.is_some(), "Position must exist for {}-{}", conn.name, p.pin_num);
-                let (px, py) = pos.unwrap();
-                assert!(px >= bx && px <= bx + bw, "Marker X {px} out of board for {}-{}", conn.name, p.pin_num);
-                assert!(py >= by && py <= by + bh, "Marker Y {py} out of board for {}-{}", conn.name, p.pin_num);
+            for (idx, p) in conn.pins.iter().enumerate() {
+                let (x, y, w, h) = get_pin_cell_rect(conn.name, idx, 1600.0, 980.0);
+                assert!(x >= 30.0, "Pin cell X {} out of bounds for {} pin {}", x, conn.name, p.pin_num);
+                assert!(x + w <= 1570.0, "Pin cell X+W {} out of bounds for {} pin {}", x + w, conn.name, p.pin_num);
+                assert!(y >= 30.0, "Pin cell Y {} out of bounds for {} pin {}", y, conn.name, p.pin_num);
+                assert!(y + h <= 960.0, "Pin cell Y+H {} out of bounds for {} pin {}", y + h, conn.name, p.pin_num);
             }
         }
     }
 
     #[test]
     fn test_draw_nucleo_pinout_canvas_rendering() {
-        let surface = cairo::ImageSurface::create(cairo::Format::ARgb32, 1280, 820).expect("Failed to create surface");
+        let surface = cairo::ImageSurface::create(cairo::Format::ARgb32, 1200, 750).expect("Failed to create surface");
         let cr = cairo::Context::new(&surface).expect("Failed to create context");
         let state = Rc::new(RefCell::new(AppState::default()));
 
@@ -1424,7 +1067,7 @@ mod tests {
             state.borrow().project.borrow_mut().loaded_project = Some(project);
         }
 
-        draw_nucleo_pinout(&cr, 1280.0, 820.0, &state);
+        draw_nucleo_pinout(&cr, 1200.0, 750.0, &state);
         surface.flush();
 
         let existing_project = state.borrow().project.borrow().loaded_project.clone();
@@ -1442,7 +1085,7 @@ mod tests {
             });
         }
 
-        draw_nucleo_pinout(&cr, 1280.0, 820.0, &state);
+        draw_nucleo_pinout(&cr, 1200.0, 750.0, &state);
         surface.flush();
     }
 
@@ -1456,486 +1099,38 @@ mod tests {
             .expect("Failed to load aa_ns_stm_port");
 
         let state = AppState::default();
-        state.project.borrow_mut().loaded_project = Some(project.clone());
+        state.project.borrow_mut().loaded_project = Some(project);
 
-        // When selected_pinout_module is None ("All Modules"), badges are resting (no persistent non-conflict badges)
-        let resting_badges = compute_visible_callout_badges(1280.0, 820.0, &state, None);
-        for b in &resting_badges {
-            assert!(stakhal_core::nucleo_pinout::check_reserved(b.mcu_pin).is_some());
+        // When selected_pinout_module is None ("All Modules"), no active pins are muted
+        let all_hl = get_active_pin_highlights(&state);
+        assert!(!all_hl.is_empty());
+        for hl in all_hl.values() {
+            assert!(!hl.is_muted);
         }
 
-        // When selected_pinout_module is Some("alignment") (busiest module in aa_ns_stm_port, 8 pins)
-        let align_state = AppState::default();
-        align_state.with_canvas_state_mut(|c| {
-            c.selected_pinout_module = Some("alignment".to_string());
-        });
-        align_state.project.borrow_mut().loaded_project = Some(project.clone());
-
-        let align_badges = compute_visible_callout_badges(1280.0, 820.0, &align_state, None);
-        // All 8 alignment pins must have visible persistent badges
-        assert_eq!(align_badges.len(), 8);
-
-        // Verify collision-free vertical relaxation: badges on each side must not overlap
-        let mut left_b: Vec<_> = align_badges.iter().filter(|b| b.is_left).collect();
-        let mut right_b: Vec<_> = align_badges.iter().filter(|b| !b.is_left).collect();
-        left_b.sort_by(|a, b| a.y.partial_cmp(&b.y).unwrap());
-        right_b.sort_by(|a, b| a.y.partial_cmp(&b.y).unwrap());
-
-        for i in 1..right_b.len() {
-            let prev = right_b[i - 1];
-            let curr = right_b[i];
-            let gap = curr.y - (prev.y + prev.h);
-            assert!(
-                gap >= 1.99,
-                "Collision detected between {} ({:.1}) and {} ({:.1})! Gap={:.2}",
-                prev.mcu_pin, prev.y, curr.mcu_pin, curr.y, gap
-            );
-        }
-
-        // Render to canvas to verify drawing with module filter doesn't panic
-        let surface = cairo::ImageSurface::create(cairo::Format::ARgb32, 1280, 820).expect("Failed to create surface");
-        let cr = cairo::Context::new(&surface).expect("Failed to create context");
-        let rc_state = Rc::new(RefCell::new(align_state));
-        draw_nucleo_pinout(&cr, 1280.0, 820.0, &rc_state);
-        surface.flush();
-    }
-
-    #[test]
-    fn test_nucleo_pinout_click_to_pin_and_clear() {
-        let fixture_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../stakhal-core/tests/fixtures/aa_ns_stm_port");
-        let ioc_path = fixture_dir.join("aa_ns_stm_port.ioc");
-        let main_c_path = fixture_dir.join("Core/Src/main.c");
-        let project = stakhal_core::ir::schema::load_project(&ioc_path, &main_c_path)
-            .expect("Failed to load aa_ns_stm_port");
-
-        let state = AppState::default();
-        state.project.borrow_mut().loaded_project = Some(project.clone());
-
-        // Hand-pin 3 pins across different modules: PB0 (alignment), PB12 (hatch), PB7 (relay)
-        state.with_canvas_state_mut(|c| {
-            c.pinned_pins.insert("PB0".to_string());
-            c.pinned_pins.insert("PB12".to_string());
-            c.pinned_pins.insert("PB7".to_string());
-        });
-
-        // Verify all 3 pins get persistent callout badges simultaneously even without hover and with module filter None
-        let badges = compute_visible_callout_badges(1280.0, 820.0, &state, None);
-        assert!(badges.iter().any(|b| b.mcu_pin == "PB0" && b.is_pinned));
-        assert!(badges.iter().any(|b| b.mcu_pin == "PB12" && b.is_pinned));
-        assert!(badges.iter().any(|b| b.mcu_pin == "PB7" && b.is_pinned));
-
-        // Even if module filter is set to "hatch", PB0 and PB7 remain visible and unmuted because they are pinned
-        state.with_canvas_state_mut(|c| {
+        // When selected_pinout_module is Some("hatch"), pins in hatch are active, other pins are muted
+        let hatch_state = AppState::default();
+        hatch_state.with_canvas_state_mut(|c| {
             c.selected_pinout_module = Some("hatch".to_string());
         });
-        let hatch_badges = compute_visible_callout_badges(1280.0, 820.0, &state, None);
-        let pb0 = hatch_badges.iter().find(|b| b.mcu_pin == "PB0").expect("PB0 must remain visible");
-        assert!(!pb0.is_muted, "Pinned PB0 should not be muted even under hatch filter");
+        hatch_state.project.borrow_mut().loaded_project = state.project.borrow().loaded_project.clone();
+        let hatch_hl = get_active_pin_highlights(&hatch_state);
 
-        // Verify clear pinned button bounds and clearing
-        let clear_rect = get_clear_pinned_rect(1280.0, 820.0, 3);
-        assert!(clear_rect.is_some(), "Clear pinned affordance must be present when pins are pinned");
-        let (cx, cy, cw, ch) = clear_rect.unwrap();
-        assert!(cx > 400.0 && cy > 700.0 && cw > 50.0 && ch > 10.0);
+        // Find GRIP_IN1
+        let grip = hatch_hl.values().find(|h| h.label.as_deref() == Some("GRIP_IN1")).expect("GRIP_IN1 missing");
+        assert!(!grip.is_muted, "GRIP_IN1 should not be muted for hatch module");
+        assert!(grip.modules.contains(&"hatch".to_string()));
 
-        // Clear pinned pins
-        state.with_canvas_state_mut(|c| {
-            c.pinned_pins.clear();
-            c.selected_pinout_module = None;
-        });
-        assert!(get_clear_pinned_rect(1280.0, 820.0, 0).is_none());
-        let cleared_badges = compute_visible_callout_badges(1280.0, 820.0, &state, None);
-        assert!(!cleared_badges.iter().any(|b| b.mcu_pin == "PB0"));
-        assert!(!cleared_badges.iter().any(|b| b.mcu_pin == "PB12"));
-        assert!(!cleared_badges.iter().any(|b| b.mcu_pin == "PB7"));
-    }
+        // Find Z1_LIMIT
+        let z1 = hatch_hl.values().find(|h| h.label.as_deref() == Some("Z1_LIMIT")).expect("Z1_LIMIT missing");
+        assert!(z1.is_muted, "Z1_LIMIT should be muted when hatch is selected");
+        assert!(z1.modules.contains(&"alignment".to_string()));
 
-    #[test]
-    fn test_hit_testing_radius_and_badges() {
-        let fixture_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../stakhal-core/tests/fixtures/aa_ns_stm_port");
-        let ioc_path = fixture_dir.join("aa_ns_stm_port.ioc");
-        let main_c_path = fixture_dir.join("Core/Src/main.c");
-        let project = stakhal_core::ir::schema::load_project(&ioc_path, &main_c_path)
-            .expect("Failed to load aa_ns_stm_port");
-
-        let state = AppState::default();
-        state.project.borrow_mut().loaded_project = Some(project);
-
-        // Hit testing at exact pin marker position
-        let (px, py) = get_pin_marker_pos("CN10", 11, 1280.0, 820.0, Some(&state)).unwrap();
-        let hit = find_hit_pin(px, py, 1280.0, 820.0, &state);
-        assert_eq!(hit, Some(("CN10", 11)));
-
-        // Hit testing within 5px of marker
-        let hit_near = find_hit_pin(px + 4.0, py - 3.0, 1280.0, 820.0, &state);
-        assert_eq!(hit_near, Some(("CN10", 11)));
-
-        // Hit testing far away from any pin
-        let hit_far = find_hit_pin(10.0, 10.0, 1280.0, 820.0, &state);
-        assert_eq!(hit_far, None);
-
-        // At rest, non-conflict pins do not have visible gutter badges
-        let resting_badges = compute_visible_callout_badges(1280.0, 820.0, &state, None);
-        assert!(resting_badges.is_empty() || resting_badges.iter().all(|b| {
-            stakhal_core::nucleo_pinout::check_reserved(b.mcu_pin).is_some()
-        }));
-
-        // When hovered, the hovered pin gets a badge
-        let hover_badges = compute_visible_callout_badges(1280.0, 820.0, &state, Some(&("CN10".to_string(), 11)));
-        let pa5_badge = hover_badges.iter().find(|b| b.conn_name == "CN10" && b.pin_num == 11);
-        assert!(pa5_badge.is_some(), "Hovered pin must have a visible gutter badge");
-
-        let b = pa5_badge.unwrap();
-        state.with_canvas_state_mut(|c| {
-            c.hovered_pinout_pin = Some(("CN10".to_string(), 11));
-        });
-        let hit_badge = find_hit_pin(b.x + b.w / 2.0, b.y + b.h / 2.0, 1280.0, 820.0, &state);
-        assert_eq!(hit_badge, Some(("CN10", 11)));
-    }
-
-    #[test]
-    fn test_render_board_overlay_verification_screenshot() {
-        let fixture_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../stakhal-core/tests/fixtures/aa_ns_stm_port");
-        let ioc_path = fixture_dir.join("aa_ns_stm_port.ioc");
-        let main_c_path = fixture_dir.join("Core/Src/main.c");
-        let project = stakhal_core::ir::schema::load_project(&ioc_path, &main_c_path)
-            .expect("Failed to load aa_ns_stm_port");
-
-        let mut project = project;
-        project.pins.push(stakhal_core::ioc::parser::PinConfig {
-            pin: "PA13".to_string(),
-            signal: "GPIO_Output".to_string(),
-            label: Some("DBG_SWDIO".to_string()),
-            modules: vec!["hatch".to_string()],
-        });
-        project.pins.push(stakhal_core::ioc::parser::PinConfig {
-            pin: "PC14".to_string(),
-            signal: "GPIO_Input".to_string(),
-            label: Some("RTC_IN".to_string()),
-            modules: Vec::new(),
-        });
-
-        // 1. Render Module Filter View: Busiest module ("alignment", 8 pins) with persistent badges and no collision
-        {
-            let surface = cairo::ImageSurface::create(cairo::Format::ARgb32, 1280, 820).expect("Failed to create surface");
-            let cr = cairo::Context::new(&surface).expect("Failed to create context");
-            let state = AppState::default();
-            state.project.borrow_mut().loaded_project = Some(project.clone());
-            state.with_canvas_state_mut(|c| {
-                c.selected_pinout_module = Some("alignment".to_string());
-                c.hovered_pinout_pin = None;
-                c.hovered_pinout_mouse = None;
-            });
-            let rc_state = Rc::new(RefCell::new(state));
-            draw_nucleo_pinout(&cr, 1280.0, 820.0, &rc_state);
-            surface.flush();
-
-            let out_path = "/home/stakxx002/.gemini/antigravity-ide/brain/e21edbbd-844e-44ef-9dfa-1af3c8e3a19b/pinout_board_module_filter_verification.png";
-            let mut file = std::fs::File::create(out_path).expect("Failed to create output PNG");
-            surface.write_to_png(&mut file).expect("Failed to write PNG");
-        }
-
-        // 2. Render Pinned Pins View: 3+ hand-pinned pins across different modules + clear affordance
-        {
-            let surface = cairo::ImageSurface::create(cairo::Format::ARgb32, 1280, 820).expect("Failed to create surface");
-            let cr = cairo::Context::new(&surface).expect("Failed to create context");
-            let state = AppState::default();
-            state.project.borrow_mut().loaded_project = Some(project.clone());
-            state.with_canvas_state_mut(|c| {
-                c.selected_pinout_module = None; // All Modules
-                c.pinned_pins.insert("PB0".to_string());   // alignment
-                c.pinned_pins.insert("PB12".to_string());  // hatch
-                c.pinned_pins.insert("PB7".to_string());   // relay
-                c.hovered_pinout_pin = None;
-                c.hovered_pinout_mouse = None;
-            });
-            let rc_state = Rc::new(RefCell::new(state));
-            draw_nucleo_pinout(&cr, 1280.0, 820.0, &rc_state);
-            surface.flush();
-
-            let out_path = "/home/stakxx002/.gemini/antigravity-ide/brain/e21edbbd-844e-44ef-9dfa-1af3c8e3a19b/pinout_board_pinned_pins_verification.png";
-            let mut file = std::fs::File::create(out_path).expect("Failed to create output PNG");
-            surface.write_to_png(&mut file).expect("Failed to write PNG");
-        }
-
-        // 3. Render Resting View (No pin hovered, only persistent conflict badges visible)
-        {
-            let surface = cairo::ImageSurface::create(cairo::Format::ARgb32, 1280, 820).expect("Failed to create surface");
-            let cr = cairo::Context::new(&surface).expect("Failed to create context");
-            let state = AppState::default();
-            state.project.borrow_mut().loaded_project = Some(project.clone());
-            state.with_canvas_state_mut(|c| {
-                c.selected_pinout_module = None;
-                c.hovered_pinout_pin = None;
-                c.hovered_pinout_mouse = None;
-            });
-            let rc_state = Rc::new(RefCell::new(state));
-            draw_nucleo_pinout(&cr, 1280.0, 820.0, &rc_state);
-            surface.flush();
-
-            let out_path = "/home/stakxx002/.gemini/antigravity-ide/brain/e21edbbd-844e-44ef-9dfa-1af3c8e3a19b/pinout_board_resting_verification.png";
-            let mut file = std::fs::File::create(out_path).expect("Failed to create output PNG");
-            surface.write_to_png(&mut file).expect("Failed to write PNG");
-        }
-
-        // 4. Render Hover View (PA5 / D13 hovered, showing its gutter badge + leader line + detail card)
-        {
-            let surface = cairo::ImageSurface::create(cairo::Format::ARgb32, 1280, 820).expect("Failed to create surface");
-            let cr = cairo::Context::new(&surface).expect("Failed to create context");
-            let (hover_px, hover_py) = get_pin_marker_pos("CN10", 11, 1280.0, 820.0, None).unwrap();
-
-            let state = AppState::default();
-            state.project.borrow_mut().loaded_project = Some(project.clone());
-            state.with_canvas_state_mut(|c| {
-                c.selected_pinout_module = None;
-                c.hovered_pinout_pin = Some(("CN10".to_string(), 11)); // PA5 (D13)
-                c.hovered_pinout_mouse = Some((hover_px, hover_py));
-            });
-            let rc_state = Rc::new(RefCell::new(state));
-            draw_nucleo_pinout(&cr, 1280.0, 820.0, &rc_state);
-            surface.flush();
-
-            let out_path_hover = "/home/stakxx002/.gemini/antigravity-ide/brain/e21edbbd-844e-44ef-9dfa-1af3c8e3a19b/pinout_board_hover_verification.png";
-            let mut file_h = std::fs::File::create(out_path_hover).expect("Failed to create output PNG");
-            surface.write_to_png(&mut file_h).expect("Failed to write PNG");
-
-            let out_path_legacy = "/home/stakxx002/.gemini/antigravity-ide/brain/e21edbbd-844e-44ef-9dfa-1af3c8e3a19b/pinout_board_overlay_verification.png";
-            let mut file_l = std::fs::File::create(out_path_legacy).expect("Failed to create output PNG");
-            surface.write_to_png(&mut file_l).expect("Failed to write PNG");
-        }
-
-        // 5. Render Full Board Toggle View: Show all labels across the entire project (18 pins in aa_ns_stm_port)
-        {
-            let surface = cairo::ImageSurface::create(cairo::Format::ARgb32, 1280, 820).expect("Failed to create surface");
-            let cr = cairo::Context::new(&surface).expect("Failed to create context");
-            let state = AppState::default();
-            state.project.borrow_mut().loaded_project = Some(project.clone());
-            state.with_canvas_state_mut(|c| {
-                c.selected_pinout_module = None;
-                c.pinned_pins.clear();
-                c.pinout_show_all = true;
-                c.hovered_pinout_pin = None;
-                c.hovered_pinout_mouse = None;
-            });
-            let rc_state = Rc::new(RefCell::new(state));
-            draw_nucleo_pinout(&cr, 1280.0, 820.0, &rc_state);
-            surface.flush();
-
-            let out_path_full = "/home/stakxx002/.gemini/antigravity-ide/brain/e21edbbd-844e-44ef-9dfa-1af3c8e3a19b/pinout_board_show_all_verification.png";
-            let mut file_f = std::fs::File::create(out_path_full).expect("Failed to create output PNG");
-            surface.write_to_png(&mut file_f).expect("Failed to write PNG");
-        }
-
-        // 6. Render Zoomed View: Zoomed into dense CN9/CN10 region (zoom = 1.8x, pan focused on CN9/CN10)
-        {
-            let surface = cairo::ImageSurface::create(cairo::Format::ARgb32, 1280, 820).expect("Failed to create surface");
-            let cr = cairo::Context::new(&surface).expect("Failed to create context");
-            let state = AppState::default();
-            state.project.borrow_mut().loaded_project = Some(project);
-            state.with_canvas_state_mut(|c| {
-                c.selected_pinout_module = None;
-                c.pinned_pins.clear();
-                c.pinout_show_all = true;
-                c.pinout_zoom = 1.45;
-                c.pinout_pan_x = -440.0;
-                c.pinout_pan_y = -220.0;
-                c.hovered_pinout_pin = None;
-                c.hovered_pinout_mouse = None;
-            });
-            let rc_state = Rc::new(RefCell::new(state));
-            draw_nucleo_pinout(&cr, 1280.0, 820.0, &rc_state);
-            surface.flush();
-
-            let out_path_zoomed = "/home/stakxx002/.gemini/antigravity-ide/brain/e21edbbd-844e-44ef-9dfa-1af3c8e3a19b/pinout_board_zoomed_cn9_cn10_verification.png";
-            let mut file_z = std::fs::File::create(out_path_zoomed).expect("Failed to create output PNG");
-            surface.write_to_png(&mut file_z).expect("Failed to write PNG");
-        }
-    }
-
-    #[test]
-    fn test_nucleo_pinout_show_all_toggle() {
-        let fixture_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../stakhal-core/tests/fixtures/aa_ns_stm_port");
-        let ioc_path = fixture_dir.join("aa_ns_stm_port.ioc");
-        let main_c_path = fixture_dir.join("Core/Src/main.c");
-        let project = stakhal_core::ir::schema::load_project(&ioc_path, &main_c_path)
-            .expect("Failed to load aa_ns_stm_port");
-
-        let state = AppState::default();
-        state.project.borrow_mut().loaded_project = Some(project.clone());
-
-        // Default: show_all = false -> only conflict badges (0 for default aa_ns_stm_port)
-        let resting_badges = compute_visible_callout_badges(1280.0, 820.0, &state, None);
-        for b in &resting_badges {
-            assert!(stakhal_core::nucleo_pinout::check_reserved(b.mcu_pin).is_some());
-        }
-
-        // Toggle show_all on: all 18 active pins in aa_ns_stm_port get persistent badges
-        state.with_canvas_state_mut(|c| {
-            c.pinout_show_all = true;
-        });
-
-        let all_badges = compute_visible_callout_badges(1280.0, 820.0, &state, None);
-        assert_eq!(all_badges.len(), 18, "All 18 active pins must have visible badges when show_all is enabled");
-
-        // Verify none of the badges are muted
-        for b in &all_badges {
-            assert!(!b.is_muted, "Pin {} badge must not be muted when show_all is true", b.mcu_pin);
-        }
-
-        // Verify collision-free relaxation on both left (3 pins) and right (15 pins) gutters
-        let mut left_b: Vec<_> = all_badges.iter().filter(|b| b.is_left).collect();
-        let mut right_b: Vec<_> = all_badges.iter().filter(|b| !b.is_left).collect();
-        assert_eq!(left_b.len(), 3);
-        assert_eq!(right_b.len(), 15);
-
-        left_b.sort_by(|a, b| a.y.partial_cmp(&b.y).unwrap());
-        right_b.sort_by(|a, b| a.y.partial_cmp(&b.y).unwrap());
-
-        for i in 1..left_b.len() {
-            let prev = left_b[i - 1];
-            let curr = left_b[i];
-            let gap = curr.y - (prev.y + prev.h);
-            assert!(
-                gap >= 1.99,
-                "Left collision detected between {} ({:.1}) and {} ({:.1})! Gap={:.2}",
-                prev.mcu_pin, prev.y, curr.mcu_pin, curr.y, gap
-            );
-        }
-
-        for i in 1..right_b.len() {
-            let prev = right_b[i - 1];
-            let curr = right_b[i];
-            let gap = curr.y - (prev.y + prev.h);
-            assert!(
-                gap >= 1.99,
-                "Right collision detected between {} ({:.1}) and {} ({:.1})! Gap={:.2}",
-                prev.mcu_pin, prev.y, curr.mcu_pin, curr.y, gap
-            );
-        }
-
-        // Verify drawing with show_all doesn't panic
-        let surface = cairo::ImageSurface::create(cairo::Format::ARgb32, 1280, 820).expect("Failed to create surface");
+        // Render to canvas to verify drawing with module filter doesn't panic
+        let surface = cairo::ImageSurface::create(cairo::Format::ARgb32, 1200, 750).expect("Failed to create surface");
         let cr = cairo::Context::new(&surface).expect("Failed to create context");
-        let rc_state = Rc::new(RefCell::new(state));
-        draw_nucleo_pinout(&cr, 1280.0, 820.0, &rc_state);
+        let rc_state = Rc::new(RefCell::new(hatch_state));
+        draw_nucleo_pinout(&cr, 1200.0, 750.0, &rc_state);
         surface.flush();
-
-        // Toggle show_all off: returns to resting state
-        rc_state.borrow().with_canvas_state_mut(|c| {
-            c.pinout_show_all = false;
-        });
-        let back_to_resting = compute_visible_callout_badges(1280.0, 820.0, &rc_state.borrow(), None);
-        for b in &back_to_resting {
-            assert!(stakhal_core::nucleo_pinout::check_reserved(b.mcu_pin).is_some());
-        }
-    }
-
-    #[test]
-    fn test_nucleo_pinout_zoom_and_pan() {
-        let fixture_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../stakhal-core/tests/fixtures/aa_ns_stm_port");
-        let ioc_path = fixture_dir.join("aa_ns_stm_port.ioc");
-        let main_c_path = fixture_dir.join("Core/Src/main.c");
-        let project = stakhal_core::ir::schema::load_project(&ioc_path, &main_c_path)
-            .expect("Failed to load aa_ns_stm_port");
-
-        let state = AppState::default();
-        state.project.borrow_mut().loaded_project = Some(project);
-        state.with_canvas_state_mut(|c| {
-            c.pinout_show_all = true;
-        });
-
-        // 1. Verify board rect scales with zoom
-        let (bx1, by1, bw1, bh1) = get_board_rect(1280.0, 820.0, &state);
-        state.with_canvas_state_mut(|c| {
-            c.pinout_zoom = 2.0;
-            c.pinout_pan_x = 100.0;
-            c.pinout_pan_y = -50.0;
-        });
-        let (bx2, by2, bw2, bh2) = get_board_rect(1280.0, 820.0, &state);
-        assert!((bw2 - bw1 * 2.0).abs() < 1e-4);
-        assert!((bh2 - bh1 * 2.0).abs() < 1e-4);
-        assert!((bx2 - (100.0 + bx1 * 2.0)).abs() < 1e-4);
-        assert!((by2 - (-50.0 + by1 * 2.0)).abs() < 1e-4);
-
-        // 2. Verify pin marker position at zoom = 2.0
-        let pos1 = get_pin_marker_pos("CN10", 11, 1280.0, 820.0, None).unwrap();
-        let pos2 = get_pin_marker_pos("CN10", 11, 1280.0, 820.0, Some(&state)).unwrap();
-        assert!((pos2.0 - (100.0 + pos1.0 * 2.0)).abs() < 1e-3);
-        assert!((pos2.1 - (-50.0 + pos1.1 * 2.0)).abs() < 1e-3);
-
-        // 3. Hit testing works at zoomed coordinates
-        let hit_zoomed = find_hit_pin(pos2.0, pos2.1, 1280.0, 820.0, &state);
-        assert_eq!(hit_zoomed, Some(("CN10", 11)));
-        // Unzoomed coordinate should NOT hit when zoomed in and panned away
-        let hit_old = find_hit_pin(pos1.0, pos1.1, 1280.0, 820.0, &state);
-        assert_ne!(hit_old, Some(("CN10", 11)));
-
-        // 4. Relaxation shifts decrease as zoom increases
-        state.with_canvas_state_mut(|c| {
-            c.pinout_zoom = 1.0;
-            c.pinout_pan_x = 0.0;
-            c.pinout_pan_y = 0.0;
-        });
-        let badges_1x = compute_visible_callout_badges(1280.0, 820.0, &state, None);
-
-        state.with_canvas_state_mut(|c| {
-            c.pinout_zoom = 2.0;
-        });
-        let badges_2x = compute_visible_callout_badges(1280.0, 820.0, &state, None);
-
-        assert_eq!(badges_1x.len(), badges_2x.len());
-
-        let mut max_shift_1x = 0.0f64;
-        for b in &badges_1x {
-            let shift = (b.y - (b.route_pos.1 - b.h * 0.5)).abs();
-            if shift > max_shift_1x {
-                max_shift_1x = shift;
-            }
-        }
-        let mut max_shift_2x = 0.0f64;
-        for b in &badges_2x {
-            let shift = (b.y - (b.route_pos.1 - b.h * 0.5)).abs() / 2.0;
-            if shift > max_shift_2x {
-                max_shift_2x = shift;
-            }
-        }
-        assert!(
-            max_shift_2x < max_shift_1x,
-            "Normalized relaxation shift at 2x zoom ({:.1}px) must be strictly less than at 1x zoom ({:.1}px)",
-            max_shift_2x, max_shift_1x
-        );
-
-        // Verify no collisions at zoom = 2.0
-        let mut right_b: Vec<_> = badges_2x.iter().filter(|b| !b.is_left).collect();
-        right_b.sort_by(|a, b| a.y.partial_cmp(&b.y).unwrap());
-        for i in 1..right_b.len() {
-            let prev = right_b[i - 1];
-            let curr = right_b[i];
-            let gap = curr.y - (prev.y + prev.h);
-            assert!(
-                gap >= 1.99,
-                "Right collision at 2x zoom between {} and {}! Gap={:.2}",
-                prev.mcu_pin, curr.mcu_pin, gap
-            );
-        }
-
-        // 5. Invariant in calculate_zoom_at_cursor
-        let cursor_x = 900.0;
-        let cursor_y = 450.0;
-        let (z_new, px_new, py_new) = crate::ui::state_diagram::gestures::calculate_zoom_at_cursor(
-            1.5, 50.0, -30.0, cursor_x, cursor_y, 1.2, 0.5, 3.5,
-        );
-        let world_x_before = (cursor_x - 50.0) / 1.5;
-        let world_x_after = (cursor_x - px_new) / z_new;
-        assert!((world_x_before - world_x_after).abs() < 1e-9);
-
-        let world_y_before = (cursor_y - (-30.0)) / 1.5;
-        let world_y_after = (cursor_y - py_new) / z_new;
-        assert!((world_y_before - world_y_after).abs() < 1e-9);
     }
 }

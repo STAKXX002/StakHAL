@@ -77,12 +77,6 @@ pub struct DiagramCanvasState {
     pub hovered_pinout_pin: Option<(String, u8)>,
     pub hovered_pinout_mouse: Option<(f64, f64)>,
     pub selected_pinout_module: Option<String>,
-    pub pinned_pins: std::collections::HashSet<String>,
-    pub pinout_show_all: bool,
-    pub pinout_zoom: f64,
-    pub pinout_pan_x: f64,
-    pub pinout_pan_y: f64,
-    pub pinout_drag_start_pan: (f64, f64),
     pub node_flash_animation: Option<(String, std::time::Instant)>,
     pub edge_reveal_animation: Option<(usize, std::time::Instant)>,
     pub edge_pulse_animation: Option<(String, String, std::time::Instant)>,
@@ -109,12 +103,6 @@ impl Default for DiagramCanvasState {
             hovered_pinout_pin: None,
             hovered_pinout_mouse: None,
             selected_pinout_module: None,
-            pinned_pins: std::collections::HashSet::new(),
-            pinout_show_all: false,
-            pinout_zoom: 1.0,
-            pinout_pan_x: 0.0,
-            pinout_pan_y: 0.0,
-            pinout_drag_start_pan: (0.0, 0.0),
             node_flash_animation: None,
             edge_reveal_animation: None,
             edge_pulse_animation: None,
@@ -208,7 +196,6 @@ pub struct AppWidgets {
     pub pinout_drawing_area: gtk4::DrawingArea,
     pub _pinout_scrolled: gtk4::ScrolledWindow,
     pub combo_pinout_module: gtk4::DropDown,
-    pub chk_pinout_show_all: gtk4::CheckButton,
 
     // Serial monitor widgets
     #[allow(dead_code)]

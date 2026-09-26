@@ -7,14 +7,13 @@ pub struct NucleoPinoutPanelWidgets {
     pub pinout_drawing_area: gtk4::DrawingArea,
     pub pinout_scrolled: gtk4::ScrolledWindow,
     pub combo_pinout_module: gtk4::DropDown,
-    pub chk_pinout_show_all: gtk4::CheckButton,
 }
 
 pub fn build_nucleo_pinout_panel() -> NucleoPinoutPanelWidgets {
     let btn_pinout_back = create_icon_button("Back to Overview", "go-previous-symbolic", false);
 
     let lbl_pinout_title = gtk4::Label::builder()
-        .label("[ NUCLEO-F446RE PHYSICAL BOARD PINOUT ]")
+        .label("[ NUCLEO-F446RE PHYSICAL CONNECTOR PINOUT ]")
         .halign(gtk4::Align::Start)
         .hexpand(true)
         .css_classes(vec!["title-3".to_string()])
@@ -25,15 +24,8 @@ pub fn build_nucleo_pinout_panel() -> NucleoPinoutPanelWidgets {
     combo_pinout_module.set_tooltip_text(Some("Filter pins by firmware module"));
     combo_pinout_module.set_css_classes(&["stakhal-btn", "flat"]);
 
-    let chk_pinout_show_all = gtk4::CheckButton::builder()
-        .label("Show all labels")
-        .active(false)
-        .tooltip_text("Show persistent labels for all active pins")
-        .build();
-    chk_pinout_show_all.set_css_classes(&["caption"]);
-
     let lbl_pinout_hint = gtk4::Label::builder()
-        .label("Scroll to zoom • Drag to pan • Hover or click pins to inspect & pin badges")
+        .label("Highlighted pins indicate active signals in loaded project")
         .halign(gtk4::Align::End)
         .css_classes(vec!["dim-label".to_string(), "caption".to_string()])
         .build();
@@ -49,12 +41,11 @@ pub fn build_nucleo_pinout_panel() -> NucleoPinoutPanelWidgets {
     pinout_header_bar.append(&btn_pinout_back);
     pinout_header_bar.append(&lbl_pinout_title);
     pinout_header_bar.append(&combo_pinout_module);
-    pinout_header_bar.append(&chk_pinout_show_all);
     pinout_header_bar.append(&lbl_pinout_hint);
 
     let pinout_drawing_area = gtk4::DrawingArea::builder()
-        .content_width(1280)
-        .content_height(820)
+        .content_width(1200)
+        .content_height(750)
         .hexpand(true)
         .vexpand(true)
         .build();
@@ -77,7 +68,6 @@ pub fn build_nucleo_pinout_panel() -> NucleoPinoutPanelWidgets {
         pinout_drawing_area,
         pinout_scrolled,
         combo_pinout_module,
-        chk_pinout_show_all,
     }
 }
 
