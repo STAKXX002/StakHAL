@@ -172,7 +172,7 @@ pub struct AppWidgets {
     pub lbl_periph_header: gtk4::Label,
     pub lbl_board_header: gtk4::Label,
     pub list_peripherals: gtk4::ListBox,
-    pub box_board_legend: gtk4::Box,
+    pub flow_board_legend: gtk4::FlowBox,
     pub area_board_glance: gtk4::DrawingArea,
 
     // Build & flash widgets

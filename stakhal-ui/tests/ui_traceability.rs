@@ -65,7 +65,7 @@ printf("BOOT\r\n");
         lbl_periph_header: gtk4::Label::new(None),
         lbl_board_header: gtk4::Label::new(None),
         list_peripherals: gtk4::ListBox::new(),
-        box_board_legend: gtk4::Box::new(gtk4::Orientation::Horizontal, 0),
+        flow_board_legend: gtk4::FlowBox::new(),
         area_board_glance: gtk4::DrawingArea::new(),
         build_log_view: gtk4::TextView::new(),
         lbl_build_status: gtk4::Label::new(None),
@@ -210,22 +210,28 @@ printf("BOOT\r\n");
     assert!(row1.has_css_class("stagger-reveal-row"));
     assert!(widgets.list_peripherals.first_child().is_some());
 
-    // 6. Board Glance Legend verification
+    // 6. Board Glance Legend verification: FlowBox wraps module entries cleanly
     let fixture_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../stakhal-core/tests/fixtures/aa_ns_stm_port");
     let ioc_path = fixture_dir.join("aa_ns_stm_port.ioc");
     let aa_main_c = fixture_dir.join("Core/Src/main.c");
-    let project = stakhal_core::ir::schema::load_project(&ioc_path, &aa_main_c)
+    let mut project = stakhal_core::ir::schema::load_project(&ioc_path, &aa_main_c)
         .expect("Failed to load aa_ns_stm_port");
 
-    stakhal_ui::ui::board_glance::update_board_glance_legend(&widgets.box_board_legend, Some(&project));
+    // Expand modules to test 6 categories wrapping cleanly in FlowBox
+    project.modules.push("alignment".to_string());
+    project.modules.push("motion".to_string());
+    project.modules.sort();
+    project.modules.dedup();
+
+    stakhal_ui::ui::board_glance::update_board_glance_legend(&widgets.flow_board_legend, Some(&project));
     let mut legend_count = 0;
-    let mut child = widgets.box_board_legend.first_child();
+    let mut child = widgets.flow_board_legend.first_child();
     while let Some(c) = child {
         legend_count += 1;
         child = c.next_sibling();
     }
-    assert!(legend_count >= 4, "Board glance legend must populate chips for all active modules in project");
+    assert!(legend_count >= 6, "Board glance legend FlowBox must cleanly populate all 6 categories");
 
     let _ = std::fs::remove_dir_all(&temp_dir);
 }

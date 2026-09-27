@@ -182,13 +182,151 @@ fn draw_pin_dot(cr: &cairo::Context, px: f64, py: f64, board_w: f64, r: f64, g: 
     let _ = cr.fill();
 }
 
-/// Updates the required module-color legend box beneath/above the board glance.
+/// Hovered pin info for minimal glance tooltip
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HoveredGlancePin {
+    pub pin: String,
+    pub module: String,
+}
+
+/// Finds the active pin dot under the cursor (x, y) on the glance board.
+/// Returns minimal (pin name, module) only.
+pub fn find_hovered_pin(
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+    state: &AppState,
+) -> Option<HoveredGlancePin> {
+    let proj_guard = state.project.borrow();
+    let project = proj_guard.loaded_project.as_ref()?;
+
+    with_board_surface(|surface| {
+        let surface_w = surface.width() as f64;
+        let surface_h = surface.height() as f64;
+        if surface_w <= 0.0 || surface_h <= 0.0 {
+            return None;
+        }
+
+        let pad = 8.0;
+        let avail_w = (width - 2.0 * pad).max(10.0);
+        let avail_h = (height - 2.0 * pad).max(10.0);
+        let board_aspect = surface_w / surface_h;
+
+        let (board_w, board_h) = if avail_w / avail_h > board_aspect {
+            (avail_h * board_aspect, avail_h)
+        } else {
+            (avail_w, avail_w / board_aspect)
+        };
+
+        let board_x = (width - board_w) / 2.0;
+        let board_y = (height - board_h) / 2.0;
+
+        let radius = (board_w * 0.009).clamp(3.5, 6.0);
+        let hit_radius = (radius + 4.0).max(8.0);
+        let hit_radius_sq = hit_radius * hit_radius;
+
+        let mut closest: Option<(f64, HoveredGlancePin)> = None;
+
+        for pin_cfg in &project.pins {
+            let primary_mod = pin_cfg
+                .modules
+                .first()
+                .cloned()
+                .unwrap_or_else(|| "unassigned".to_string());
+
+            if let Some(loc) = stakhal_core::nucleo_pinout::lookup_pin(&pin_cfg.pin) {
+                // Morpho connector
+                if let Some((conn, pin_num)) = loc.morpho {
+                    if let Some(coord) = coords::get_pin_coord(conn, pin_num) {
+                        let px = board_x + coord.norm_x * board_w;
+                        let py = board_y + coord.norm_y * board_h;
+                        let d2 = (x - px) * (x - px) + (y - py) * (y - py);
+                        if d2 <= hit_radius_sq && closest.as_ref().map(|c| d2 < c.0).unwrap_or(true) {
+                            closest = Some((
+                                d2,
+                                HoveredGlancePin {
+                                    pin: pin_cfg.pin.clone(),
+                                    module: primary_mod.clone(),
+                                },
+                            ));
+                        }
+                    }
+                }
+                // Arduino connector
+                if let Some((conn, pin_num, _)) = loc.arduino {
+                    if let Some(coord) = coords::get_pin_coord(conn, pin_num) {
+                        let px = board_x + coord.norm_x * board_w;
+                        let py = board_y + coord.norm_y * board_h;
+                        let d2 = (x - px) * (x - px) + (y - py) * (y - py);
+                        if d2 <= hit_radius_sq && closest.as_ref().map(|c| d2 < c.0).unwrap_or(true) {
+                            closest = Some((
+                                d2,
+                                HoveredGlancePin {
+                                    pin: pin_cfg.pin.clone(),
+                                    module: primary_mod.clone(),
+                                },
+                            ));
+                        }
+                    }
+                }
+            }
+        }
+
+        closest.map(|(_, p)| p)
+    })
+}
+
+/// Sets up lightweight hover tooltip and click-through navigation on the glance board.
+pub fn setup_board_glance_interactions(
+    area: &gtk4::DrawingArea,
+    state: &Rc<std::cell::RefCell<AppState>>,
+    btn_nucleo_pinout: &gtk4::Button,
+) {
+    area.set_cursor_from_name(Some("pointer"));
+
+    // 1. Tooltip support via native query-tooltip
+    area.set_has_tooltip(true);
+    let state_tooltip = Rc::clone(state);
+    area.connect_query_tooltip(move |area, x, y, _keyboard_mode, tooltip| {
+        let w = area.width() as f64;
+        let h = area.height() as f64;
+        let state_borrow = state_tooltip.borrow();
+        if let Some(hovered) = find_hovered_pin(x as f64, y as f64, w, h, &state_borrow) {
+            tooltip.set_text(Some(&format!("{}: {}", hovered.pin, hovered.module)));
+            true
+        } else {
+            false
+        }
+    });
+
+    // 2. Motion controller to trigger tooltip query immediately as mouse moves over dots
+    let motion = gtk4::EventControllerMotion::new();
+    let area_weak = area.downgrade();
+    motion.connect_motion(move |_ctrl, _x, _y| {
+        if let Some(area) = area_weak.upgrade() {
+            area.trigger_tooltip_query();
+        }
+    });
+    area.add_controller(motion);
+
+    // 3. Click gesture to navigate to full Nucleo Pinout tab
+    let click = gtk4::GestureClick::new();
+    let btn_target = btn_nucleo_pinout.clone();
+    click.connect_released(move |_gesture, _n_press, _x, _y| {
+        btn_target.emit_clicked();
+    });
+    area.add_controller(click);
+}
+
+/// Updates the required module-color legend FlowBox beneath/above the board glance.
+/// Entries cleanly wrap across multiple rows as module count grows.
 pub fn update_board_glance_legend(
-    box_legend: &gtk4::Box,
+    flow_legend: &gtk4::FlowBox,
     project: Option<&stakhal_core::ir::schema::Project>,
 ) {
-    while let Some(child) = box_legend.first_child() {
-        box_legend.remove(&child);
+    while let Some(child) = flow_legend.first_child() {
+        flow_legend.remove(&child);
     }
 
     let project = match project {
@@ -205,12 +343,20 @@ pub fn update_board_glance_legend(
     for m in &modules {
         let hex = get_module_color_hex(Some(m), &project.modules);
         let chip = create_legend_chip(m, &hex);
-        box_legend.append(&chip);
+        let child = gtk4::FlowBoxChild::builder()
+            .child(&chip)
+            .focusable(false)
+            .build();
+        flow_legend.append(&child);
     }
 
     if has_unassigned {
         let chip = create_legend_chip("unassigned", tokens::color::TEXT_MUTED_HEX);
-        box_legend.append(&chip);
+        let child = gtk4::FlowBoxChild::builder()
+            .child(&chip)
+            .focusable(false)
+            .build();
+        flow_legend.append(&child);
     }
 }
 
@@ -222,6 +368,7 @@ fn create_legend_chip(label_text: &str, color_hex: &str) -> gtk4::Box {
         .margin_end(4)
         .margin_top(1)
         .margin_bottom(1)
+        .focusable(false)
         .build();
 
     let dot = gtk4::Label::builder()
@@ -281,6 +428,103 @@ mod tests {
 
         draw_board_glance(&cr, 400.0, 500.0, &state);
         surface.flush();
+    }
+
+    #[test]
+    fn test_board_aspect_ratio_preservation() {
+        let expected_aspect: f64 = 1400.0 / 1650.0; // 70.0 / 82.5
+
+        // Test wide canvas (pillarboxed)
+        let pad = 8.0;
+        let w_wide = 800.0;
+        let h_wide = 400.0;
+        let avail_w = w_wide - 2.0 * pad;
+        let avail_h = h_wide - 2.0 * pad;
+        let (bw_wide, bh_wide) = if avail_w / avail_h > expected_aspect {
+            (avail_h * expected_aspect, avail_h)
+        } else {
+            (avail_w, avail_w / expected_aspect)
+        };
+        assert!((bw_wide / bh_wide - expected_aspect).abs() < 1e-6);
+
+        // Test tall canvas (letterboxed)
+        let w_tall = 300.0;
+        let h_tall = 700.0;
+        let avail_w = w_tall - 2.0 * pad;
+        let avail_h = h_tall - 2.0 * pad;
+        let (bw_tall, bh_tall) = if avail_w / avail_h > expected_aspect {
+            (avail_h * expected_aspect, avail_h)
+        } else {
+            (avail_w, avail_w / expected_aspect)
+        };
+        assert!((bw_tall / bh_tall - expected_aspect).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_find_hovered_pin_hit_detection() {
+        let fixture_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../stakhal-core/tests/fixtures/aa_ns_stm_port");
+        let ioc_path = fixture_dir.join("aa_ns_stm_port.ioc");
+        let main_c_path = fixture_dir.join("Core/Src/main.c");
+        let project = stakhal_core::ir::schema::load_project(&ioc_path, &main_c_path)
+            .expect("Failed to load aa_ns_stm_port");
+
+        let state = AppState::default();
+        state.project.borrow_mut().loaded_project = Some(project);
+
+        let canvas_w = 500.0;
+        let canvas_h = 600.0;
+        let pad = 8.0;
+        let avail_w = canvas_w - 2.0 * pad;
+        let surface_w = 1400.0;
+        let surface_h = 1650.0;
+        let board_aspect = surface_w / surface_h;
+        let (board_w, board_h) = (avail_w, avail_w / board_aspect);
+        let board_x = (canvas_w - board_w) / 2.0;
+        let board_y = (canvas_h - board_h) / 2.0;
+
+        // 1. Hit test PB12 (CN10 pin 16, module hatch)
+        let coord_pb12 = coords::get_pin_coord("CN10", 16).unwrap();
+        let px_pb12 = board_x + coord_pb12.norm_x * board_w;
+        let py_pb12 = board_y + coord_pb12.norm_y * board_h;
+        let hit_pb12 = find_hovered_pin(px_pb12, py_pb12, canvas_w, canvas_h, &state);
+        assert_eq!(
+            hit_pb12,
+            Some(HoveredGlancePin {
+                pin: "PB12".to_string(),
+                module: "hatch".to_string(),
+            })
+        );
+
+        // 2. Hit test PB0 (CN7 pin 34, module alignment)
+        let coord_pb0 = coords::get_pin_coord("CN7", 34).unwrap();
+        let px_pb0 = board_x + coord_pb0.norm_x * board_w;
+        let py_pb0 = board_y + coord_pb0.norm_y * board_h;
+        let hit_pb0 = find_hovered_pin(px_pb0, py_pb0, canvas_w, canvas_h, &state);
+        assert_eq!(
+            hit_pb0,
+            Some(HoveredGlancePin {
+                pin: "PB0".to_string(),
+                module: "alignment".to_string(),
+            })
+        );
+
+        // 3. Hit test PA5 (CN10 pin 11, unassigned)
+        let coord_pa5 = coords::get_pin_coord("CN10", 11).unwrap();
+        let px_pa5 = board_x + coord_pa5.norm_x * board_w;
+        let py_pa5 = board_y + coord_pa5.norm_y * board_h;
+        let hit_pa5 = find_hovered_pin(px_pa5, py_pa5, canvas_w, canvas_h, &state);
+        assert_eq!(
+            hit_pa5,
+            Some(HoveredGlancePin {
+                pin: "PA5".to_string(),
+                module: "unassigned".to_string(),
+            })
+        );
+
+        // 4. Hit test far off point (e.g. at 5.0, 5.0) -> None
+        let hit_none = find_hovered_pin(5.0, 5.0, canvas_w, canvas_h, &state);
+        assert_eq!(hit_none, None);
     }
 
     #[test]

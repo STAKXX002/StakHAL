@@ -25,7 +25,7 @@ pub struct MainPanelWidgets {
     pub lbl_periph_header: gtk4::Label,
     pub lbl_board_header: gtk4::Label,
     pub list_peripherals: gtk4::ListBox,
-    pub box_board_legend: gtk4::Box,
+    pub flow_board_legend: gtk4::FlowBox,
     pub area_board_glance: gtk4::DrawingArea,
     pub build_log_view: gtk4::TextView,
     pub lbl_build_status: gtk4::Label,
@@ -210,17 +210,23 @@ pub fn build_main_panel() -> MainPanelWidgets {
         .selection_mode(gtk4::SelectionMode::None)
         .build();
 
-    let box_board_legend = gtk4::Box::builder()
-        .orientation(gtk4::Orientation::Horizontal)
-        .spacing(6)
+    let flow_board_legend = gtk4::FlowBox::builder()
+        .selection_mode(gtk4::SelectionMode::None)
+        .max_children_per_line(12)
+        .min_children_per_line(1)
+        .row_spacing(4)
+        .column_spacing(8)
         .margin_top(2)
-        .margin_bottom(2)
+        .margin_bottom(4)
+        .homogeneous(false)
+        .css_classes(vec!["board-glance-legend".to_string()])
         .build();
 
     let area_board_glance = gtk4::DrawingArea::builder()
         .hexpand(true)
         .vexpand(true)
         .build();
+    area_board_glance.set_cursor_from_name(Some("pointer"));
 
     let col_peripherals = create_column_box(&lbl_periph_header, &list_peripherals);
 
@@ -231,7 +237,7 @@ pub fn build_main_panel() -> MainPanelWidgets {
         .vexpand(true)
         .build();
     col_board_glance.append(&lbl_board_header);
-    col_board_glance.append(&box_board_legend);
+    col_board_glance.append(&flow_board_legend);
     col_board_glance.append(&area_board_glance);
 
     let columns_box = gtk4::Box::builder()
@@ -337,7 +343,7 @@ pub fn build_main_panel() -> MainPanelWidgets {
         lbl_periph_header,
         lbl_board_header,
         list_peripherals,
-        box_board_legend,
+        flow_board_legend,
         area_board_glance,
         build_log_view,
         lbl_build_status,

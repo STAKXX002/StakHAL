@@ -107,7 +107,7 @@ pub fn do_load_project(state: &Rc<RefCell<AppState>>, widgets: &Rc<AppWidgets>) 
             widgets.lbl_periph_header.set_text(&format!("[ PERIPHERALS ({}) ]", project.peripherals.len()));
 
             widgets.lbl_board_header.set_text(&format!("[ NUCLEO-F446RE PINOUT GLANCE ({} PINS) ]", project.pins.len()));
-            crate::ui::board_glance::update_board_glance_legend(&widgets.box_board_legend, Some(&project));
+            crate::ui::board_glance::update_board_glance_legend(&widgets.flow_board_legend, Some(&project));
             widgets.area_board_glance.queue_draw();
 
             clear_list_box(&widgets.list_peripherals);
