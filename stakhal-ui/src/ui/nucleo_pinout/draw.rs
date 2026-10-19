@@ -988,6 +988,35 @@ pub fn get_active_pin_highlights(
     map
 }
 
+/// Determines if a configured pin's signal is its intended debug or oscillator function.
+///
+/// Per board specifications:
+/// - PA13 is intended for SWD debug when signal is "SYS_JTMS-SWDIO"
+/// - PA14 is intended for SWD clock when signal is "SYS_JTCK-SWCLK"
+/// - PH0 / PH1 are intended for main crystal oscillator when signal starts with "RCC_OSC_"
+/// - PC14 / PC15 are intended for RTC crystal oscillator when signal starts with "RCC_OSC32_"
+///
+/// Any other signal on these reserved pins constitutes a conflict/warning.
+pub fn is_intended_pin_signal(mcu_pin: &str, signal: &str) -> bool {
+    let base_pin = mcu_pin
+        .split(['-', ' ', '\\'])
+        .next()
+        .unwrap_or(mcu_pin)
+        .trim();
+    match base_pin {
+        "PA13" => signal == "SYS_JTMS-SWDIO",
+        "PA14" => signal == "SYS_JTCK-SWCLK",
+        "PH0" | "PH1" => signal.starts_with("RCC_OSC_"),
+        "PC14" | "PC15" => signal.starts_with("RCC_OSC32_"),
+        _ => false,
+    }
+}
+
+/// Returns true if a reserved pin is being used in conflict with its intended function.
+pub fn is_reserved_pin_conflict(mcu_pin: &str, signal: &str) -> bool {
+    !is_intended_pin_signal(mcu_pin, signal)
+}
+
 pub fn get_pin_cell_rect(
     conn_name: &str,
     pin_idx: usize,
@@ -1178,7 +1207,9 @@ pub fn draw_nucleo_f446_board(
         if let Some(project) = &proj_guard.loaded_project {
             for pin_cfg in &project.pins {
                 if let Some(res) = stakhal_core::board::check_reserved(board_id, &pin_cfg.pin) {
-                    if !list.iter().any(|(p, _)| *p == res.mcu_pin) {
+                    if is_reserved_pin_conflict(&pin_cfg.pin, &pin_cfg.signal)
+                        && !list.iter().any(|(p, _)| *p == res.mcu_pin)
+                    {
                         list.push((res.mcu_pin, res));
                     }
                 }
@@ -1664,7 +1695,8 @@ pub fn draw_nucleo_f446_board(
                 .is_some_and(|(c_name, p_num)| c_name == conn.name && *p_num == p.pin_num);
 
             if let Some(hl_info) = is_hl {
-                let reserved_info = stakhal_core::board::check_reserved(board_id, p.mcu_pin);
+                let reserved_info = stakhal_core::board::check_reserved(board_id, p.mcu_pin)
+                    .filter(|_| is_reserved_pin_conflict(p.mcu_pin, &hl_info.signal));
                 let (hl_r, hl_g, hl_b) = match reserved_info {
                     Some(res) => match res.severity {
                         stakhal_core::nucleo_pinout::ReservedSeverity::Critical => {
@@ -1994,7 +2026,9 @@ pub fn draw_blackpill_f411_board(
         if let Some(project) = &proj_guard.loaded_project {
             for pin_cfg in &project.pins {
                 if let Some(res) = stakhal_core::board::check_reserved(board_id, &pin_cfg.pin) {
-                    if !list.iter().any(|(p, _)| *p == res.mcu_pin) {
+                    if is_reserved_pin_conflict(&pin_cfg.pin, &pin_cfg.signal)
+                        && !list.iter().any(|(p, _)| *p == res.mcu_pin)
+                    {
                         list.push((res.mcu_pin, res));
                     }
                 }
@@ -2570,7 +2604,8 @@ pub fn draw_blackpill_f411_board(
                 .is_some_and(|(c_name, p_num)| c_name == conn.name && *p_num == p.pin_num);
 
             if let Some(hl_info) = is_hl {
-                let reserved_info = stakhal_core::board::check_reserved(board_id, p.mcu_pin);
+                let reserved_info = stakhal_core::board::check_reserved(board_id, p.mcu_pin)
+                    .filter(|_| is_reserved_pin_conflict(p.mcu_pin, &hl_info.signal));
                 let (hl_r, hl_g, hl_b) = match reserved_info {
                     Some(res) => match res.severity {
                         stakhal_core::nucleo_pinout::ReservedSeverity::Critical => {
@@ -2897,8 +2932,9 @@ fn draw_pinout_tooltip_card(
                     None => "Unused in Project".to_string(),
                 };
 
-                let reserved_info = if is_hl.is_some() {
+                let reserved_info = if let Some(hl) = is_hl {
                     stakhal_core::board::check_reserved(board_id, p.mcu_pin)
+                        .filter(|_| is_reserved_pin_conflict(p.mcu_pin, &hl.signal))
                 } else {
                     None
                 };
@@ -3467,5 +3503,31 @@ mod tests {
             draw_nucleo_pinout(&cr, 1200.0, 750.0, &state);
             surface.flush();
         }
+    }
+
+    #[test]
+    fn test_reserved_pin_conflict_filtering() {
+        // Intended debug/oscillator signals should NOT be conflicts
+        assert!(!is_reserved_pin_conflict("PA13", "SYS_JTMS-SWDIO"));
+        assert!(!is_reserved_pin_conflict("PA14", "SYS_JTCK-SWCLK"));
+        assert!(!is_reserved_pin_conflict("PH0", "RCC_OSC_IN"));
+        assert!(!is_reserved_pin_conflict("PH1", "RCC_OSC_OUT"));
+        assert!(!is_reserved_pin_conflict("PC14", "RCC_OSC32_IN"));
+        assert!(!is_reserved_pin_conflict("PC15", "RCC_OSC32_OUT"));
+        assert!(!is_reserved_pin_conflict("PH0 - OSC_IN", "RCC_OSC_IN"));
+        assert!(!is_reserved_pin_conflict("PH1-OSC_OUT", "RCC_OSC_OUT"));
+
+        // Other signals on reserved pins MUST be conflicts
+        assert!(is_reserved_pin_conflict("PA13", "GPIO_Output"));
+        assert!(is_reserved_pin_conflict("PA13", "TIM1_CH1"));
+        assert!(is_reserved_pin_conflict("PA14", "GPIO_Input"));
+        assert!(is_reserved_pin_conflict("PH0", "GPIO_Output"));
+        assert!(is_reserved_pin_conflict("PH1", "GPIO_Input"));
+        assert!(is_reserved_pin_conflict("PC14", "GPIO_Output"));
+        assert!(is_reserved_pin_conflict("PC15", "GPIO_Output"));
+
+        // Other reserved pins (e.g. PB2 BOOT1, PC13 LED) are conflicts for general GPIO
+        assert!(is_reserved_pin_conflict("PB2", "GPIO_Output"));
+        assert!(is_reserved_pin_conflict("PC13", "GPIO_Output"));
     }
 }
