@@ -4,7 +4,7 @@
 //! WeAct Studio Black Pill STM32F411CEU6) and provides hardware definitions
 //! including connector layouts, pinout tables, and reserved pin rules.
 
-use crate::blackpill_pinout::BLACKPILL_F411CE_PINOUT;
+use crate::blackpill_pinout::{BLACKPILL_F411CE_PINOUT, BLACKPILL_RESERVED_PINS};
 use crate::nucleo_pinout::{
     PinLocation, ReservedPin, NUCLEO_F446RE_PINOUT, RESERVED_PINS as NUCLEO_RESERVED_PINS,
 };
@@ -58,7 +58,7 @@ pub static BLACK_PILL_F411CE_DEF: BoardDef = BoardDef {
     chip_label: "STM32F411",
     connectors: &["Left", "Right", "SWD"],
     pin_table: BLACKPILL_F411CE_PINOUT,
-    reserved_pins: &[],
+    reserved_pins: BLACKPILL_RESERVED_PINS,
 };
 
 /// Detect board ID from MCU name string (from CubeMX .ioc or similar).
@@ -115,5 +115,26 @@ mod tests {
         );
         assert!(def.lookup_pin("PA5").is_some());
         assert!(def.check_reserved("PA13").is_some());
+    }
+
+    #[test]
+    fn test_blackpill_board_def_wired() {
+        let def = BoardDef::for_id(BoardId::BlackPillF411ce);
+        assert_eq!(def.chip_label, "STM32F411");
+        assert_eq!(
+            def.display_name,
+            "[ STM32F411 BLACK PILL PHYSICAL CONNECTOR PINOUT ]"
+        );
+        assert!(def.lookup_pin("PA0").is_some());
+        let pa13_res = def.check_reserved("PA13").expect("PA13 should be reserved");
+        assert_eq!(
+            pa13_res.severity,
+            crate::nucleo_pinout::ReservedSeverity::Critical
+        );
+        let pc13_res = def.check_reserved("PC13").expect("PC13 should be reserved");
+        assert_eq!(
+            pc13_res.severity,
+            crate::nucleo_pinout::ReservedSeverity::Caution
+        );
     }
 }

@@ -10,7 +10,7 @@
 //! - Right 20-pin edge header (P2): B12, B13, B14, B15, A8, A9, A10, A11, A12, A15, B3, B4, B5, B6, B7, B8, B9, 5V, GND, 3V3
 //! - 4-pin SWD header (P3): 3V3, SWDIO (PA13), SWCLK (PA14), GND
 
-use crate::nucleo_pinout::PinLocation;
+use crate::nucleo_pinout::{PinLocation, ReservedPin, ReservedSeverity};
 
 /// Pinout table for WeAct Studio Black Pill STM32F411CEU6.
 /// Contains all 34 GPIO pins physically broken out on the two 20-pin edge headers
@@ -232,6 +232,71 @@ pub fn lookup_pin(mcu_pin: &str) -> Option<&'static PinLocation> {
         .find(|p| p.mcu_pin == mcu_pin)
 }
 
+/// Hardware-reserved pins on the WeAct Studio Black Pill board.
+pub const BLACKPILL_RESERVED_PINS: &[ReservedPin] = &[
+    ReservedPin {
+        mcu_pin: "PA13",
+        reason: "PA13 is SWDIO • SWD header, reprogramming needs these.",
+        severity: ReservedSeverity::Critical,
+    },
+    ReservedPin {
+        mcu_pin: "PA14",
+        reason: "PA14 is SWCLK • SWD header, reprogramming needs these.",
+        severity: ReservedSeverity::Critical,
+    },
+    ReservedPin {
+        mcu_pin: "PH0",
+        reason: "PH0 is OSC_IN • 25 MHz HSE main oscillator input.",
+        severity: ReservedSeverity::Caution,
+    },
+    ReservedPin {
+        mcu_pin: "PH1",
+        reason: "PH1 is OSC_OUT • 25 MHz HSE main oscillator output.",
+        severity: ReservedSeverity::Caution,
+    },
+    ReservedPin {
+        mcu_pin: "PC14",
+        reason: "PC14 is OSC32_IN • 32.768 kHz LSE RTC oscillator input.",
+        severity: ReservedSeverity::Caution,
+    },
+    ReservedPin {
+        mcu_pin: "PC15",
+        reason: "PC15 is OSC32_OUT • 32.768 kHz LSE RTC oscillator output.",
+        severity: ReservedSeverity::Caution,
+    },
+    ReservedPin {
+        mcu_pin: "PA11",
+        reason: "PA11 is USB_DM • USB D- differential data line connected to USB-C.",
+        severity: ReservedSeverity::Caution,
+    },
+    ReservedPin {
+        mcu_pin: "PA12",
+        reason: "PA12 is USB_DP • USB D+ differential data line connected to USB-C.",
+        severity: ReservedSeverity::Caution,
+    },
+    ReservedPin {
+        mcu_pin: "PB2",
+        reason: "PB2 is BOOT1 • boot mode selection pin.",
+        severity: ReservedSeverity::Caution,
+    },
+    ReservedPin {
+        mcu_pin: "PC13",
+        reason: "PC13 is connected to onboard LED (active low).",
+        severity: ReservedSeverity::Caution,
+    },
+    ReservedPin {
+        mcu_pin: "PA0",
+        reason: "PA0 is connected to onboard KEY button.",
+        severity: ReservedSeverity::Caution,
+    },
+];
+
+pub fn check_reserved(mcu_pin: &str) -> Option<&'static ReservedPin> {
+    BLACKPILL_RESERVED_PINS
+        .iter()
+        .find(|p| p.mcu_pin == mcu_pin)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -289,5 +354,53 @@ mod tests {
 
         let pc13 = lookup_pin("PC13").expect("PC13 should exist in Black Pill table");
         assert_eq!(pc13.header, Some(("Left", 19, "C13")));
+    }
+
+    #[test]
+    fn test_reserved_pins_critical_and_caution() {
+        // Critical: PA13 and PA14 on SWD header
+        let pa13 = check_reserved("PA13").expect("PA13 should be reserved");
+        assert_eq!(pa13.severity, ReservedSeverity::Critical);
+        assert!(pa13
+            .reason
+            .contains("SWD header, reprogramming needs these"));
+        assert!(!pa13.reason.contains("onboard debugger"));
+
+        let pa14 = check_reserved("PA14").expect("PA14 should be reserved");
+        assert_eq!(pa14.severity, ReservedSeverity::Critical);
+        assert!(pa14
+            .reason
+            .contains("SWD header, reprogramming needs these"));
+        assert!(!pa14.reason.contains("onboard debugger"));
+
+        // Caution: HSE, LSE, USB D-/D+, BOOT1, LED, KEY
+        let caution_pins = [
+            ("PH0", "HSE"),
+            ("PH1", "HSE"),
+            ("PC14", "LSE"),
+            ("PC15", "LSE"),
+            ("PA11", "USB"),
+            ("PA12", "USB"),
+            ("PB2", "BOOT1"),
+            ("PC13", "LED"),
+            ("PA0", "KEY"),
+        ];
+        for (pin, tag) in caution_pins {
+            let res = check_reserved(pin).unwrap_or_else(|| panic!("{} should be reserved", pin));
+            assert_eq!(res.severity, ReservedSeverity::Caution, "pin {}", pin);
+            assert!(
+                res.reason.contains(tag) || res.reason.to_uppercase().contains(tag),
+                "pin {} reason {:?} should mention {}",
+                pin,
+                res.reason,
+                tag
+            );
+            assert!(!res.reason.contains("onboard debugger"));
+        }
+
+        // Unreserved pins return None
+        assert!(check_reserved("PB0").is_none());
+        assert!(check_reserved("PA1").is_none());
+        assert!(check_reserved("PB12").is_none());
     }
 }
