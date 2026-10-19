@@ -42,6 +42,49 @@ pub fn setup_build_flash_handlers(state: &Rc<RefCell<AppState>>, widgets: &Rc<Ap
         execute_build_pipeline(true, &state_bf, &widgets_bf);
     });
 
+    // Connect Flash Backend Selector
+    let initial_config = crate::config::load_app_config();
+    let initial_backend = initial_config.flash_backend;
+    {
+        let st = state.borrow();
+        let mut bt = st.build_trace.borrow_mut();
+        bt.flash_backend = initial_backend;
+        bt.user_selected_flash_backend = crate::config::get_config_file_path()
+            .is_some_and(|p| p.exists());
+    }
+    widgets.combo_flash_backend.set_selected(match initial_backend {
+        toolchain::flasher::FlashBackend::StLink => 0,
+        toolchain::flasher::FlashBackend::Dfu => 1,
+    });
+
+    let state_backend = Rc::clone(state);
+    let widgets_backend = Rc::clone(widgets);
+    widgets.combo_flash_backend.connect_selected_notify(move |cb| {
+        let backend = match cb.selected() {
+            1 => toolchain::flasher::FlashBackend::Dfu,
+            _ => toolchain::flasher::FlashBackend::StLink,
+        };
+        {
+            let st = state_backend.borrow();
+            let mut bt = st.build_trace.borrow_mut();
+            bt.flash_backend = backend;
+            bt.user_selected_flash_backend = true;
+        }
+        match backend {
+            toolchain::flasher::FlashBackend::StLink => {
+                widgets_backend
+                    .btn_build_flash
+                    .set_tooltip_text(Some("Build project and flash to STM32 target via ST-Link"));
+            }
+            toolchain::flasher::FlashBackend::Dfu => {
+                widgets_backend
+                    .btn_build_flash
+                    .set_tooltip_text(Some("Build project and flash to STM32 target via DFU (USB Bootloader)"));
+            }
+        }
+        crate::config::save_flash_backend_config(backend);
+    });
+
     // Connect Enable Build Traceability Button
     let state_trace = Rc::clone(state);
     let widgets_trace = Rc::clone(widgets);
@@ -498,6 +541,118 @@ pub fn run_probe_detection_and_flash(
     append_log_text(&widgets.build_log_view, "[PROBE] Scanning for connected ST-Link programmers (`st-info --probe`)...");
     append_log_text(&widgets.build_log_view, "============================================================");
 
+    let backend = state.borrow().build_trace.borrow().flash_backend;
+    if backend == toolchain::flasher::FlashBackend::Dfu {
+        match toolchain::probe::detect_dfu_devices() {
+            Ok(devices) => {
+                let flash_targets: Vec<_> = devices
+                    .iter()
+                    .filter(|d| d.is_internal_flash())
+                    .cloned()
+                    .collect();
+                let targets = if flash_targets.is_empty() {
+                    devices
+                } else {
+                    flash_targets
+                };
+
+                if targets.len() == 1 {
+                    let dev = &targets[0];
+                    append_log_text(
+                        &widgets.build_log_view,
+                        &format!("[DFU PROBE] Detected single target: {}", dev.display_label()),
+                    );
+                    run_dfu_flash_stage(artifact, state, widgets, project_dir);
+                } else {
+                    append_log_text(
+                        &widgets.build_log_view,
+                        &format!("[DFU PROBE] Detected {} DFU target interfaces:", targets.len()),
+                    );
+                    for d in &targets {
+                        append_log_text(&widgets.build_log_view, &format!("  - {}", d.display_label()));
+                    }
+                    update_build_status(&widgets.lbl_build_status, "SELECT DFU TARGET", StatusKind::Active);
+
+                    let dialog = adw::MessageDialog::builder()
+                        .heading("Multiple DFU Interfaces Detected")
+                        .body("Please select which DFU interface to flash:")
+                        .transient_for(&widgets.window)
+                        .build();
+
+                    for (idx, d) in targets.iter().enumerate() {
+                        dialog.add_response(&idx.to_string(), &d.display_label());
+                    }
+                    dialog.add_response("cancel", "Cancel");
+
+                    let state_dlg = Rc::clone(state);
+                    let widgets_dlg = Rc::clone(widgets);
+                    let targets_clone = targets.clone();
+                    let artifact_clone = artifact.clone();
+                    let dir_clone = project_dir.clone();
+
+                    dialog.connect_response(None, move |_, resp| {
+                        if resp != "cancel" {
+                            if let Ok(idx) = resp.parse::<usize>() {
+                                if let Some(chosen) = targets_clone.get(idx) {
+                                    append_log_text(
+                                        &widgets_dlg.build_log_view,
+                                        &format!("[DFU PROBE] Selected target: {}", chosen.display_label()),
+                                    );
+                                    run_dfu_flash_stage(
+                                        artifact_clone.clone(),
+                                        &state_dlg,
+                                        &widgets_dlg,
+                                        dir_clone.clone(),
+                                    );
+                                    return;
+                                }
+                            }
+                        }
+                        append_log_text(&widgets_dlg.build_log_view, "[DFU PROBE] Flashing cancelled by user.");
+                        update_build_status(&widgets_dlg.lbl_build_status, "CANCELLED", StatusKind::Idle);
+                        let has_build_system = {
+                            let st = state_dlg.borrow();
+                            let mut bt = st.build_trace.borrow_mut();
+                            bt.build_in_progress = false;
+                            bt.has_build_system
+                        };
+                        widgets_dlg.btn_build.set_sensitive(has_build_system);
+                        widgets_dlg.btn_build_flash.set_sensitive(has_build_system);
+                        update_traceability_ui(&state_dlg, &widgets_dlg);
+                    });
+                    dialog.present();
+                }
+            }
+            Err(err) => {
+                append_log_text(&widgets.build_log_view, &format!("[ERROR] {}", err));
+                append_log_text(
+                    &widgets.build_log_view,
+                    "[DFU HINT] Hold BOOT0, tap NRST, then release BOOT0 to enter DFU mode.",
+                );
+                let (txt, kind) = match err {
+                    toolchain::probe::ProbeError::DfuToolNotFound => {
+                        ("DFU-UTIL MISSING", StatusKind::Error)
+                    }
+                    _ => ("NO DFU DEVICE", StatusKind::Active),
+                };
+                update_build_status(&widgets.lbl_build_status, txt, kind);
+                widgets.toast_overlay.add_toast(adw::Toast::new(
+                    "No DFU device detected. Hold BOOT0, tap NRST, release BOOT0.",
+                ));
+                let has_build_system = {
+                    let st = state.borrow();
+                    let mut bt = st.build_trace.borrow_mut();
+                    bt.build_in_progress = false;
+                    bt.has_build_system
+                };
+                widgets.btn_build.set_sensitive(has_build_system);
+                widgets.btn_build_flash.set_sensitive(has_build_system);
+                update_traceability_ui(state, widgets);
+            }
+        }
+        return;
+    }
+
     match toolchain::probe::detect_stlink_probes() {
         Ok(probes) => {
             if probes.len() == 1 {
@@ -697,3 +852,166 @@ pub fn run_flash_stage(
         glib::ControlFlow::Continue
     });
 }
+
+pub fn run_dfu_flash_stage(
+    artifact: PathBuf,
+    state: &Rc<RefCell<AppState>>,
+    widgets: &Rc<AppWidgets>,
+    project_dir: PathBuf,
+) {
+    if !toolchain::runner::is_executable_on_path("dfu-util") {
+        append_log_text(
+            &widgets.build_log_view,
+            "[ERROR] `dfu-util` executable not found on PATH. Please install dfu-util (e.g. `sudo apt install dfu-util`).",
+        );
+        update_build_status(&widgets.lbl_build_status, "DFU-UTIL MISSING", StatusKind::Error);
+        widgets
+            .toast_overlay
+            .add_toast(adw::Toast::new("[ERROR] `dfu-util` not found on PATH"));
+        let has_build_system = {
+            let st = state.borrow();
+            let mut bt = st.build_trace.borrow_mut();
+            bt.build_in_progress = false;
+            bt.has_build_system
+        };
+        widgets.btn_build.set_sensitive(has_build_system);
+        widgets.btn_build_flash.set_sensitive(has_build_system);
+        update_traceability_ui(state, widgets);
+        return;
+    }
+
+    // Disconnect active serial session prior to flashing to avoid contention
+    let was_serial_connected = state.borrow().serial.borrow().is_serial_connected;
+    if was_serial_connected {
+        let session = {
+            let st = state.borrow();
+            let mut ser = st.serial.borrow_mut();
+            ser.is_serial_connected = false;
+            ser.serial_session.take()
+        };
+        if let Some(session) = session {
+            session
+                .tx_cmd
+                .send(crate::toolchain::serial::SerialTxCommand::Disconnect)
+                .ok();
+        }
+        widgets.btn_connect_serial.set_label("Connect");
+        widgets
+            .btn_connect_serial
+            .remove_css_class("destructive-action");
+        widgets.btn_connect_serial.add_css_class("suggested-action");
+        update_build_status(&widgets.lbl_serial_status, "DISCONNECTED", StatusKind::Idle);
+        widgets.combo_port.set_sensitive(true);
+        widgets.combo_baud.set_sensitive(true);
+        widgets.btn_refresh_ports.set_sensitive(true);
+    }
+
+    let (cmd, args) = toolchain::flasher::build_dfu_command(&artifact);
+
+    update_build_status(&widgets.lbl_build_status, "FLASHING (DFU)...", StatusKind::Active);
+    append_log_text(
+        &widgets.build_log_view,
+        "\n============================================================",
+    );
+    append_log_text(
+        &widgets.build_log_view,
+        &format!("[DFU FLASH] Running `{} {}`", cmd, args.join(" ")),
+    );
+    append_log_text(
+        &widgets.build_log_view,
+        "============================================================",
+    );
+
+    let rx = toolchain::runner::spawn_streaming_process(cmd, args, project_dir);
+
+    let state_timer = Rc::clone(state);
+    let widgets_timer = Rc::clone(widgets);
+
+    glib::timeout_add_local(std::time::Duration::from_millis(25), move || {
+        let mut finished = None;
+        while let Ok(evt) = rx.try_recv() {
+            match evt {
+                toolchain::runner::ProcessEvent::Line(line) => {
+                    append_log_text(&widgets_timer.build_log_view, &line);
+                }
+                toolchain::runner::ProcessEvent::Finished(success, code) => {
+                    finished = Some((success, code));
+                }
+                toolchain::runner::ProcessEvent::FailedToStart(err) => {
+                    append_log_text(&widgets_timer.build_log_view, &format!("[ERROR] {}", err));
+                }
+                _ => {}
+            }
+        }
+
+        if let Some((success, code)) = finished {
+            let has_build_system = {
+                let st = state_timer.borrow();
+                let mut bt = st.build_trace.borrow_mut();
+                bt.build_in_progress = false;
+                bt.has_build_system
+            };
+            widgets_timer.btn_build.set_sensitive(has_build_system);
+            widgets_timer
+                .btn_build_flash
+                .set_sensitive(has_build_system);
+            update_traceability_ui(&state_timer, &widgets_timer);
+
+            if success {
+                append_log_text(
+                    &widgets_timer.build_log_view,
+                    "\n[FLASH SUCCESS] Firmware written to 0x08000000 via DFU and MCU reset!",
+                );
+                update_build_status(
+                    &widgets_timer.lbl_build_status,
+                    "SUCCESS",
+                    StatusKind::Ready,
+                );
+                {
+                    let st = state_timer.borrow();
+                    let mut bt = st.build_trace.borrow_mut();
+                    bt.flash_verify_start = Some(std::time::Instant::now());
+                }
+                widgets_timer.area_flash_verify.queue_draw();
+                widgets_timer
+                    .toast_overlay
+                    .add_toast(adw::Toast::new("[OK] Build and DFU Flash Succeeded!"));
+
+                // Phase 5: Auto-switch to Serial Monitor tab and auto-reconnect
+                crate::navigate_stack(
+                    &widgets_timer.stack,
+                    "serial_monitor",
+                    gtk4::StackTransitionType::SlideLeft,
+                );
+                crate::auto_reconnect_serial_after_flash(&state_timer, &widgets_timer);
+            } else {
+                {
+                    let st = state_timer.borrow();
+                    let mut bt = st.build_trace.borrow_mut();
+                    bt.flash_verify_start = None;
+                }
+                widgets_timer.area_flash_verify.queue_draw();
+                let code_str = code
+                    .map(|c| c.to_string())
+                    .unwrap_or_else(|| "unknown".to_string());
+                append_log_text(
+                    &widgets_timer.build_log_view,
+                    &format!("\n[FLASH FAILED] dfu-util exited with code {}.", code_str),
+                );
+                update_build_status(
+                    &widgets_timer.lbl_build_status,
+                    "FLASH FAILED",
+                    StatusKind::Error,
+                );
+                widgets_timer
+                    .toast_overlay
+                    .add_toast(adw::Toast::new("[ERROR] DFU Flash failed (see console output)"));
+            }
+
+            return glib::ControlFlow::Break;
+        }
+
+        glib::ControlFlow::Continue
+    });
+}
+

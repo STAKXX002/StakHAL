@@ -76,6 +76,24 @@ pub fn build_dfu_command(artifact_path: &Path) -> (String, Vec<String>) {
     ("dfu-util".to_string(), args)
 }
 
+/// Determine the active flash backend.
+/// Defaults to StLink; if active board is BlackPill and no ST-Link probe is detected,
+/// auto-default to Dfu. User manual selection always persists and wins.
+pub fn determine_flash_backend(
+    board_id: Option<stakhal_core::board::BoardId>,
+    has_stlink_probes: bool,
+    user_selection: Option<FlashBackend>,
+) -> FlashBackend {
+    if let Some(user) = user_selection {
+        return user;
+    }
+    if board_id == Some(stakhal_core::board::BoardId::BlackPillF411ce) && !has_stlink_probes {
+        FlashBackend::Dfu
+    } else {
+        FlashBackend::StLink
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -175,6 +193,57 @@ mod tests {
                 "-D".to_string(),
                 "/path/to/build/firmware.bin".to_string(),
             ]
+        );
+    }
+
+    #[test]
+    fn test_determine_flash_backend_auto_default() {
+        use stakhal_core::board::BoardId;
+
+        // No board detected, no ST-link -> StLink
+        assert_eq!(
+            determine_flash_backend(None, false, None),
+            FlashBackend::StLink
+        );
+
+        // Nucleo, no ST-link -> StLink
+        assert_eq!(
+            determine_flash_backend(Some(BoardId::NucleoF446re), false, None),
+            FlashBackend::StLink
+        );
+
+        // Nucleo, with ST-link -> StLink
+        assert_eq!(
+            determine_flash_backend(Some(BoardId::NucleoF446re), true, None),
+            FlashBackend::StLink
+        );
+
+        // Black Pill, with ST-link connected -> StLink
+        assert_eq!(
+            determine_flash_backend(Some(BoardId::BlackPillF411ce), true, None),
+            FlashBackend::StLink
+        );
+
+        // Black Pill, no ST-link connected -> Dfu
+        assert_eq!(
+            determine_flash_backend(Some(BoardId::BlackPillF411ce), false, None),
+            FlashBackend::Dfu
+        );
+
+        // Black Pill, no ST-link, but user selected StLink -> StLink (user wins!)
+        assert_eq!(
+            determine_flash_backend(
+                Some(BoardId::BlackPillF411ce),
+                false,
+                Some(FlashBackend::StLink)
+            ),
+            FlashBackend::StLink
+        );
+
+        // Nucleo, with ST-link, but user selected Dfu -> Dfu (user wins!)
+        assert_eq!(
+            determine_flash_backend(Some(BoardId::NucleoF446re), true, Some(FlashBackend::Dfu)),
+            FlashBackend::Dfu
         );
     }
 }

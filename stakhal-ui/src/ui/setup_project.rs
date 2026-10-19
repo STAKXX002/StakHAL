@@ -186,6 +186,29 @@ pub fn do_load_project(state: &Rc<RefCell<AppState>>, widgets: &Rc<AppWidgets>) 
                 .set_label(active_board_def.display_name);
             widgets.lbl_pinout_hint.set_label(active_board_def.hint);
 
+            // Auto-default flash backend
+            let user_selected = state
+                .borrow()
+                .build_trace
+                .borrow()
+                .user_selected_flash_backend;
+            if !user_selected {
+                let has_stlink =
+                    crate::toolchain::probe::detect_stlink_probes().is_ok_and(|p| !p.is_empty());
+                let auto_backend = crate::toolchain::flasher::determine_flash_backend(
+                    detected_board,
+                    has_stlink,
+                    None,
+                );
+                state.borrow().build_trace.borrow_mut().flash_backend = auto_backend;
+                widgets
+                    .combo_flash_backend
+                    .set_selected(match auto_backend {
+                        crate::toolchain::flasher::FlashBackend::StLink => 0,
+                        crate::toolchain::flasher::FlashBackend::Dfu => 1,
+                    });
+            }
+
             let project_modules = project.modules.clone();
 
             // Setup state machines

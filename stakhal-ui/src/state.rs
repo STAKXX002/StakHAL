@@ -22,6 +22,8 @@ pub struct BuildTraceState {
     pub has_build_system: bool,
     pub detected_build_system: Option<crate::toolchain::builder::BuildSystem>,
     pub selected_probe: Option<String>,
+    pub flash_backend: crate::toolchain::flasher::FlashBackend,
+    pub user_selected_flash_backend: bool,
     pub is_traceability_enabled: bool,
     pub captured_build_hash: Option<String>,
     pub is_captured_hash_dirty: bool,
@@ -183,6 +185,7 @@ pub struct AppWidgets {
     // Build & flash widgets
     pub btn_build: gtk4::Button,
     pub btn_build_flash: gtk4::Button,
+    pub combo_flash_backend: gtk4::DropDown,
     pub btn_enable_traceability: gtk4::Button,
     pub build_log_view: gtk4::TextView,
     pub lbl_build_status: gtk4::Label,

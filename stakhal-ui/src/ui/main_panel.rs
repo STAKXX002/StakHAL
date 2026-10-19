@@ -11,6 +11,7 @@ pub struct MainPanelWidgets {
     pub btn_load: gtk4::Button,
     pub btn_build: gtk4::Button,
     pub btn_build_flash: gtk4::Button,
+    pub combo_flash_backend: gtk4::DropDown,
     pub btn_enable_traceability: gtk4::Button,
     pub btn_call_graph: gtk4::Button,
     pub btn_nucleo_pinout: gtk4::Button,
@@ -91,6 +92,11 @@ pub fn build_main_panel() -> MainPanelWidgets {
         .build();
     btn_build_flash.set_cursor_from_name(Some("pointer"));
 
+    let combo_flash_backend = gtk4::DropDown::from_strings(&["ST-Link", "DFU (USB Bootloader)"]);
+    combo_flash_backend.set_tooltip_text(Some("Select flash backend: ST-Link or DFU"));
+    combo_flash_backend.set_cursor_from_name(Some("pointer"));
+    combo_flash_backend.set_valign(gtk4::Align::Center);
+
     let btn_enable_traceability = gtk4::Button::builder()
         .label("Enable Build Traceability")
         .css_classes(vec!["stakhal-btn".to_string(), "flat".to_string()])
@@ -151,6 +157,7 @@ pub fn build_main_panel() -> MainPanelWidgets {
     toolbar_box.append(&btn_load);
     toolbar_box.append(&btn_build);
     toolbar_box.append(&btn_build_flash);
+    toolbar_box.append(&combo_flash_backend);
     toolbar_box.append(&btn_enable_traceability);
     toolbar_box.append(&btn_call_graph);
     toolbar_box.append(&btn_nucleo_pinout);
@@ -325,6 +332,7 @@ pub fn build_main_panel() -> MainPanelWidgets {
         btn_load,
         btn_build,
         btn_build_flash,
+        combo_flash_backend,
         btn_enable_traceability,
         btn_call_graph,
         btn_nucleo_pinout,

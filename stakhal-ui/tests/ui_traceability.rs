@@ -54,6 +54,7 @@ printf("BOOT\r\n");
         btn_load: gtk4::Button::new(),
         btn_build: gtk4::Button::new(),
         btn_build_flash: gtk4::Button::new(),
+        combo_flash_backend: gtk4::DropDown::from_strings(&["ST-Link", "DFU"]),
         btn_enable_traceability: btn_enable.clone(),
         btn_call_graph: gtk4::Button::new(),
         btn_nucleo_pinout: gtk4::Button::new(),
