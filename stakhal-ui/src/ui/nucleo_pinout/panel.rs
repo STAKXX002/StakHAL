@@ -1,5 +1,5 @@
-use gtk4::prelude::*;
 use crate::state::create_icon_button;
+use gtk4::prelude::*;
 
 pub struct NucleoPinoutPanelWidgets {
     pub pinout_panel_box: gtk4::Box,
@@ -7,13 +7,18 @@ pub struct NucleoPinoutPanelWidgets {
     pub pinout_drawing_area: gtk4::DrawingArea,
     pub pinout_scrolled: gtk4::ScrolledWindow,
     pub combo_pinout_module: gtk4::DropDown,
+    pub lbl_pinout_title: gtk4::Label,
+    pub lbl_pinout_hint: gtk4::Label,
 }
 
 pub fn build_nucleo_pinout_panel() -> NucleoPinoutPanelWidgets {
     let btn_pinout_back = create_icon_button("Back to Overview", "go-previous-symbolic", false);
 
+    let default_board =
+        stakhal_core::board::BoardDef::for_id(stakhal_core::board::BoardId::NucleoF446re);
+
     let lbl_pinout_title = gtk4::Label::builder()
-        .label("[ NUCLEO-F446RE PHYSICAL CONNECTOR PINOUT ]")
+        .label(default_board.display_name)
         .halign(gtk4::Align::Start)
         .hexpand(true)
         .css_classes(vec!["title-3".to_string()])
@@ -25,7 +30,7 @@ pub fn build_nucleo_pinout_panel() -> NucleoPinoutPanelWidgets {
     combo_pinout_module.set_css_classes(&["stakhal-btn", "flat"]);
 
     let lbl_pinout_hint = gtk4::Label::builder()
-        .label("Highlighted pins indicate active signals in loaded project")
+        .label(default_board.hint)
         .halign(gtk4::Align::End)
         .css_classes(vec!["dim-label".to_string(), "caption".to_string()])
         .build();
@@ -68,6 +73,7 @@ pub fn build_nucleo_pinout_panel() -> NucleoPinoutPanelWidgets {
         pinout_drawing_area,
         pinout_scrolled,
         combo_pinout_module,
+        lbl_pinout_title,
+        lbl_pinout_hint,
     }
 }
-

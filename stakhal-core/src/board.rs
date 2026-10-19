@@ -20,6 +20,7 @@ pub enum BoardId {
 pub struct BoardDef {
     pub id: BoardId,
     pub display_name: &'static str,
+    pub hint: &'static str,
     pub chip_label: &'static str,
     pub connectors: &'static [&'static str],
     pub pin_table: &'static [PinLocation],
@@ -46,6 +47,7 @@ impl BoardDef {
 pub static NUCLEO_F446RE_DEF: BoardDef = BoardDef {
     id: BoardId::NucleoF446re,
     display_name: "[ NUCLEO-F446RE PHYSICAL CONNECTOR PINOUT ]",
+    hint: "Highlighted pins indicate active signals in loaded project",
     chip_label: "STM32F446",
     connectors: &["CN7", "CN6", "CN8", "CN10", "CN5", "CN9"],
     pin_table: NUCLEO_F446RE_PINOUT,
@@ -55,6 +57,7 @@ pub static NUCLEO_F446RE_DEF: BoardDef = BoardDef {
 pub static BLACK_PILL_F411CE_DEF: BoardDef = BoardDef {
     id: BoardId::BlackPillF411ce,
     display_name: "[ STM32F411 BLACK PILL PHYSICAL CONNECTOR PINOUT ]",
+    hint: "Highlighted pins indicate active signals in loaded project",
     chip_label: "STM32F411",
     connectors: &["Left", "Right", "SWD"],
     pin_table: BLACKPILL_F411CE_PINOUT,

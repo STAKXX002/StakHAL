@@ -78,6 +78,8 @@ printf("BOOT\r\n");
         pinout_drawing_area: gtk4::DrawingArea::new(),
         _pinout_scrolled: gtk4::ScrolledWindow::new(),
         combo_pinout_module: gtk4::DropDown::builder().build(),
+        lbl_pinout_title: gtk4::Label::new(None),
+        lbl_pinout_hint: gtk4::Label::new(None),
         btn_serial_monitor: gtk4::Button::new(),
         combo_port: gtk4::DropDown::builder().build(),
         btn_refresh_ports: gtk4::Button::new(),
