@@ -34,6 +34,7 @@ mkdir -p "${STAGE_DIR}/usr/bin"
 mkdir -p "${STAGE_DIR}/usr/share/applications"
 mkdir -p "${STAGE_DIR}/usr/share/icons/hicolor/scalable/apps"
 mkdir -p "${STAGE_DIR}/usr/share/doc/${PKG_NAME}"
+mkdir -p "${STAGE_DIR}/usr/lib/udev/rules.d"
 
 # 3. Copy binary (installed as `stakhal` on PATH)
 cp "${BIN_SRC}" "${STAGE_DIR}/usr/bin/stakhal"
@@ -50,7 +51,11 @@ chmod 644 "${STAGE_DIR}/usr/share/icons/hicolor/scalable/apps/stakhal.svg"
 cp "${REPO_ROOT}/LICENSE" "${STAGE_DIR}/usr/share/doc/${PKG_NAME}/copyright"
 chmod 644 "${STAGE_DIR}/usr/share/doc/${PKG_NAME}/copyright"
 
-# 6. Generate DEBIAN/control file
+# 6. Copy udev rules
+cp "${SCRIPT_DIR}/49-stakhal-dfu.rules" "${STAGE_DIR}/usr/lib/udev/rules.d/49-stakhal-dfu.rules"
+chmod 644 "${STAGE_DIR}/usr/lib/udev/rules.d/49-stakhal-dfu.rules"
+
+# 7. Generate DEBIAN/control file
 INSTALLED_SIZE=$(du -sk "${STAGE_DIR}/usr" | cut -f1)
 
 cat <<CONTROL > "${STAGE_DIR}/DEBIAN/control"
@@ -61,7 +66,7 @@ Priority: optional
 Architecture: ${PKG_ARCH}
 Installed-Size: ${INSTALLED_SIZE}
 Maintainer: STAKXX002 <contact@stakhal.dev>
-Depends: libc6 (>= 2.34), libgtk-4-1 (>= 4.12.0), libadwaita-1-0 (>= 1.4.0)
+Depends: libc6 (>= 2.34), libgtk-4-1 (>= 4.12.0), libadwaita-1-0 (>= 1.4.0), dfu-util
 Recommends: stlink-tools, cmake, ninja-build, fonts-jetbrains-mono, fonts-ibm-plex
 Suggests: gcc-arm-none-eabi, libnewlib-arm-none-eabi
 Description: Hardware Abstraction Inspector & Firmware Workbench for STM32
@@ -74,7 +79,7 @@ CONTROL
 
 chmod 644 "${STAGE_DIR}/DEBIAN/control"
 
-# 7. Post-install and Post-remove triggers (cache & desktop updates)
+# 8. Post-install and Post-remove triggers (cache & desktop & udev updates)
 cat <<'POSTINST' > "${STAGE_DIR}/DEBIAN/postinst"
 #!/bin/sh
 set -e
@@ -84,6 +89,10 @@ if [ "$1" = "configure" ]; then
     fi
     if which gtk-update-icon-cache >/dev/null 2>&1; then
         gtk-update-icon-cache -q /usr/share/icons/hicolor || true
+    fi
+    if which udevadm >/dev/null 2>&1; then
+        udevadm control --reload-rules || true
+        udevadm trigger || true
     fi
 fi
 exit 0
@@ -99,11 +108,15 @@ fi
 if which gtk-update-icon-cache >/dev/null 2>&1; then
     gtk-update-icon-cache -q /usr/share/icons/hicolor || true
 fi
+if which udevadm >/dev/null 2>&1; then
+    udevadm control --reload-rules || true
+    udevadm trigger || true
+fi
 exit 0
 POSTRM
 chmod 755 "${STAGE_DIR}/DEBIAN/postrm"
 
-# 8. Build Debian package using dpkg-deb
+# 9. Build Debian package using dpkg-deb
 DIST_DIR="${REPO_ROOT}/dist"
 mkdir -p "${DIST_DIR}"
 OUTPUT_DEB="${DIST_DIR}/${DEB_NAME}.deb"
