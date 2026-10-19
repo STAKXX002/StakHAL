@@ -2689,67 +2689,108 @@ pub fn draw_blackpill_f411_board(
                     let _ = cr.show_text(&pnum_str);
                 }
 
-                cr.set_font_size(9.5);
-                if hl_info.is_muted {
-                    cr.set_source_rgb(
-                        tokens::color::TEXT_MUTED.0,
-                        tokens::color::TEXT_MUTED.1,
-                        tokens::color::TEXT_MUTED.2,
-                    );
-                } else {
-                    cr.set_source_rgb(
-                        tokens::color::TEXT_PRIMARY.0,
-                        tokens::color::TEXT_PRIMARY.1,
-                        tokens::color::TEXT_PRIMARY.2,
-                    );
-                }
-                let mcu_pin_x = cell_x + badge_w + 8.0;
-                let _ = cr.move_to(mcu_pin_x, cell_y + cell_h * 0.64);
-                let _ = cr.show_text(p.mcu_pin);
+                if conn.name == "SWD" {
+                    let swd_signal_text = if p.mcu_pin == "PA13" || hl_info.signal.contains("SWDIO")
+                    {
+                        "SWDIO".to_string()
+                    } else if p.mcu_pin == "PA14" || hl_info.signal.contains("SWCLK") {
+                        "SWCLK".to_string()
+                    } else if let Some(lbl) = &hl_info.label {
+                        lbl.clone()
+                    } else {
+                        hl_info.signal.clone()
+                    };
 
-                let mcu_ext_w = cr
-                    .text_extents(p.mcu_pin)
-                    .map(|e| e.width())
-                    .unwrap_or(24.0);
+                    let _ = cr.save();
+                    cr.rectangle(cell_x, cell_y, cell_w, cell_h);
+                    let _ = cr.clip();
 
-                let primary_text = match &hl_info.label {
-                    Some(lbl) => {
-                        if lbl.ends_with("_Pin") {
-                            lbl.clone()
+                    cr.select_font_face(
+                        tokens::font::CAIRO_MONO,
+                        cairo::FontSlant::Normal,
+                        if hl_info.is_muted {
+                            cairo::FontWeight::Normal
                         } else {
-                            format!("{}_Pin", lbl)
-                        }
+                            cairo::FontWeight::Bold
+                        },
+                    );
+                    cr.set_font_size(9.0);
+                    if hl_info.is_muted {
+                        cr.set_source_rgb(
+                            tokens::color::TEXT_MUTED.0,
+                            tokens::color::TEXT_MUTED.1,
+                            tokens::color::TEXT_MUTED.2,
+                        );
+                    } else {
+                        cr.set_source_rgb(hl_r, hl_g, hl_b);
                     }
-                    None => hl_info.signal.clone(),
-                };
-
-                if hl_info.is_muted {
-                    cr.select_font_face(
-                        tokens::font::CAIRO_MONO,
-                        cairo::FontSlant::Normal,
-                        cairo::FontWeight::Normal,
-                    );
-                    cr.set_font_size(9.0);
-                    cr.set_source_rgb(
-                        tokens::color::TEXT_MUTED.0,
-                        tokens::color::TEXT_MUTED.1,
-                        tokens::color::TEXT_MUTED.2,
-                    );
-                } else {
-                    cr.select_font_face(
-                        tokens::font::CAIRO_MONO,
-                        cairo::FontSlant::Normal,
-                        cairo::FontWeight::Bold,
-                    );
-                    cr.set_font_size(9.0);
-                    cr.set_source_rgb(hl_r, hl_g, hl_b);
-                }
-                if let Ok(ext) = cr.text_extents(&primary_text) {
-                    let min_x = mcu_pin_x + mcu_ext_w + 6.0;
-                    let right_x = cell_x + cell_w - ext.width() - 6.0;
-                    let text_x = right_x.max(min_x);
+                    let text_x = cell_x + badge_w + 6.0;
                     let _ = cr.move_to(text_x, cell_y + cell_h * 0.64);
-                    let _ = cr.show_text(&primary_text);
+                    let _ = cr.show_text(&swd_signal_text);
+                    let _ = cr.restore();
+                } else {
+                    cr.set_font_size(9.5);
+                    if hl_info.is_muted {
+                        cr.set_source_rgb(
+                            tokens::color::TEXT_MUTED.0,
+                            tokens::color::TEXT_MUTED.1,
+                            tokens::color::TEXT_MUTED.2,
+                        );
+                    } else {
+                        cr.set_source_rgb(
+                            tokens::color::TEXT_PRIMARY.0,
+                            tokens::color::TEXT_PRIMARY.1,
+                            tokens::color::TEXT_PRIMARY.2,
+                        );
+                    }
+                    let mcu_pin_x = cell_x + badge_w + 8.0;
+                    let _ = cr.move_to(mcu_pin_x, cell_y + cell_h * 0.64);
+                    let _ = cr.show_text(p.mcu_pin);
+
+                    let mcu_ext_w = cr
+                        .text_extents(p.mcu_pin)
+                        .map(|e| e.width())
+                        .unwrap_or(24.0);
+
+                    let primary_text = match &hl_info.label {
+                        Some(lbl) => {
+                            if lbl.ends_with("_Pin") {
+                                lbl.clone()
+                            } else {
+                                format!("{}_Pin", lbl)
+                            }
+                        }
+                        None => hl_info.signal.clone(),
+                    };
+
+                    if hl_info.is_muted {
+                        cr.select_font_face(
+                            tokens::font::CAIRO_MONO,
+                            cairo::FontSlant::Normal,
+                            cairo::FontWeight::Normal,
+                        );
+                        cr.set_font_size(9.0);
+                        cr.set_source_rgb(
+                            tokens::color::TEXT_MUTED.0,
+                            tokens::color::TEXT_MUTED.1,
+                            tokens::color::TEXT_MUTED.2,
+                        );
+                    } else {
+                        cr.select_font_face(
+                            tokens::font::CAIRO_MONO,
+                            cairo::FontSlant::Normal,
+                            cairo::FontWeight::Bold,
+                        );
+                        cr.set_font_size(9.0);
+                        cr.set_source_rgb(hl_r, hl_g, hl_b);
+                    }
+                    if let Ok(ext) = cr.text_extents(&primary_text) {
+                        let min_x = mcu_pin_x + mcu_ext_w + 6.0;
+                        let right_x = cell_x + cell_w - ext.width() - 6.0;
+                        let text_x = right_x.max(min_x);
+                        let _ = cr.move_to(text_x, cell_y + cell_h * 0.64);
+                        let _ = cr.show_text(&primary_text);
+                    }
                 }
             } else {
                 cr.set_source_rgb(
@@ -2811,14 +2852,22 @@ pub fn draw_blackpill_f411_board(
                     let _ = cr.show_text(&pnum_str);
                 }
 
-                let label_part = match p.default_label {
-                    Some(lbl) => format!(" ({})", lbl),
-                    None => "".to_string(),
+                let left_str = if conn.name == "SWD" {
+                    p.default_label.unwrap_or(p.mcu_pin).to_string()
+                } else {
+                    let label_part = match p.default_label {
+                        Some(lbl) => format!(" ({})", lbl),
+                        None => "".to_string(),
+                    };
+                    format!("{}{}", p.mcu_pin, label_part)
                 };
-                let left_str = format!("{}{}", p.mcu_pin, label_part);
                 let text_start_x = cell_x + badge_w + 8.0;
+                let _ = cr.save();
+                cr.rectangle(cell_x, cell_y, cell_w, cell_h);
+                let _ = cr.clip();
                 let _ = cr.move_to(text_start_x, cell_y + cell_h * 0.60);
                 let _ = cr.show_text(&left_str);
+                let _ = cr.restore();
             }
         }
     }
@@ -3529,5 +3578,47 @@ mod tests {
         // Other reserved pins (e.g. PB2 BOOT1, PC13 LED) are conflicts for general GPIO
         assert!(is_reserved_pin_conflict("PB2", "GPIO_Output"));
         assert!(is_reserved_pin_conflict("PC13", "GPIO_Output"));
+    }
+
+    #[test]
+    fn test_swd_cell_text_shortening() {
+        let surface = cairo::ImageSurface::create(cairo::Format::ARgb32, 1200, 750)
+            .expect("Failed to create surface");
+        let state = Rc::new(RefCell::new(AppState::default()));
+        let bp_project = stakhal_core::ir::schema::Project {
+            meta: stakhal_core::ir::schema::ProjectMeta {
+                name: "test_swd".to_string(),
+                mcu_family: "STM32F4".to_string(),
+                mcu_name: "STM32F411CEUx".to_string(),
+                ioc_path: std::path::PathBuf::from("test.ioc"),
+                main_c_path: std::path::PathBuf::from("main.c"),
+            },
+            pins: vec![
+                stakhal_core::ioc::parser::PinConfig {
+                    pin: "PA13".to_string(),
+                    signal: "SYS_JTMS-SWDIO".to_string(),
+                    label: None,
+                    modules: Vec::new(),
+                },
+                stakhal_core::ioc::parser::PinConfig {
+                    pin: "PA14".to_string(),
+                    signal: "SYS_JTCK-SWCLK".to_string(),
+                    label: None,
+                    modules: Vec::new(),
+                },
+            ],
+            peripherals: Vec::new(),
+            user_regions: Vec::new(),
+            loop_body: None,
+            call_graph_edges: Vec::new(),
+            pv_declarations: Vec::new(),
+            state_machines: Vec::new(),
+            modules: Vec::new(),
+        };
+        state.borrow().project.borrow_mut().loaded_project = Some(bp_project);
+
+        let cr = cairo::Context::new(&surface).expect("Failed to create context");
+        draw_blackpill_f411_board(&cr, 1200.0, 750.0, &state);
+        surface.flush();
     }
 }
