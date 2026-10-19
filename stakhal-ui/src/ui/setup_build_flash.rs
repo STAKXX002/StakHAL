@@ -558,6 +558,8 @@ pub fn run_probe_detection_and_flash(
             let (txt, kind) = match err {
                 toolchain::probe::ProbeError::ToolNotFound => ("ST-INFO MISSING", StatusKind::Error),
                 toolchain::probe::ProbeError::ZeroProbesFound => ("NO PROBE", StatusKind::Active),
+                toolchain::probe::ProbeError::DfuToolNotFound => ("DFU-UTIL MISSING", StatusKind::Error),
+                toolchain::probe::ProbeError::ZeroDfuDevicesFound => ("NO DFU DEVICE", StatusKind::Active),
                 toolchain::probe::ProbeError::ExecutionFailed(_) => ("PROBE ERROR", StatusKind::Error),
             };
             update_build_status(&widgets.lbl_build_status, txt, kind);

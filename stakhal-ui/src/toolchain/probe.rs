@@ -1,5 +1,5 @@
-use std::process::Command;
 use super::runner::is_executable_on_path;
+use std::process::Command;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StlinkProbe {
@@ -19,10 +19,44 @@ impl StlinkProbe {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DfuDevice {
+    pub vendor_id: String,
+    pub product_id: String,
+    pub devnum: Option<String>,
+    pub alt: Option<u32>,
+    pub alt_name: Option<String>,
+    pub serial: Option<String>,
+}
+
+impl DfuDevice {
+    pub fn display_label(&self) -> String {
+        let name = self.alt_name.as_deref().unwrap_or("DFU Device");
+        let sn = self.serial.as_deref().unwrap_or("N/A");
+        format!(
+            "{} [{}:{}] (SN: {})",
+            name, self.vendor_id, self.product_id, sn
+        )
+    }
+
+    pub fn is_stm32_bootloader(&self) -> bool {
+        self.vendor_id.eq_ignore_ascii_case("0483") && self.product_id.eq_ignore_ascii_case("df11")
+    }
+
+    pub fn is_internal_flash(&self) -> bool {
+        self.alt_name
+            .as_deref()
+            .is_some_and(|n| n.contains("Internal Flash"))
+            || (self.is_stm32_bootloader() && self.alt == Some(0))
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ProbeError {
     ToolNotFound,
+    DfuToolNotFound,
     ExecutionFailed(String),
     ZeroProbesFound,
+    ZeroDfuDevicesFound,
 }
 
 impl std::fmt::Display for ProbeError {
@@ -32,10 +66,18 @@ impl std::fmt::Display for ProbeError {
                 f,
                 "`st-info` not found on PATH. Please install stlink-tools (e.g. `sudo apt install stlink-tools`)."
             ),
-            ProbeError::ExecutionFailed(msg) => write!(f, "Failed to run `st-info --probe`: {}", msg),
+            ProbeError::DfuToolNotFound => write!(
+                f,
+                "`dfu-util` not found on PATH. Please install dfu-util (e.g. `sudo apt install dfu-util`)."
+            ),
+            ProbeError::ExecutionFailed(msg) => write!(f, "Failed to run probe tool: {}", msg),
             ProbeError::ZeroProbesFound => write!(
                 f,
                 "No ST-Link detected. Please connect an ST-Link probe or Nucleo board via USB."
+            ),
+            ProbeError::ZeroDfuDevicesFound => write!(
+                f,
+                "No DFU device detected. Hold BOOT0, tap NRST, then release BOOT0 to enter DFU mode."
             ),
         }
     }
@@ -146,6 +188,108 @@ pub fn detect_stlink_probes() -> Result<Vec<StlinkProbe>, ProbeError> {
     }
 }
 
+/// Parse stdout of `dfu-util -l` into a list of DfuDevice structs.
+pub fn parse_dfu_util_list(output: &str) -> Vec<DfuDevice> {
+    let mut devices = Vec::new();
+
+    for line in output.lines() {
+        let trimmed = line.trim();
+        if !trimmed.starts_with("Found DFU:") && !trimmed.starts_with("Found Runtime:") {
+            continue;
+        }
+
+        // Extract [vendor:product]
+        let (vid, pid) = match trimmed.find('[').and_then(|open| {
+            trimmed[open + 1..].find(']').and_then(|close| {
+                let id_pair = &trimmed[open + 1..open + 1 + close];
+                id_pair.split_once(':')
+            })
+        }) {
+            Some((v, p)) => (v.trim().to_string(), p.trim().to_string()),
+            None => continue,
+        };
+
+        // Extract devnum
+        let devnum = trimmed.split("devnum=").nth(1).and_then(|s| {
+            s.split(|c: char| c == ',' || c.is_whitespace())
+                .next()
+                .filter(|v| !v.is_empty())
+                .map(|v| v.to_string())
+        });
+
+        // Extract alt number
+        let alt = trimmed.split("alt=").nth(1).and_then(|s| {
+            s.split(|c: char| c == ',' || c.is_whitespace())
+                .next()
+                .and_then(|num| num.parse::<u32>().ok())
+        });
+
+        // Extract name="..." or name=...
+        let alt_name = trimmed.split("name=").nth(1).and_then(|after_name| {
+            if let Some(stripped) = after_name.strip_prefix('"') {
+                stripped.split('"').next().map(|s| s.to_string())
+            } else {
+                let s = after_name.split(',').next().unwrap_or("").trim();
+                if s.is_empty() {
+                    None
+                } else {
+                    Some(s.to_string())
+                }
+            }
+        });
+
+        // Extract serial="..." or serial=...
+        let serial = trimmed.split("serial=").nth(1).and_then(|after_ser| {
+            if let Some(stripped) = after_ser.strip_prefix('"') {
+                stripped.split('"').next().map(|s| s.to_string())
+            } else {
+                let s = after_ser
+                    .split(|c: char| c == ',' || c.is_whitespace())
+                    .next()
+                    .unwrap_or("")
+                    .trim();
+                if s.is_empty() {
+                    None
+                } else {
+                    Some(s.to_string())
+                }
+            }
+        });
+
+        devices.push(DfuDevice {
+            vendor_id: vid,
+            product_id: pid,
+            devnum,
+            alt,
+            alt_name,
+            serial,
+        });
+    }
+
+    devices
+}
+
+/// Detect connected DFU devices by calling `dfu-util -l`.
+pub fn detect_dfu_devices() -> Result<Vec<DfuDevice>, ProbeError> {
+    if !is_executable_on_path("dfu-util") {
+        return Err(ProbeError::DfuToolNotFound);
+    }
+
+    let output = match Command::new("dfu-util").arg("-l").output() {
+        Ok(out) => out,
+        Err(e) => return Err(ProbeError::ExecutionFailed(e.to_string())),
+    };
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let devices = parse_dfu_util_list(&stdout);
+
+    if devices.is_empty() {
+        Err(ProbeError::ZeroDfuDevicesFound)
+    } else {
+        Ok(devices)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -168,7 +312,10 @@ dev-type: STM32H74x_H75x
         assert_eq!(p.version.as_deref(), Some("V3J8"));
         assert_eq!(p.dev_type.as_deref(), Some("STM32H74x_H75x"));
         assert_eq!(p.chip_id.as_deref(), Some("0x450"));
-        assert_eq!(p.display_label(), "STM32H74x_H75x [V3J8] (SN: 003800333433510937363934)");
+        assert_eq!(
+            p.display_label(),
+            "STM32H74x_H75x [V3J8] (SN: 003800333433510937363934)"
+        );
     }
 
     #[test]
@@ -192,7 +339,10 @@ Found 2 stlink programmers
         let probes = parse_st_info_probe(text);
         assert_eq!(probes.len(), 2);
         assert_eq!(probes[0].serial, "563f67066772565631130667");
-        assert_eq!(probes[0].dev_type.as_deref(), Some("F1 High-density device"));
+        assert_eq!(
+            probes[0].dev_type.as_deref(),
+            Some("F1 High-density device")
+        );
         assert_eq!(probes[1].serial, "493f6d066670485136151067");
         assert_eq!(probes[1].dev_type.as_deref(), Some("F4 device"));
     }
@@ -202,5 +352,54 @@ Found 2 stlink programmers
         let text = "Found 0 stlink programmers\n";
         let probes = parse_st_info_probe(text);
         assert!(probes.is_empty());
+    }
+
+    #[test]
+    fn test_parse_dfu_single_stm32() {
+        let text = r#"Found DFU: [0483:df11] ver=2200, devnum=12, cfg=1, intf=0, path="1-1.2", alt=0, name="@Internal Flash  /0x08000000/04*016Kg,01*064Kg,03*128Kg", serial="347535793038""#;
+        let devices = parse_dfu_util_list(text);
+        assert_eq!(devices.len(), 1);
+        let dev = &devices[0];
+        assert_eq!(dev.vendor_id, "0483");
+        assert_eq!(dev.product_id, "df11");
+        assert_eq!(dev.devnum.as_deref(), Some("12"));
+        assert_eq!(dev.alt, Some(0));
+        assert_eq!(
+            dev.alt_name.as_deref(),
+            Some("@Internal Flash  /0x08000000/04*016Kg,01*064Kg,03*128Kg")
+        );
+        assert_eq!(dev.serial.as_deref(), Some("347535793038"));
+        assert!(dev.is_stm32_bootloader());
+        assert!(dev.is_internal_flash());
+        assert_eq!(
+            dev.display_label(),
+            "@Internal Flash  /0x08000000/04*016Kg,01*064Kg,03*128Kg [0483:df11] (SN: 347535793038)"
+        );
+    }
+
+    #[test]
+    fn test_parse_dfu_non_stm32() {
+        let text = r#"Found DFU: [1234:5678] ver=0100, devnum=5, cfg=1, intf=0, path="1-2", alt=0, name="Custom Bootloader", serial="ABC123XYZ""#;
+        let devices = parse_dfu_util_list(text);
+        assert_eq!(devices.len(), 1);
+        let dev = &devices[0];
+        assert_eq!(dev.vendor_id, "1234");
+        assert_eq!(dev.product_id, "5678");
+        assert!(!dev.is_stm32_bootloader());
+        assert!(!dev.is_internal_flash());
+    }
+
+    #[test]
+    fn test_parse_dfu_zero_devices() {
+        let text = "dfu-util 0.11\nNo DFU capable USB device found\n";
+        let devices = parse_dfu_util_list(text);
+        assert!(devices.is_empty());
+    }
+
+    #[test]
+    fn test_parse_dfu_malformed() {
+        let text = "Found DFU: invalid line with no brackets\nSome [1234] random text\nFound DFU: [missing_colon] ver=10\n";
+        let devices = parse_dfu_util_list(text);
+        assert!(devices.is_empty());
     }
 }

@@ -62,6 +62,20 @@ pub fn build_flash_command(
     ("st-flash".to_string(), args)
 }
 
+/// Construct the arguments for `dfu-util` flashing.
+/// Produces: `dfu-util -a 0 -s 0x08000000:leave -D <artifact_path>`
+pub fn build_dfu_command(artifact_path: &Path) -> (String, Vec<String>) {
+    let args = vec![
+        "-a".to_string(),
+        "0".to_string(),
+        "-s".to_string(),
+        format!("{}:leave", STM32_FLASH_BASE_ADDR),
+        "-D".to_string(),
+        artifact_path.display().to_string(),
+    ];
+    ("dfu-util".to_string(), args)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -144,5 +158,23 @@ mod tests {
         assert_eq!(from_pascal, FlashBackend::StLink);
         let from_caps: FlashBackend = serde_json::from_str("\"DFU\"").unwrap();
         assert_eq!(from_caps, FlashBackend::Dfu);
+    }
+
+    #[test]
+    fn test_build_dfu_command() {
+        let path = PathBuf::from("/path/to/build/firmware.bin");
+        let (cmd, args) = build_dfu_command(&path);
+        assert_eq!(cmd, "dfu-util");
+        assert_eq!(
+            args,
+            vec![
+                "-a".to_string(),
+                "0".to_string(),
+                "-s".to_string(),
+                "0x08000000:leave".to_string(),
+                "-D".to_string(),
+                "/path/to/build/firmware.bin".to_string(),
+            ]
+        );
     }
 }
