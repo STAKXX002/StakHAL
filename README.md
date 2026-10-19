@@ -1,8 +1,17 @@
 # StakHAL - Hardware Abstraction Inspector & Toolchain
 
-**StakHAL** is a desktop tool for inspecting and developing STM32CubeMX firmware projects. Written in **Rust**, **GTK4**, and **Libadwaita**, StakHAL parses CubeMX configurations, visualizes application state machines and Nucleo board pinouts, and includes an integrated build, flash, and serial monitoring workflow.
+**StakHAL** is a desktop workbench for inspecting and developing STM32CubeMX firmware projects. Written in **Rust**, **GTK4**, and **Libadwaita**, StakHAL parses CubeMX configurations, visualizes application state machines and physical board pinouts, and provides an integrated build, flash, and serial monitoring workflow.
 
-> **Project Status & Limitations**: StakHAL's state-machine and command-table analysis is pattern-based and has been validated against a small number of real firmware projects so far. It may not correctly detect every C coding style or firmware architecture. Unresolved or ambiguous transitions are surfaced directly in the interface rather than guessed at.
+> **Project Status & Scope**: StakHAL's state-machine and command-table analysis is pattern-based and validated against real STM32CubeMX firmware projects. Unresolved or ambiguous transitions are surfaced directly in the interface rather than guessed at.
+
+---
+
+## Supported Target Boards
+
+| Board | Target MCU | Package | Physical Pinout Visualizer | Flashing Backends | Serial Console |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **ST NUCLEO-F446RE** | STM32F446RET6 | LQFP64 | Full (Morpho `CN7`/`CN10` + Arduino `CN5`/`CN6`/`CN8`/`CN9`) | ST-Link (`st-flash`) | Onboard ST-Link Virtual COM Port (`/dev/ttyACM*`) |
+| **WeAct Studio Black Pill** | STM32F411CEU6 | UFQFPN48 | Full (Left / Right 20-pin headers + 4-pin SWD) | USB DFU (`dfu-util`) or ST-Link (`st-flash`) | External USB-to-UART adapter required (`/dev/ttyUSB*` / `/dev/ttyACM*`) |
 
 ---
 
@@ -22,28 +31,38 @@
 - **Human-Readable Transition Badges**: Prioritizes fault string literals, command triggers (`CMD: GO`, `CMD: RET`), timeout expressions, and clean boolean guards.
 - **Interactive Canvas**: Pan, zoom, fit-to-view, and click-to-inspect transition details on a dot-grid canvas.
 
-### 3. Nucleo Physical Pinout Visualizer
-- **Header & Pin Inspection**: Visual connector inspector for STM32 Nucleo boards (Morpho `CN7`/`CN10` and Arduino Uno `CN5`/`CN6`/`CN8`/`CN9` headers).
+### 3. Physical Board Pinout Visualizer
+- **Connector & Pin Inspection**: Visual connector inspector parametrized by detected board target:
+  - **NUCLEO-F446RE**: Morpho `CN7`/`CN10` headers (38 pins each) and Arduino Uno `CN5`/`CN6`/`CN8`/`CN9` headers.
+  - **Black Pill (STM32F411CEU6)**: 20-pin Left header, 20-pin Right header, and 4-pin SWD header with silkscreen pin labels (`A0`..`A15`, `B0`..`B15`, `C13`..`C15`, `3V3`, `5V`, `GND`). Silkscreen indicators highlight the PC13 active-low user LED, PA0 KEY push-button, and HSE/LSE crystals.
+- **Reserved Pin & Conflict Guidance**: Warns on critical hardware pin reservations (SWD reprogramming lines `PA13`/`PA14`, HSE crystal pins `PH0`/`PH1`, USB D-/D+ `PA11`/`PA12`, BOOT1 `PB2`, onboard LED/KEY).
 - **Module Filter Dropdown**: Filter pins by discovered firmware module (`All Modules`, `hatch`, `alignment`, etc.) to isolate subsystem pin usage.
 - **Module-Aware Pin Muting**: Visually separates pins into "Active in Module" (full badge fill and bright accent stroke), "Active Elsewhere in Project" (neutral fill with muted accent outline), and unused pins.
 - **Hover Details & Tooltips**: Interactive hover tooltips mapping physical connector pin numbers to MCU GPIO names, assigned labels, and alternate functions.
-- **Conflict Detection**: Warning banners and visual highlighting for duplicate or conflicting pin assignments.
 
 ### 4. Integrated Build & Flash Subsystem
 - **Multi-Build System Support**: Automatically detects and builds **Makefile**, **CMake**, and **Ninja** projects.
+- **Dual Flash Backends**:
+  - **ST-Link (`st-flash`)**: SWD programming via ST-Link V2/V2-1/V3 probes. Scans connected programmers (`st-info --probe`), auto-selects single targets, and provides an interactive probe selector for multiple probes.
+  - **USB DFU (`dfu-util`)**: In-system programming via the STM32 internal ROM USB DFU bootloader (`0483:df11`) to flash memory at `0x08000000:leave`.
+  - **Auto-Defaulting**: Defaults to `Dfu` when a Black Pill project is loaded and no ST-Link probe is detected; defaults to `StLink` for Nucleo boards or when ST-Link is connected. Manual dropdown selections persist across sessions.
+- **DFU Bootloader Workflow**:
+  - To enter DFU mode on the Black Pill: hold `BOOT0`, tap `NRST` (reset), then release `BOOT0`. The device enumerates as `0483:df11`.
+  - StakHAL probes the device (`dfu-util -l`) and streams flashing progress directly to the console.
 - **Fresh Clone Auto-Configuration**: Detects unconfigured CMake repositories (e.g. freshly cloned from GitHub) and automatically configures presets (`cmake --preset Debug`).
 - **Auto `.elf` -> `.bin` Conversion**: Automatically extracts binary flash images using `arm-none-eabi-objcopy` when the build toolchain outputs only `.elf`.
-- **ST-Link Probe Auto-Detection**: Scans connected programmers (`st-info --probe`), auto-selects single targets, and presents an interactive picker if multiple ST-Links are connected.
 - **Non-Blocking Streaming Console**: Live compiler and flasher output streamed line-by-line into an expandable bottom console drawer with status badges (`BUILDING...`, `PROBING...`, `FLASHING...`, `SUCCESS`).
-- Separate **`[ Build ]`** (compile only) and **`[ Build & Flash ]`** (compile + flash to `0x08000000` + hardware reset) actions.
+- Separate **`[ Build ]`** (compile only) and **`[ Build & Flash ]`** (compile + flash to `0x08000000` + reset) actions.
 
 ### 5. Serial Monitor & Command Console
 - **Live UART Receive Display**: Streams incoming serial data into a line-buffered log panel with CRLF normalization, auto-scroll, and partial-line timeout flushing.
 - **Baud Rate Auto-Detection**: Traces `_write()` / `_io_putchar` printf retargeting to the active console UART (`huart2`, etc.) and automatically parses `huart<N>.Init.BaudRate = <value>;` from source, with manual dropdown override.
-- **Port Enumeration & Connection**: Discovers available ST-Link virtual COM ports (e.g. `/dev/ttyACM0`), auto-selects single connected boards, and provides connection status indicators (`CONNECTED`, `DISCONNECTED`, `RECONNECTING...`).
+- **Port Enumeration & Connection**: Discovers available USB serial ports (e.g. `/dev/ttyACM0`, `/dev/ttyUSB0`), auto-selects single connected boards, and provides connection status indicators (`CONNECTED`, `DISCONNECTED`, `RECONNECTING...`).
 - **Command Transmission with History**: Free-text command entry supporting click and Enter keypress, automatically appending `\r\n` line termination, with Up/Down arrow key history navigation across past commands.
 - **Dynamic Quick-Send Buttons**: Surfaces one-click action buttons generated directly from discovered firmware `commandTable` entries (`GO`, `CAL`, `STOP`, `RET`, etc.) when present.
 - **Build -> Flash -> Observe Loop**: Automatically switches to the Serial Monitor view on successful flash and retries port reconnection across target reset and USB re-enumeration.
+
+> **Hardware Note for Black Pill Serial**: Nucleo boards route `USART2` (`PA2`/`PA3`) through the onboard ST-Link Virtual COM Port (VCP) automatically. The Black Pill does not include an onboard USB-UART bridge; connect an external USB-to-UART adapter (e.g. FTDI, CP2102, CH340) to the configured UART pins (`PA2` TX, `PA3` RX, and `GND`). The adapter will appear in the port selector as `/dev/ttyUSB*` or `/dev/ttyACM*`.
 
 ---
 
@@ -51,7 +70,7 @@
 
 ### Method 1: Debian Package (`.deb`) - Recommended
 
-The easiest way to install StakHAL on **Ubuntu 24.04 LTS** or **Windows 11 (via WSL2 / WSLg)**. The package automatically installs the desktop application, system icons, and all required embedded toolchain dependencies (`stlink-tools`, `gcc-arm-none-eabi`, `cmake`, `ninja-build`, `libadwaita-1`).
+The easiest way to install StakHAL on **Ubuntu 24.04 LTS** or **Windows 11 (via WSL2 / WSLg)**. The package automatically installs the desktop application, system icons, udev rules for DFU flashing without root, and toolchain dependencies (`dfu-util`, `stlink-tools`, `gcc-arm-none-eabi`, `cmake`, `ninja-build`, `libadwaita-1`).
 
 #### 1. Download & Install the Package
 Download the latest `stakhal_*.deb` from [GitHub Releases](https://github.com/STAKXX002/StakHAL/releases), then install with:
@@ -91,10 +110,17 @@ sudo apt install -y \
     ninja-build \
     gcc-arm-none-eabi \
     libnewlib-arm-none-eabi \
-    stlink-tools
+    stlink-tools \
+    dfu-util
 ```
 
-> **Note on USB permissions**: If flashing without `sudo`, ensure your user has access to ST-Link USB devices by installing udev rules (included with `stlink-tools` or under `/etc/udev/rules.d/49-stlinkv*.rules`).
+> **USB Permissions & udev Rules**: Flashing without `sudo` requires unprivileged access to USB devices:
+> - **ST-Link**: Provided by the `stlink-tools` package (`/usr/lib/udev/rules.d/49-stlinkv*.rules`).
+> - **USB DFU mode (`0483:df11`)**: The StakHAL Debian package installs `/usr/lib/udev/rules.d/49-stakhal-dfu.rules`. When running from source, copy the rule and reload udev:
+>   ```bash
+>   sudo cp packaging/49-stakhal-dfu.rules /etc/udev/rules.d/
+>   sudo udevadm control --reload-rules && sudo udevadm trigger
+>   ```
 
 ##### 3. Install Rust Toolchain
 Install the official Rust toolchain (MSRV: Rust 1.75+):
@@ -118,7 +144,7 @@ Windows 11 supports graphical Linux applications via **WSLg**:
    sudo apt install -y ./dist/stakhal_*_amd64.deb
    ```
 3. StakHAL will now appear in your **Windows 11 Start Menu** and can be launched directly from Windows.
-4. To enable ST-Link USB hardware access inside WSL2, install [usbipd-win](https://github.com/dorssel/usbipd-win):
+4. To enable ST-Link or USB DFU hardware access inside WSL2, install [usbipd-win](https://github.com/dorssel/usbipd-win):
    ```powershell
    usbipd list
    usbipd bind --busid <bus-id>
@@ -134,7 +160,8 @@ Windows 11 supports graphical Linux applications via **WSLg**:
              mingw-w64-ucrt-x86_64-rust \
              mingw-w64-ucrt-x86_64-arm-none-eabi-gcc \
              mingw-w64-ucrt-x86_64-cmake \
-             mingw-w64-ucrt-x86_64-ninja
+             mingw-w64-ucrt-x86_64-ninja \
+             mingw-w64-ucrt-x86_64-dfu-util
    ```
 3. Install [ST-Link Tools for Windows](https://github.com/stlink-org/stlink/releases) and ensure `st-flash.exe` and `st-info.exe` are on `PATH`.
 
@@ -166,19 +193,25 @@ The project is structured as a Cargo workspace:
 
 ```
 StakHAL/
+├── packaging/            # Debian packaging scripts, desktop entry, udev rules
+│   ├── 49-stakhal-dfu.rules # USB DFU udev rule (0483:df11)
+│   └── build_deb.sh      # dpkg-deb packaging pipeline
+│
 ├── stakhal-core/         # Pure Rust headless core engine
 │   ├── src/
 │   │   ├── ir/           # Common data models and project schema
 │   │   ├── ioc/          # CubeMX .ioc discovery and property parser
 │   │   ├── source/       # C AST marker scanner, PV extraction, usage finder
 │   │   ├── graph/        # State machine discovery, Sugiyama & swimlane layout
-│   │   └── nucleo_pinout/# STM32 Nucleo board connector pin mapping tables
+│   │   ├── board.rs      # Target board abstraction, BoardDef, and auto-detection
+│   │   ├── blackpill_pinout.rs # STM32F411CEU6 Black Pill connector pin tables & rules
+│   │   └── nucleo_pinout.rs    # STM32 NUCLEO-F446RE connector pin tables & rules
 │   └── tests/            # Integration and regression test fixtures
 │
 ├── stakhal-ui/           # Native GTK4 / Libadwaita desktop application
 │   └── src/
-│       ├── toolchain/    # Makefile, CMake, Ninja runners, probe detection, st-flash, serial port
-│       ├── ui/           # Main panel, State diagram, Nucleo pinout, Serial monitor
+│       ├── toolchain/    # Build systems, ST-Link & DFU flashers, probe detection, serial
+│       ├── ui/           # Main panel, State diagram, Board pinout, Serial monitor
 │       └── state.rs      # Reactive application state
 │
 └── Cargo.toml            # Workspace manifest
@@ -189,5 +222,3 @@ StakHAL/
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-
