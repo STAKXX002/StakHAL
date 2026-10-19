@@ -1,3 +1,5 @@
+#![allow(clippy::let_unit_value)]
+
 use crate::state::{AppState, AppWidgets};
 use crate::ui::tokens;
 use gtk4::cairo;
@@ -948,13 +950,8 @@ pub fn get_active_pin_highlights(
 
         if let Some(loc) = board_def.lookup_pin(mcu_pin) {
             if let Some((conn, pin_num)) = loc.morpho {
-                let static_conn = match conn {
-                    "CN7" => "CN7",
-                    "CN10" => "CN10",
-                    _ => conn,
-                };
                 map.insert(
-                    (static_conn, pin_num),
+                    (conn, pin_num),
                     PinHighlightInfo {
                         signal: signal.clone(),
                         label: label.clone(),
@@ -964,15 +961,8 @@ pub fn get_active_pin_highlights(
                 );
             }
             if let Some((conn, pin_num, _label)) = loc.arduino {
-                let static_conn = match conn {
-                    "CN5" => "CN5",
-                    "CN6" => "CN6",
-                    "CN8" => "CN8",
-                    "CN9" => "CN9",
-                    _ => conn,
-                };
                 map.insert(
-                    (static_conn, pin_num),
+                    (conn, pin_num),
                     PinHighlightInfo {
                         signal: signal.clone(),
                         label: label.clone(),
@@ -982,14 +972,8 @@ pub fn get_active_pin_highlights(
                 );
             }
             if let Some((conn, pin_num, _label)) = loc.header {
-                let static_conn = match conn {
-                    "Left" => "Left",
-                    "Right" => "Right",
-                    "SWD" => "SWD",
-                    _ => conn,
-                };
                 map.insert(
-                    (static_conn, pin_num),
+                    (conn, pin_num),
                     PinHighlightInfo {
                         signal: signal.clone(),
                         label: label.clone(),
@@ -1021,63 +1005,106 @@ pub fn get_pin_cell_rect(
     let board_w = cw - 2.0 * margin_x;
     let board_h = ch - 2.0 * margin_y;
 
-    let pad_x = 24.0;
-    let cell_gap = 4.0;
-    let cell_w = ((board_w - 2.0 * pad_x - 36.0) / 7.2).clamp(135.0, 240.0);
-
-    let row_start_y = board_y + 105.0;
-    let avail_h = board_h - 145.0;
-    let row_h = (avail_h / 19.0).clamp(22.0, 42.0);
-    let cell_h = (row_h - 4.0).clamp(18.0, 36.0);
-
-    let col_cn7_0 = board_x + pad_x;
-    let col_cn7_1 = col_cn7_0 + cell_w + cell_gap;
-    let col_cn6 = col_cn7_1 + cell_w + 16.0;
-
-    let col_cn10_1 = board_x + board_w - pad_x - cell_w;
-    let col_cn10_0 = col_cn10_1 - cell_w - cell_gap;
-    let col_cn5 = col_cn10_0 - 16.0 - cell_w;
-
     match conn_name {
-        "CN7" => {
-            let r = pin_idx / 2;
-            let c = pin_idx % 2;
-            let cell_x = if c == 0 { col_cn7_0 } else { col_cn7_1 };
-            let cell_y = row_start_y + (r as f64) * row_h;
-            (cell_x, cell_y, cell_w, cell_h)
+        "CN7" | "CN6" | "CN8" | "CN10" | "CN5" | "CN9" => {
+            let pad_x = 24.0;
+            let cell_gap = 4.0;
+            let cell_w = ((board_w - 2.0 * pad_x - 36.0) / 7.2).clamp(135.0, 240.0);
+
+            let row_start_y = board_y + 105.0;
+            let avail_h = board_h - 145.0;
+            let row_h = (avail_h / 19.0).clamp(22.0, 42.0);
+            let cell_h = (row_h - 4.0).clamp(18.0, 36.0);
+
+            let col_cn7_0 = board_x + pad_x;
+            let col_cn7_1 = col_cn7_0 + cell_w + cell_gap;
+            let col_cn6 = col_cn7_1 + cell_w + 16.0;
+
+            let col_cn10_1 = board_x + board_w - pad_x - cell_w;
+            let col_cn10_0 = col_cn10_1 - cell_w - cell_gap;
+            let col_cn5 = col_cn10_0 - 16.0 - cell_w;
+
+            match conn_name {
+                "CN7" => {
+                    let r = pin_idx / 2;
+                    let c = pin_idx % 2;
+                    let cell_x = if c == 0 { col_cn7_0 } else { col_cn7_1 };
+                    let cell_y = row_start_y + (r as f64) * row_h;
+                    (cell_x, cell_y, cell_w, cell_h)
+                }
+                "CN6" => {
+                    let r = 4 + pin_idx;
+                    let cell_x = col_cn6;
+                    let cell_y = row_start_y + (r as f64) * row_h;
+                    (cell_x, cell_y, cell_w, cell_h)
+                }
+                "CN8" => {
+                    let r = 13 + pin_idx;
+                    let cell_x = col_cn6;
+                    let cell_y = row_start_y + (r as f64) * row_h;
+                    (cell_x, cell_y, cell_w, cell_h)
+                }
+                "CN10" => {
+                    let r = pin_idx / 2;
+                    let c = pin_idx % 2;
+                    let cell_x = if c == 0 { col_cn10_0 } else { col_cn10_1 };
+                    let cell_y = row_start_y + (r as f64) * row_h;
+                    (cell_x, cell_y, cell_w, cell_h)
+                }
+                "CN5" => {
+                    let r = 9 - pin_idx;
+                    let cell_x = col_cn5;
+                    let cell_y = row_start_y + (r as f64) * row_h;
+                    (cell_x, cell_y, cell_w, cell_h)
+                }
+                "CN9" => {
+                    let r = 18 - pin_idx;
+                    let cell_x = col_cn5;
+                    let cell_y = row_start_y + (r as f64) * row_h;
+                    (cell_x, cell_y, cell_w, cell_h)
+                }
+                _ => (0.0, 0.0, cell_w, cell_h),
+            }
         }
-        "CN6" => {
-            let r = 4 + pin_idx;
-            let cell_x = col_cn6;
-            let cell_y = row_start_y + (r as f64) * row_h;
-            (cell_x, cell_y, cell_w, cell_h)
+        "Left" | "Right" | "SWD" => {
+            let pad_x = 32.0;
+            let cell_w = ((board_w - 2.0 * pad_x - 220.0) / 2.0).clamp(160.0, 260.0);
+
+            let row_start_y = board_y + 105.0;
+            let avail_h = board_h - 150.0;
+            let row_h = (avail_h / 20.0).clamp(20.0, 38.0);
+            let cell_h = (row_h - 3.0).clamp(17.0, 34.0);
+
+            let col_left = board_x + pad_x;
+            let col_right = board_x + board_w - pad_x - cell_w;
+
+            match conn_name {
+                "Left" => {
+                    let cell_x = col_left;
+                    let cell_y = row_start_y + (pin_idx as f64) * row_h;
+                    (cell_x, cell_y, cell_w, cell_h)
+                }
+                "Right" => {
+                    let cell_x = col_right;
+                    let cell_y = row_start_y + (pin_idx as f64) * row_h;
+                    (cell_x, cell_y, cell_w, cell_h)
+                }
+                "SWD" => {
+                    let center_left = col_left + cell_w;
+                    let center_right = col_right;
+                    let center_w = center_right - center_left;
+                    let swd_w = (center_w * 0.70).clamp(200.0, 360.0);
+                    let swd_start_x = center_left + (center_w - swd_w) / 2.0;
+                    let pin_gap = 4.0;
+                    let swd_cell_w = (swd_w - 3.0 * pin_gap) / 4.0;
+                    let cell_x = swd_start_x + (pin_idx as f64) * (swd_cell_w + pin_gap);
+                    let cell_y = row_start_y + 17.5 * row_h;
+                    (cell_x, cell_y, swd_cell_w, cell_h)
+                }
+                _ => (0.0, 0.0, cell_w, cell_h),
+            }
         }
-        "CN8" => {
-            let r = 13 + pin_idx;
-            let cell_x = col_cn6;
-            let cell_y = row_start_y + (r as f64) * row_h;
-            (cell_x, cell_y, cell_w, cell_h)
-        }
-        "CN10" => {
-            let r = pin_idx / 2;
-            let c = pin_idx % 2;
-            let cell_x = if c == 0 { col_cn10_0 } else { col_cn10_1 };
-            let cell_y = row_start_y + (r as f64) * row_h;
-            (cell_x, cell_y, cell_w, cell_h)
-        }
-        "CN5" => {
-            let r = 9 - pin_idx;
-            let cell_x = col_cn5;
-            let cell_y = row_start_y + (r as f64) * row_h;
-            (cell_x, cell_y, cell_w, cell_h)
-        }
-        "CN9" => {
-            let r = 18 - pin_idx;
-            let cell_x = col_cn5;
-            let cell_y = row_start_y + (r as f64) * row_h;
-            (cell_x, cell_y, cell_w, cell_h)
-        }
-        _ => (0.0, 0.0, cell_w, cell_h),
+        _ => (0.0, 0.0, 100.0, 30.0),
     }
 }
 
@@ -1092,6 +1119,32 @@ pub fn draw_nucleo_pinout_canvas(
 }
 
 pub fn draw_nucleo_pinout(
+    cr: &cairo::Context,
+    width: f64,
+    height: f64,
+    state: &Rc<RefCell<AppState>>,
+) {
+    let board_id = {
+        let proj = state.borrow().project.clone();
+        let proj_guard = proj.borrow();
+        proj_guard
+            .loaded_project
+            .as_ref()
+            .and_then(|p| stakhal_core::board::detect_board(&p.meta.mcu_name))
+            .unwrap_or(stakhal_core::board::BoardId::NucleoF446re)
+    };
+
+    match board_id {
+        stakhal_core::board::BoardId::NucleoF446re => {
+            draw_nucleo_f446_board(cr, width, height, state);
+        }
+        stakhal_core::board::BoardId::BlackPillF411ce => {
+            draw_blackpill_f411_board(cr, width, height, state);
+        }
+    }
+}
+
+pub fn draw_nucleo_f446_board(
     cr: &cairo::Context,
     width: f64,
     height: f64,
@@ -1607,9 +1660,8 @@ pub fn draw_nucleo_pinout(
                 get_pin_cell_rect(conn.name, idx, canvas_w, canvas_h);
 
             let is_hl = highlights.get(&(conn.name, p.pin_num));
-            let is_hovered = hovered_pin.map_or(false, |(c_name, p_num)| {
-                c_name == conn.name && *p_num == p.pin_num
-            });
+            let is_hovered = hovered_pin
+                .is_some_and(|(c_name, p_num)| c_name == conn.name && *p_num == p.pin_num);
 
             if let Some(hl_info) = is_hl {
                 let reserved_info = stakhal_core::board::check_reserved(board_id, p.mcu_pin);
@@ -1827,19 +1879,11 @@ pub fn draw_nucleo_pinout(
                 }
 
                 // MCU Pin & Label Text
-                if is_hovered {
-                    cr.set_source_rgb(
-                        tokens::color::TEXT_PRIMARY.0,
-                        tokens::color::TEXT_PRIMARY.1,
-                        tokens::color::TEXT_PRIMARY.2,
-                    );
-                } else {
-                    cr.set_source_rgb(
-                        tokens::color::TEXT_PRIMARY.0,
-                        tokens::color::TEXT_PRIMARY.1,
-                        tokens::color::TEXT_PRIMARY.2,
-                    );
-                }
+                cr.set_source_rgb(
+                    tokens::color::TEXT_PRIMARY.0,
+                    tokens::color::TEXT_PRIMARY.1,
+                    tokens::color::TEXT_PRIMARY.2,
+                );
                 let label_part = match p.default_label {
                     Some(lbl) => format!(" ({})", lbl),
                     None => "".to_string(),
@@ -1912,7 +1956,919 @@ pub fn draw_nucleo_pinout(
         let _ = cr.show_text("Active Elsewhere in Project");
     }
 
-    // 8. FINAL PASS: Compact Floating Tooltip Card - sharp 0px corners, BG_PANEL, 1px hairline border
+    // 8. FINAL PASS: Compact Floating Tooltip Card
+    draw_pinout_tooltip_card(
+        cr,
+        hovered_pin,
+        hovered_mouse,
+        &highlights,
+        layout,
+        board_id,
+        (board_x, board_y, board_w, board_h),
+    );
+}
+
+pub fn draw_blackpill_f411_board(
+    cr: &cairo::Context,
+    width: f64,
+    height: f64,
+    state: &Rc<RefCell<AppState>>,
+) {
+    let (hovered_pin, hovered_mouse, is_filtering_module) = state.borrow().with_canvas_state(|c| {
+        (
+            c.hovered_pinout_pin.clone(),
+            c.hovered_pinout_mouse,
+            c.selected_pinout_module.is_some(),
+        )
+    });
+    let highlights = get_active_pin_highlights(&state.borrow());
+    let hovered_pin = hovered_pin.as_ref();
+
+    let board_id = stakhal_core::board::BoardId::BlackPillF411ce;
+    let layout = BoardLayout::for_board(board_id);
+
+    let active_conflicts: Vec<(&'static str, &stakhal_core::nucleo_pinout::ReservedPin)> = {
+        let mut list = Vec::new();
+        let proj = Rc::clone(&state.borrow().project);
+        let proj_guard = proj.borrow();
+        if let Some(project) = &proj_guard.loaded_project {
+            for pin_cfg in &project.pins {
+                if let Some(res) = stakhal_core::board::check_reserved(board_id, &pin_cfg.pin) {
+                    if !list.iter().any(|(p, _)| *p == res.mcu_pin) {
+                        list.push((res.mcu_pin, res));
+                    }
+                }
+            }
+        }
+        list
+    };
+
+    let canvas_w = width.max(800.0);
+    let canvas_h = height.max(600.0);
+
+    let margin_x = (canvas_w * 0.025).max(16.0);
+    let margin_y = (canvas_h * 0.035).max(20.0);
+
+    let board_x = margin_x;
+    let board_y = margin_y;
+    let board_w = canvas_w - 2.0 * margin_x;
+    let board_h = canvas_h - 2.0 * margin_y;
+
+    let pad_x = 32.0;
+    let cell_w = ((board_w - 2.0 * pad_x - 220.0) / 2.0).clamp(160.0, 260.0);
+
+    let row_start_y = board_y + 105.0;
+    let avail_h = board_h - 150.0;
+    let row_h = (avail_h / 20.0).clamp(20.0, 38.0);
+
+    let col_left = board_x + pad_x;
+    let col_right = board_x + board_w - pad_x - cell_w;
+
+    // Canvas Background
+    cr.set_source_rgb(
+        tokens::color::BG_VOID.0,
+        tokens::color::BG_VOID.1,
+        tokens::color::BG_VOID.2,
+    );
+    cr.rectangle(0.0, 0.0, canvas_w, canvas_h);
+    let _ = cr.fill();
+
+    // 1. Board Silhouette (PCB Outline) - Surface BG_PANEL, hairline border BORDER_HAIR
+    cr.set_source_rgb(
+        tokens::color::BG_PANEL.0,
+        tokens::color::BG_PANEL.1,
+        tokens::color::BG_PANEL.2,
+    );
+    cr.rectangle(board_x, board_y, board_w, board_h);
+    let _ = cr.fill_preserve();
+    cr.set_source_rgb(
+        tokens::color::BORDER_HAIR.0,
+        tokens::color::BORDER_HAIR.1,
+        tokens::color::BORDER_HAIR.2,
+    );
+    cr.set_line_width(tokens::shape::BORDER_WIDTH_HAIR);
+    let _ = cr.stroke();
+
+    // Subtle PCB Grid Accent Texture Lines
+    cr.set_source_rgba(
+        tokens::color::BORDER_HAIR.0,
+        tokens::color::BORDER_HAIR.1,
+        tokens::color::BORDER_HAIR.2,
+        0.25,
+    );
+    cr.set_line_width(tokens::shape::BORDER_WIDTH_HAIR);
+    let mut gy = board_y + 40.0;
+    while gy < board_y + board_h {
+        let _ = cr.move_to(board_x + 10.0, gy);
+        let _ = cr.line_to(board_x + board_w - 10.0, gy);
+        let _ = cr.stroke();
+        gy += 40.0;
+    }
+
+    // 2. USB-C Receptacle Notch on Top Edge
+    let usb_w = 120.0;
+    let usb_h = 24.0;
+    let usb_x = board_x + (board_w - usb_w) / 2.0;
+    let usb_y = board_y + 8.0;
+    cr.set_source_rgb(
+        tokens::color::BG_VOID.0,
+        tokens::color::BG_VOID.1,
+        tokens::color::BG_VOID.2,
+    );
+    cr.rectangle(usb_x, usb_y, usb_w, usb_h);
+    let _ = cr.fill_preserve();
+    cr.set_source_rgb(
+        tokens::color::BORDER_HAIR.0,
+        tokens::color::BORDER_HAIR.1,
+        tokens::color::BORDER_HAIR.2,
+    );
+    cr.set_line_width(tokens::shape::BORDER_WIDTH_HAIR);
+    let _ = cr.stroke();
+
+    cr.select_font_face(
+        tokens::font::CAIRO_MONO,
+        cairo::FontSlant::Normal,
+        cairo::FontWeight::Bold,
+    );
+    cr.set_font_size(9.5);
+    cr.set_source_rgb(
+        tokens::color::TEXT_MUTED.0,
+        tokens::color::TEXT_MUTED.1,
+        tokens::color::TEXT_MUTED.2,
+    );
+    if let Ok(ext) = cr.text_extents("USB-C (DFU / PWR)") {
+        let _ = cr.move_to(usb_x + (usb_w - ext.width()) / 2.0, usb_y + 16.0);
+        let _ = cr.show_text("USB-C (DFU / PWR)");
+    }
+
+    // 3. Board Header Banner Silkscreen - TEXT_PRIMARY title, TEXT_MUTED subtitle
+    cr.select_font_face(
+        tokens::font::CAIRO_SANS,
+        cairo::FontSlant::Normal,
+        cairo::FontWeight::Bold,
+    );
+    cr.set_font_size(16.0);
+    cr.set_source_rgb(
+        tokens::color::TEXT_PRIMARY.0,
+        tokens::color::TEXT_PRIMARY.1,
+        tokens::color::TEXT_PRIMARY.2,
+    );
+    let title_str = layout.title;
+    let title_y = board_y + 54.0;
+    if let Ok(ext) = cr.text_extents(title_str) {
+        let _ = cr.move_to(board_x + (board_w - ext.width()) / 2.0, title_y);
+        let _ = cr.show_text(title_str);
+    }
+
+    cr.select_font_face(
+        tokens::font::CAIRO_MONO,
+        cairo::FontSlant::Normal,
+        cairo::FontWeight::Normal,
+    );
+    cr.set_font_size(10.5);
+    cr.set_source_rgb(
+        tokens::color::TEXT_MUTED.0,
+        tokens::color::TEXT_MUTED.1,
+        tokens::color::TEXT_MUTED.2,
+    );
+    let subtitle_str = layout.subtitle;
+    let subtitle_y = title_y + 20.0;
+    if let Ok(ext) = cr.text_extents(subtitle_str) {
+        let _ = cr.move_to(board_x + (board_w - ext.width()) / 2.0, subtitle_y);
+        let _ = cr.show_text(subtitle_str);
+    }
+
+    // Conflict Banner if any
+    if !active_conflicts.is_empty() {
+        let count = active_conflicts.len();
+        let has_critical = active_conflicts
+            .iter()
+            .any(|(_, r)| r.severity == stakhal_core::nucleo_pinout::ReservedSeverity::Critical);
+        let (cr_r, cr_g, cr_b) = if has_critical {
+            tokens::color::STATE_ERROR
+        } else {
+            tokens::color::STATE_ACTIVE
+        };
+
+        let banner_str = if count == 1 {
+            "! 1 pin conflict detected • see highlighted pins below".to_string()
+        } else {
+            format!(
+                "! {} pin conflicts detected • see highlighted pins below",
+                count
+            )
+        };
+
+        cr.select_font_face(
+            tokens::font::CAIRO_SANS,
+            cairo::FontSlant::Normal,
+            cairo::FontWeight::Bold,
+        );
+        cr.set_font_size(11.0);
+        cr.set_source_rgb(cr_r, cr_g, cr_b);
+        if let Ok(ext) = cr.text_extents(&banner_str) {
+            let _ = cr.move_to(board_x + (board_w - ext.width()) / 2.0, subtitle_y + 18.0);
+            let _ = cr.show_text(&banner_str);
+        }
+    }
+
+    // 4. Center Area Components: HSE Crystal, MCU Chip, LSE Crystal, Buttons & LED
+    let center_left = col_left + cell_w;
+    let center_right = col_right;
+    let center_w = center_right - center_left;
+    let center_x = center_left + center_w / 2.0;
+
+    // A. HSE 25.000 MHz Crystal Box (above MCU)
+    let hse_w = (center_w * 0.40).clamp(110.0, 160.0);
+    let hse_h = 24.0;
+    let hse_x = center_x - hse_w / 2.0;
+    let hse_y = row_start_y + 1.2 * row_h;
+    cr.set_source_rgb(
+        tokens::color::BG_PANEL.0,
+        tokens::color::BG_PANEL.1,
+        tokens::color::BG_PANEL.2,
+    );
+    cr.rectangle(hse_x, hse_y, hse_w, hse_h);
+    let _ = cr.fill_preserve();
+    cr.set_source_rgb(
+        tokens::color::BORDER_HAIR.0,
+        tokens::color::BORDER_HAIR.1,
+        tokens::color::BORDER_HAIR.2,
+    );
+    cr.set_line_width(tokens::shape::BORDER_WIDTH_HAIR);
+    let _ = cr.stroke();
+
+    cr.select_font_face(
+        tokens::font::CAIRO_MONO,
+        cairo::FontSlant::Normal,
+        cairo::FontWeight::Normal,
+    );
+    cr.set_font_size(9.0);
+    cr.set_source_rgb(
+        tokens::color::TEXT_MUTED.0,
+        tokens::color::TEXT_MUTED.1,
+        tokens::color::TEXT_MUTED.2,
+    );
+    if let Ok(ext) = cr.text_extents("HSE 25.000 MHz") {
+        let _ = cr.move_to(hse_x + (hse_w - ext.width()) / 2.0, hse_y + 16.0);
+        let _ = cr.show_text("HSE 25.000 MHz");
+    }
+
+    // B. STM32F411 MCU IC Package (UFQFPN48)
+    let mcu_w = (center_w * 0.55).clamp(110.0, 170.0);
+    let mcu_h = mcu_w;
+    let mcu_x = center_x - mcu_w / 2.0;
+    let mcu_y = row_start_y + 4.5 * row_h;
+
+    cr.set_source_rgb(
+        tokens::color::BG_VOID.0,
+        tokens::color::BG_VOID.1,
+        tokens::color::BG_VOID.2,
+    );
+    cr.rectangle(mcu_x, mcu_y, mcu_w, mcu_h);
+    let _ = cr.fill_preserve();
+    cr.set_source_rgb(
+        tokens::color::BORDER_HAIR.0,
+        tokens::color::BORDER_HAIR.1,
+        tokens::color::BORDER_HAIR.2,
+    );
+    cr.set_line_width(tokens::shape::BORDER_WIDTH_HAIR);
+    let _ = cr.stroke();
+
+    // Orientation dot
+    cr.set_source_rgb(
+        tokens::color::TEXT_MUTED.0,
+        tokens::color::TEXT_MUTED.1,
+        tokens::color::TEXT_MUTED.2,
+    );
+    cr.arc(
+        mcu_x + 12.0,
+        mcu_y + 12.0,
+        3.0,
+        0.0,
+        2.0 * std::f64::consts::PI,
+    );
+    let _ = cr.fill();
+
+    cr.select_font_face(
+        tokens::font::CAIRO_MONO,
+        cairo::FontSlant::Normal,
+        cairo::FontWeight::Bold,
+    );
+    cr.set_font_size(11.0);
+    cr.set_source_rgb(
+        tokens::color::TEXT_PRIMARY.0,
+        tokens::color::TEXT_PRIMARY.1,
+        tokens::color::TEXT_PRIMARY.2,
+    );
+    if let Ok(ext) = cr.text_extents(layout.chip_label) {
+        let _ = cr.move_to(mcu_x + (mcu_w - ext.width()) / 2.0, mcu_y + mcu_h * 0.40);
+        let _ = cr.show_text(layout.chip_label);
+    }
+    cr.set_font_size(10.0);
+    if let Ok(ext) = cr.text_extents(layout.chip_sublabel_1) {
+        let _ = cr.move_to(mcu_x + (mcu_w - ext.width()) / 2.0, mcu_y + mcu_h * 0.55);
+        let _ = cr.show_text(layout.chip_sublabel_1);
+    }
+    cr.set_font_size(9.0);
+    cr.set_source_rgb(
+        tokens::color::TEXT_MUTED.0,
+        tokens::color::TEXT_MUTED.1,
+        tokens::color::TEXT_MUTED.2,
+    );
+    if let Ok(ext) = cr.text_extents(layout.chip_sublabel_2) {
+        let _ = cr.move_to(mcu_x + (mcu_w - ext.width()) / 2.0, mcu_y + mcu_h * 0.70);
+        let _ = cr.show_text(layout.chip_sublabel_2);
+    }
+
+    // C. LSE 32.768 kHz Crystal Box (below MCU)
+    let lse_w = (center_w * 0.40).clamp(110.0, 160.0);
+    let lse_h = 24.0;
+    let lse_x = center_x - lse_w / 2.0;
+    let lse_y = mcu_y + mcu_h + 12.0;
+    cr.set_source_rgb(
+        tokens::color::BG_PANEL.0,
+        tokens::color::BG_PANEL.1,
+        tokens::color::BG_PANEL.2,
+    );
+    cr.rectangle(lse_x, lse_y, lse_w, lse_h);
+    let _ = cr.fill_preserve();
+    cr.set_source_rgb(
+        tokens::color::BORDER_HAIR.0,
+        tokens::color::BORDER_HAIR.1,
+        tokens::color::BORDER_HAIR.2,
+    );
+    cr.set_line_width(tokens::shape::BORDER_WIDTH_HAIR);
+    let _ = cr.stroke();
+
+    cr.select_font_face(
+        tokens::font::CAIRO_MONO,
+        cairo::FontSlant::Normal,
+        cairo::FontWeight::Normal,
+    );
+    cr.set_font_size(9.0);
+    cr.set_source_rgb(
+        tokens::color::TEXT_MUTED.0,
+        tokens::color::TEXT_MUTED.1,
+        tokens::color::TEXT_MUTED.2,
+    );
+    if let Ok(ext) = cr.text_extents("LSE 32.768 kHz") {
+        let _ = cr.move_to(lse_x + (lse_w - ext.width()) / 2.0, lse_y + 16.0);
+        let _ = cr.show_text("LSE 32.768 kHz");
+    }
+
+    // D. Onboard LED (PC13 - active low)
+    let is_led_active = (layout.is_led_active)(&highlights);
+    let led_w = (center_w * 0.45).clamp(120.0, 180.0);
+    let led_h = 28.0;
+    let led_x = center_x - led_w / 2.0;
+    let led_y = lse_y + lse_h + 10.0;
+    cr.set_source_rgb(
+        tokens::color::BG_PANEL.0,
+        tokens::color::BG_PANEL.1,
+        tokens::color::BG_PANEL.2,
+    );
+    cr.rectangle(led_x, led_y, led_w, led_h);
+    let _ = cr.fill_preserve();
+
+    if is_led_active {
+        cr.set_source_rgb(
+            tokens::color::STATE_READY.0,
+            tokens::color::STATE_READY.1,
+            tokens::color::STATE_READY.2,
+        );
+        cr.set_line_width(tokens::shape::BORDER_WIDTH_HAIR);
+        let _ = cr.stroke();
+
+        cr.set_source_rgb(
+            tokens::color::STATE_READY.0,
+            tokens::color::STATE_READY.1,
+            tokens::color::STATE_READY.2,
+        );
+        cr.arc(
+            led_x + 16.0,
+            led_y + led_h / 2.0,
+            5.0,
+            0.0,
+            2.0 * std::f64::consts::PI,
+        );
+        let _ = cr.fill();
+
+        cr.select_font_face(
+            tokens::font::CAIRO_MONO,
+            cairo::FontSlant::Normal,
+            cairo::FontWeight::Bold,
+        );
+        cr.set_font_size(9.5);
+        cr.set_source_rgb(
+            tokens::color::STATE_READY.0,
+            tokens::color::STATE_READY.1,
+            tokens::color::STATE_READY.2,
+        );
+        let _ = cr.move_to(led_x + 28.0, led_y + led_h / 2.0 + 3.5);
+        let _ = cr.show_text("LED PC13 [ON]");
+    } else {
+        cr.set_source_rgb(
+            tokens::color::BORDER_HAIR.0,
+            tokens::color::BORDER_HAIR.1,
+            tokens::color::BORDER_HAIR.2,
+        );
+        cr.set_line_width(tokens::shape::BORDER_WIDTH_HAIR);
+        let _ = cr.stroke();
+
+        cr.set_source_rgb(
+            tokens::color::BORDER_HAIR.0,
+            tokens::color::BORDER_HAIR.1,
+            tokens::color::BORDER_HAIR.2,
+        );
+        cr.arc(
+            led_x + 16.0,
+            led_y + led_h / 2.0,
+            4.0,
+            0.0,
+            2.0 * std::f64::consts::PI,
+        );
+        let _ = cr.fill();
+
+        cr.select_font_face(
+            tokens::font::CAIRO_MONO,
+            cairo::FontSlant::Normal,
+            cairo::FontWeight::Normal,
+        );
+        cr.set_font_size(9.0);
+        cr.set_source_rgb(
+            tokens::color::TEXT_MUTED.0,
+            tokens::color::TEXT_MUTED.1,
+            tokens::color::TEXT_MUTED.2,
+        );
+        let _ = cr.move_to(led_x + 28.0, led_y + led_h / 2.0 + 3.5);
+        let _ = cr.show_text("LED (PC13)");
+    }
+
+    // E. Onboard Buttons: KEY (PA0), NRST, BOOT0
+    let btn_row_y = led_y + led_h + 10.0;
+    let btn_h = 24.0;
+    let btn_w = (led_w - 8.0) / 3.0;
+
+    // KEY button (PA0)
+    let is_key_active = highlights.contains_key(&("Left", 15));
+    cr.set_source_rgb(
+        tokens::color::BG_PANEL.0,
+        tokens::color::BG_PANEL.1,
+        tokens::color::BG_PANEL.2,
+    );
+    cr.rectangle(led_x, btn_row_y, btn_w, btn_h);
+    let _ = cr.fill_preserve();
+    if is_key_active {
+        cr.set_source_rgb(
+            tokens::color::STATE_READY.0,
+            tokens::color::STATE_READY.1,
+            tokens::color::STATE_READY.2,
+        );
+    } else {
+        cr.set_source_rgb(
+            tokens::color::BORDER_HAIR.0,
+            tokens::color::BORDER_HAIR.1,
+            tokens::color::BORDER_HAIR.2,
+        );
+    }
+    cr.set_line_width(tokens::shape::BORDER_WIDTH_HAIR);
+    let _ = cr.stroke();
+
+    cr.select_font_face(
+        tokens::font::CAIRO_SANS,
+        cairo::FontSlant::Normal,
+        cairo::FontWeight::Bold,
+    );
+    cr.set_font_size(8.5);
+    if is_key_active {
+        cr.set_source_rgb(
+            tokens::color::STATE_READY.0,
+            tokens::color::STATE_READY.1,
+            tokens::color::STATE_READY.2,
+        );
+    } else {
+        cr.set_source_rgb(
+            tokens::color::TEXT_PRIMARY.0,
+            tokens::color::TEXT_PRIMARY.1,
+            tokens::color::TEXT_PRIMARY.2,
+        );
+    }
+    let _ = cr.move_to(led_x + 4.0, btn_row_y + btn_h / 2.0 + 3.0);
+    let _ = cr.show_text("KEY PA0");
+
+    // BOOT0 button
+    let boot_x = led_x + btn_w + 4.0;
+    cr.set_source_rgb(
+        tokens::color::BG_PANEL.0,
+        tokens::color::BG_PANEL.1,
+        tokens::color::BG_PANEL.2,
+    );
+    cr.rectangle(boot_x, btn_row_y, btn_w, btn_h);
+    let _ = cr.fill_preserve();
+    cr.set_source_rgb(
+        tokens::color::BORDER_HAIR.0,
+        tokens::color::BORDER_HAIR.1,
+        tokens::color::BORDER_HAIR.2,
+    );
+    cr.set_line_width(tokens::shape::BORDER_WIDTH_HAIR);
+    let _ = cr.stroke();
+    cr.set_source_rgb(
+        tokens::color::TEXT_MUTED.0,
+        tokens::color::TEXT_MUTED.1,
+        tokens::color::TEXT_MUTED.2,
+    );
+    let _ = cr.move_to(boot_x + 4.0, btn_row_y + btn_h / 2.0 + 3.0);
+    let _ = cr.show_text("BOOT0");
+
+    // NRST button
+    let nrst_x = boot_x + btn_w + 4.0;
+    cr.set_source_rgb(
+        tokens::color::BG_PANEL.0,
+        tokens::color::BG_PANEL.1,
+        tokens::color::BG_PANEL.2,
+    );
+    cr.rectangle(nrst_x, btn_row_y, btn_w, btn_h);
+    let _ = cr.fill_preserve();
+    cr.set_source_rgb(
+        tokens::color::BORDER_HAIR.0,
+        tokens::color::BORDER_HAIR.1,
+        tokens::color::BORDER_HAIR.2,
+    );
+    cr.set_line_width(tokens::shape::BORDER_WIDTH_HAIR);
+    let _ = cr.stroke();
+    cr.set_source_rgb(
+        tokens::color::TEXT_MUTED.0,
+        tokens::color::TEXT_MUTED.1,
+        tokens::color::TEXT_MUTED.2,
+    );
+    let _ = cr.move_to(nrst_x + 4.0, btn_row_y + btn_h / 2.0 + 3.0);
+    let _ = cr.show_text("NRST");
+
+    // 5. Draw Connector Header Titles & Active Counts
+    for conn in layout.connectors {
+        let (cell_x, cell_y, cell_w, _cell_h) = get_pin_cell_rect(conn.name, 0, canvas_w, canvas_h);
+        let hy = cell_y - 8.0;
+
+        let active_count = conn
+            .pins
+            .iter()
+            .filter(|p| highlights.contains_key(&(conn.name, p.pin_num)))
+            .count();
+
+        let (tag, type_title) = match conn.name {
+            "Left" => ("[P1]", "Left 20-Pin Edge Header"),
+            "Right" => ("[P2]", "Right 20-Pin Edge Header"),
+            "SWD" => ("[P3]", "SWD 4-Pin Debug Header"),
+            _ => ("", ""),
+        };
+
+        let header_text = format!(
+            "{} {} • {} ({} active)",
+            conn.name, tag, type_title, active_count
+        );
+
+        cr.select_font_face(
+            tokens::font::CAIRO_MONO,
+            cairo::FontSlant::Normal,
+            cairo::FontWeight::Bold,
+        );
+        cr.set_font_size(10.5);
+        cr.set_source_rgb(
+            tokens::color::TEXT_PRIMARY.0,
+            tokens::color::TEXT_PRIMARY.1,
+            tokens::color::TEXT_PRIMARY.2,
+        );
+
+        if conn.name == "Right" {
+            let right_edge = col_right + cell_w;
+            if let Ok(ext) = cr.text_extents(&header_text) {
+                let hx = right_edge - ext.width();
+                let _ = cr.move_to(hx, hy);
+                let _ = cr.show_text(&header_text);
+            }
+        } else if conn.name == "SWD" {
+            if let Ok(ext) = cr.text_extents(&header_text) {
+                let hx = center_x - ext.width() / 2.0;
+                let _ = cr.move_to(hx, hy);
+                let _ = cr.show_text(&header_text);
+            }
+        } else {
+            let _ = cr.move_to(cell_x, hy);
+            let _ = cr.show_text(&header_text);
+        }
+    }
+
+    // 6. Draw Pin Cells for All Connectors
+    for conn in layout.connectors {
+        for (idx, p) in conn.pins.iter().enumerate() {
+            let (cell_x, cell_y, cell_w, cell_h) =
+                get_pin_cell_rect(conn.name, idx, canvas_w, canvas_h);
+
+            let is_hl = highlights.get(&(conn.name, p.pin_num));
+            let is_hovered = hovered_pin
+                .is_some_and(|(c_name, p_num)| c_name == conn.name && *p_num == p.pin_num);
+
+            if let Some(hl_info) = is_hl {
+                let reserved_info = stakhal_core::board::check_reserved(board_id, p.mcu_pin);
+                let (hl_r, hl_g, hl_b) = match reserved_info {
+                    Some(res) => match res.severity {
+                        stakhal_core::nucleo_pinout::ReservedSeverity::Critical => {
+                            tokens::color::STATE_ERROR
+                        }
+                        stakhal_core::nucleo_pinout::ReservedSeverity::Caution => {
+                            tokens::color::STATE_ACTIVE
+                        }
+                    },
+                    None => tokens::color::STATE_READY,
+                };
+
+                cr.set_source_rgb(
+                    tokens::color::BG_PANEL.0,
+                    tokens::color::BG_PANEL.1,
+                    tokens::color::BG_PANEL.2,
+                );
+                cr.rectangle(cell_x, cell_y, cell_w, cell_h);
+                let _ = cr.fill_preserve();
+
+                if is_hovered {
+                    cr.set_source_rgb(
+                        tokens::color::ACCENT.0,
+                        tokens::color::ACCENT.1,
+                        tokens::color::ACCENT.2,
+                    );
+                } else if hl_info.is_muted {
+                    cr.set_source_rgba(hl_r, hl_g, hl_b, 0.35);
+                } else {
+                    cr.set_source_rgb(hl_r, hl_g, hl_b);
+                }
+                cr.set_line_width(tokens::shape::BORDER_WIDTH_HAIR);
+                let _ = cr.stroke();
+
+                let badge_w = (cell_w * 0.16).clamp(24.0, 32.0);
+                if hl_info.is_muted {
+                    cr.set_source_rgb(
+                        tokens::color::BG_VOID.0,
+                        tokens::color::BG_VOID.1,
+                        tokens::color::BG_VOID.2,
+                    );
+                    cr.rectangle(cell_x + 3.0, cell_y + 3.0, badge_w, cell_h - 6.0);
+                    let _ = cr.fill_preserve();
+                    cr.set_source_rgba(hl_r, hl_g, hl_b, 0.35);
+                    cr.set_line_width(tokens::shape::BORDER_WIDTH_HAIR);
+                    let _ = cr.stroke();
+
+                    cr.select_font_face(
+                        tokens::font::CAIRO_MONO,
+                        cairo::FontSlant::Normal,
+                        cairo::FontWeight::Normal,
+                    );
+                    cr.set_font_size(9.5);
+                    cr.set_source_rgb(
+                        tokens::color::TEXT_MUTED.0,
+                        tokens::color::TEXT_MUTED.1,
+                        tokens::color::TEXT_MUTED.2,
+                    );
+                } else {
+                    cr.set_source_rgb(hl_r, hl_g, hl_b);
+                    cr.rectangle(cell_x + 3.0, cell_y + 3.0, badge_w, cell_h - 6.0);
+                    let _ = cr.fill();
+
+                    cr.select_font_face(
+                        tokens::font::CAIRO_MONO,
+                        cairo::FontSlant::Normal,
+                        cairo::FontWeight::Bold,
+                    );
+                    cr.set_font_size(9.5);
+                    cr.set_source_rgb(
+                        tokens::color::BG_VOID.0,
+                        tokens::color::BG_VOID.1,
+                        tokens::color::BG_VOID.2,
+                    );
+                }
+
+                let pnum_str = format!("{}", p.pin_num);
+                if let Ok(ext) = cr.text_extents(&pnum_str) {
+                    let tx = cell_x + 3.0 + (badge_w - ext.width()) / 2.0;
+                    let _ = cr.move_to(tx, cell_y + cell_h * 0.64);
+                    let _ = cr.show_text(&pnum_str);
+                }
+
+                cr.set_font_size(9.5);
+                if hl_info.is_muted {
+                    cr.set_source_rgb(
+                        tokens::color::TEXT_MUTED.0,
+                        tokens::color::TEXT_MUTED.1,
+                        tokens::color::TEXT_MUTED.2,
+                    );
+                } else {
+                    cr.set_source_rgb(
+                        tokens::color::TEXT_PRIMARY.0,
+                        tokens::color::TEXT_PRIMARY.1,
+                        tokens::color::TEXT_PRIMARY.2,
+                    );
+                }
+                let mcu_pin_x = cell_x + badge_w + 8.0;
+                let _ = cr.move_to(mcu_pin_x, cell_y + cell_h * 0.64);
+                let _ = cr.show_text(p.mcu_pin);
+
+                let mcu_ext_w = cr
+                    .text_extents(p.mcu_pin)
+                    .map(|e| e.width())
+                    .unwrap_or(24.0);
+
+                let primary_text = match &hl_info.label {
+                    Some(lbl) => {
+                        if lbl.ends_with("_Pin") {
+                            lbl.clone()
+                        } else {
+                            format!("{}_Pin", lbl)
+                        }
+                    }
+                    None => hl_info.signal.clone(),
+                };
+
+                if hl_info.is_muted {
+                    cr.select_font_face(
+                        tokens::font::CAIRO_MONO,
+                        cairo::FontSlant::Normal,
+                        cairo::FontWeight::Normal,
+                    );
+                    cr.set_font_size(9.0);
+                    cr.set_source_rgb(
+                        tokens::color::TEXT_MUTED.0,
+                        tokens::color::TEXT_MUTED.1,
+                        tokens::color::TEXT_MUTED.2,
+                    );
+                } else {
+                    cr.select_font_face(
+                        tokens::font::CAIRO_MONO,
+                        cairo::FontSlant::Normal,
+                        cairo::FontWeight::Bold,
+                    );
+                    cr.set_font_size(9.0);
+                    cr.set_source_rgb(hl_r, hl_g, hl_b);
+                }
+                if let Ok(ext) = cr.text_extents(&primary_text) {
+                    let min_x = mcu_pin_x + mcu_ext_w + 6.0;
+                    let right_x = cell_x + cell_w - ext.width() - 6.0;
+                    let text_x = right_x.max(min_x);
+                    let _ = cr.move_to(text_x, cell_y + cell_h * 0.64);
+                    let _ = cr.show_text(&primary_text);
+                }
+            } else {
+                cr.set_source_rgb(
+                    tokens::color::BG_PANEL.0,
+                    tokens::color::BG_PANEL.1,
+                    tokens::color::BG_PANEL.2,
+                );
+                cr.rectangle(cell_x, cell_y, cell_w, cell_h);
+                let _ = cr.fill_preserve();
+
+                if is_hovered {
+                    cr.set_source_rgb(
+                        tokens::color::ACCENT.0,
+                        tokens::color::ACCENT.1,
+                        tokens::color::ACCENT.2,
+                    );
+                } else {
+                    cr.set_source_rgb(
+                        tokens::color::BORDER_HAIR.0,
+                        tokens::color::BORDER_HAIR.1,
+                        tokens::color::BORDER_HAIR.2,
+                    );
+                }
+                cr.set_line_width(tokens::shape::BORDER_WIDTH_HAIR);
+                let _ = cr.stroke();
+
+                let badge_w = (cell_w * 0.16).clamp(24.0, 32.0);
+                cr.set_source_rgb(
+                    tokens::color::BG_VOID.0,
+                    tokens::color::BG_VOID.1,
+                    tokens::color::BG_VOID.2,
+                );
+                cr.rectangle(cell_x + 4.0, cell_y + 4.0, badge_w, cell_h - 8.0);
+                let _ = cr.fill();
+
+                cr.select_font_face(
+                    tokens::font::CAIRO_MONO,
+                    cairo::FontSlant::Normal,
+                    cairo::FontWeight::Normal,
+                );
+                cr.set_font_size(9.5);
+                if is_hovered {
+                    cr.set_source_rgb(
+                        tokens::color::TEXT_PRIMARY.0,
+                        tokens::color::TEXT_PRIMARY.1,
+                        tokens::color::TEXT_PRIMARY.2,
+                    );
+                } else {
+                    cr.set_source_rgb(
+                        tokens::color::TEXT_MUTED.0,
+                        tokens::color::TEXT_MUTED.1,
+                        tokens::color::TEXT_MUTED.2,
+                    );
+                }
+                let pnum_str = format!("{}", p.pin_num);
+                if let Ok(ext) = cr.text_extents(&pnum_str) {
+                    let tx = cell_x + 4.0 + (badge_w - ext.width()) / 2.0;
+                    let _ = cr.move_to(tx, cell_y + cell_h * 0.60);
+                    let _ = cr.show_text(&pnum_str);
+                }
+
+                let label_part = match p.default_label {
+                    Some(lbl) => format!(" ({})", lbl),
+                    None => "".to_string(),
+                };
+                let left_str = format!("{}{}", p.mcu_pin, label_part);
+                let text_start_x = cell_x + badge_w + 8.0;
+                let _ = cr.move_to(text_start_x, cell_y + cell_h * 0.60);
+                let _ = cr.show_text(&left_str);
+            }
+        }
+    }
+
+    // 7. Footer Legend Bar inside Board Outline
+    let legend_y = board_y + board_h - 28.0;
+    cr.select_font_face(
+        tokens::font::CAIRO_SANS,
+        cairo::FontSlant::Normal,
+        cairo::FontWeight::Bold,
+    );
+    cr.set_font_size(10.0);
+
+    let leg_x = board_x + (board_w * 0.02).max(16.0);
+
+    cr.set_source_rgb(
+        tokens::color::STATE_READY.0,
+        tokens::color::STATE_READY.1,
+        tokens::color::STATE_READY.2,
+    );
+    cr.rectangle(leg_x, legend_y, 14.0, 14.0);
+    let _ = cr.fill();
+
+    cr.set_source_rgb(
+        tokens::color::TEXT_PRIMARY.0,
+        tokens::color::TEXT_PRIMARY.1,
+        tokens::color::TEXT_PRIMARY.2,
+    );
+    let _ = cr.move_to(leg_x + 22.0, legend_y + 11.0);
+    let active_label = if is_filtering_module {
+        "Active in Module"
+    } else {
+        "Active Signal in Loaded Project"
+    };
+    let _ = cr.show_text(active_label);
+
+    if is_filtering_module {
+        let leg_x2 = leg_x + 150.0;
+        cr.set_source_rgb(
+            tokens::color::BG_PANEL.0,
+            tokens::color::BG_PANEL.1,
+            tokens::color::BG_PANEL.2,
+        );
+        cr.rectangle(leg_x2, legend_y, 14.0, 14.0);
+        let _ = cr.fill_preserve();
+        cr.set_source_rgba(
+            tokens::color::STATE_READY.0,
+            tokens::color::STATE_READY.1,
+            tokens::color::STATE_READY.2,
+            0.35,
+        );
+        cr.set_line_width(tokens::shape::BORDER_WIDTH_HAIR);
+        let _ = cr.stroke();
+
+        cr.set_source_rgb(
+            tokens::color::TEXT_MUTED.0,
+            tokens::color::TEXT_MUTED.1,
+            tokens::color::TEXT_MUTED.2,
+        );
+        let _ = cr.move_to(leg_x2 + 22.0, legend_y + 11.0);
+        let _ = cr.show_text("Active Elsewhere in Project");
+    }
+
+    // 8. Tooltip card
+    draw_pinout_tooltip_card(
+        cr,
+        hovered_pin,
+        hovered_mouse,
+        &highlights,
+        layout,
+        board_id,
+        (board_x, board_y, board_w, board_h),
+    );
+}
+
+fn draw_pinout_tooltip_card(
+    cr: &cairo::Context,
+    hovered_pin: Option<&(String, u8)>,
+    hovered_mouse: Option<(f64, f64)>,
+    highlights: &HashMap<(&'static str, u8), PinHighlightInfo>,
+    layout: &BoardLayout,
+    board_id: stakhal_core::board::BoardId,
+    board_bounds: (f64, f64, f64, f64),
+) {
+    let (board_x, board_y, board_w, board_h) = board_bounds;
     if let (Some((conn_name, pin_num)), Some((mx, my))) = (hovered_pin, hovered_mouse) {
         if let Some(conn) = layout.connectors.iter().find(|c| c.name == conn_name) {
             if let Some(p) = conn.pins.iter().find(|p| p.pin_num == *pin_num) {
@@ -2219,6 +3175,40 @@ mod tests {
                 );
             }
         }
+
+        for conn in BLACKPILL_CONNECTORS {
+            for (idx, p) in conn.pins.iter().enumerate() {
+                let (x, y, w, h) = get_pin_cell_rect(conn.name, idx, 1600.0, 980.0);
+                assert!(
+                    x >= 30.0,
+                    "Black Pill pin cell X {} out of bounds for {} pin {}",
+                    x,
+                    conn.name,
+                    p.pin_num
+                );
+                assert!(
+                    x + w <= 1570.0,
+                    "Black Pill pin cell X+W {} out of bounds for {} pin {}",
+                    x + w,
+                    conn.name,
+                    p.pin_num
+                );
+                assert!(
+                    y >= 30.0,
+                    "Black Pill pin cell Y {} out of bounds for {} pin {}",
+                    y,
+                    conn.name,
+                    p.pin_num
+                );
+                assert!(
+                    y + h <= 960.0,
+                    "Black Pill pin cell Y+H {} out of bounds for {} pin {}",
+                    y + h,
+                    conn.name,
+                    p.pin_num
+                );
+            }
+        }
     }
 
     #[test]
@@ -2357,5 +3347,125 @@ mod tests {
         let rc_state = Rc::new(RefCell::new(hatch_state));
         draw_nucleo_pinout(&cr, 1200.0, 750.0, &rc_state);
         surface.flush();
+    }
+
+    #[test]
+    fn test_draw_blackpill_pinout_canvas_rendering() {
+        let mut surface = cairo::ImageSurface::create(cairo::Format::ARgb32, 1200, 750)
+            .expect("Failed to create surface");
+        let state = Rc::new(RefCell::new(AppState::default()));
+        let bp_project = stakhal_core::ir::schema::Project {
+            meta: stakhal_core::ir::schema::ProjectMeta {
+                name: "test_blackpill".to_string(),
+                mcu_family: "STM32F4".to_string(),
+                mcu_name: "STM32F411CEUx".to_string(),
+                ioc_path: std::path::PathBuf::from("test.ioc"),
+                main_c_path: std::path::PathBuf::from("main.c"),
+            },
+            pins: vec![
+                stakhal_core::ioc::parser::PinConfig {
+                    pin: "PC13".to_string(),
+                    signal: "GPIO_Output".to_string(),
+                    label: Some("USER_LED".to_string()),
+                    modules: vec!["led".to_string()],
+                },
+                stakhal_core::ioc::parser::PinConfig {
+                    pin: "PA0".to_string(),
+                    signal: "GPIO_Input".to_string(),
+                    label: Some("KEY".to_string()),
+                    modules: vec!["button".to_string()],
+                },
+                stakhal_core::ioc::parser::PinConfig {
+                    pin: "PA13".to_string(),
+                    signal: "SYS_JTMS-SWDIO".to_string(),
+                    label: None,
+                    modules: Vec::new(),
+                },
+            ],
+            peripherals: Vec::new(),
+            user_regions: Vec::new(),
+            loop_body: None,
+            call_graph_edges: Vec::new(),
+            pv_declarations: Vec::new(),
+            state_machines: Vec::new(),
+            modules: vec!["led".to_string(), "button".to_string()],
+        };
+        state.borrow().project.borrow_mut().loaded_project = Some(bp_project);
+
+        {
+            let cr = cairo::Context::new(&surface).expect("Failed to create context");
+            draw_nucleo_pinout(&cr, 1200.0, 750.0, &state);
+            surface.flush();
+        }
+
+        // Deterministic render assertion
+        let mut surface2 = cairo::ImageSurface::create(cairo::Format::ARgb32, 1200, 750)
+            .expect("Failed to create surface 2");
+        {
+            let cr2 = cairo::Context::new(&surface2).expect("Failed to create context 2");
+            draw_nucleo_pinout(&cr2, 1200.0, 750.0, &state);
+            surface2.flush();
+        }
+
+        let data1 = surface.data().expect("Failed to get surface data 1");
+        let data2 = surface2.data().expect("Failed to get surface data 2");
+        assert_eq!(
+            &data1[..],
+            &data2[..],
+            "Black Pill rendering must be deterministic and pixel-identical"
+        );
+        let non_zero_pixels = data1.iter().filter(|&&b| b != 0).count();
+        assert!(
+            non_zero_pixels > 10000,
+            "Black Pill canvas has too few non-zero pixels: {}",
+            non_zero_pixels
+        );
+        drop(data1);
+        drop(data2);
+
+        // Hover over Left-19 (PC13)
+        state.borrow().with_canvas_state_mut(|c| {
+            c.hovered_pinout_pin = Some(("Left".to_string(), 19));
+            c.hovered_pinout_mouse = Some((250.0, 300.0));
+        });
+        {
+            let cr = cairo::Context::new(&surface).expect("Failed to create context");
+            draw_nucleo_pinout(&cr, 1200.0, 750.0, &state);
+            surface.flush();
+        }
+
+        // Hover over SWD-2 (PA14/SWCLK)
+        state.borrow().with_canvas_state_mut(|c| {
+            c.hovered_pinout_pin = Some(("SWD".to_string(), 2));
+            c.hovered_pinout_mouse = Some((600.0, 650.0));
+        });
+        {
+            let cr = cairo::Context::new(&surface).expect("Failed to create context");
+            draw_nucleo_pinout(&cr, 1200.0, 750.0, &state);
+            surface.flush();
+        }
+
+        // Filter by module "led"
+        state.borrow().with_canvas_state_mut(|c| {
+            c.selected_pinout_module = Some("led".to_string());
+            c.hovered_pinout_pin = None;
+            c.hovered_pinout_mouse = None;
+        });
+        let highlights = get_active_pin_highlights(&state.borrow());
+        let led_hl = highlights
+            .get(&("Left", 19))
+            .expect("PC13 highlight missing");
+        assert!(!led_hl.is_muted, "PC13 should be active for 'led' module");
+
+        let key_hl = highlights
+            .get(&("Left", 15))
+            .expect("PA0 highlight missing");
+        assert!(key_hl.is_muted, "PA0 should be muted for 'led' module");
+
+        {
+            let cr = cairo::Context::new(&surface).expect("Failed to create context");
+            draw_nucleo_pinout(&cr, 1200.0, 750.0, &state);
+            surface.flush();
+        }
     }
 }
