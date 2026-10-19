@@ -774,11 +774,28 @@ mod tests {
             load_project(&ioc_path, &main_c_path).expect("Failed to load f446 fixture project");
         assert!(project.meta.mcu_name.to_uppercase().contains("F446"));
 
+        let board = stakhal_core::board::detect_board(&project.meta.mcu_name);
+        assert_eq!(board, Some(stakhal_core::board::BoardId::NucleoF446re));
+        assert!(board.is_some());
+
         let loc = stakhal_core::nucleo_pinout::lookup_pin("PA5");
         assert!(loc.is_some());
         let pin_loc = loc.unwrap();
         assert_eq!(pin_loc.morpho, Some(("CN10", 11)));
         assert_eq!(pin_loc.arduino, Some(("CN5", 6, "D13")));
+
+        // Verify Black Pill board detection also enables pinout button
+        let bp_board = stakhal_core::board::detect_board("STM32F411CEUx");
+        assert_eq!(
+            bp_board,
+            Some(stakhal_core::board::BoardId::BlackPillF411ce)
+        );
+        assert!(bp_board.is_some());
+
+        // Verify unsupported board does NOT enable pinout button
+        let unsupported_board = stakhal_core::board::detect_board("STM32F103C8Tx");
+        assert_eq!(unsupported_board, None);
+        assert!(unsupported_board.is_none());
     }
 
     #[test]

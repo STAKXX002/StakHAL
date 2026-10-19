@@ -186,7 +186,6 @@ pub fn do_load_project(state: &Rc<RefCell<AppState>>, widgets: &Rc<AppWidgets>) 
                 .set_label(active_board_def.display_name);
             widgets.lbl_pinout_hint.set_label(active_board_def.hint);
 
-            let is_f446 = project.meta.mcu_name.to_uppercase().contains("F446");
             let project_modules = project.modules.clone();
 
             // Setup state machines
@@ -260,11 +259,13 @@ pub fn do_load_project(state: &Rc<RefCell<AppState>>, widgets: &Rc<AppWidgets>) 
                     .set_text("No application state machines detected in current project.");
             }
 
-            if is_f446 {
+            if let Some(board_id) = detected_board {
+                let board_def = stakhal_core::board::BoardDef::for_id(board_id);
                 widgets.btn_nucleo_pinout.set_sensitive(true);
-                widgets
-                    .btn_nucleo_pinout
-                    .set_tooltip_text(Some("View Nucleo-F446RE Physical Connector Pinout"));
+                widgets.btn_nucleo_pinout.set_tooltip_text(Some(&format!(
+                    "View {} Physical Connector Pinout",
+                    board_def.display_name
+                )));
 
                 let mut mod_names = vec!["All Modules".to_string()];
                 if project_modules.len() > 1 {
@@ -285,9 +286,9 @@ pub fn do_load_project(state: &Rc<RefCell<AppState>>, widgets: &Rc<AppWidgets>) 
                 });
             } else {
                 widgets.btn_nucleo_pinout.set_sensitive(false);
-                widgets
-                    .btn_nucleo_pinout
-                    .set_tooltip_text(Some("Nucleo Pinout visualizer is F446RE-only for now"));
+                widgets.btn_nucleo_pinout.set_tooltip_text(Some(
+                    "Pinout visualizer supports Nucleo-F446RE and Black Pill F411CE",
+                ));
                 let mod_string_list = gtk4::StringList::new(&["All Modules"]);
                 widgets
                     .combo_pinout_module
@@ -331,9 +332,9 @@ pub fn do_load_project(state: &Rc<RefCell<AppState>>, widgets: &Rc<AppWidgets>) 
 
         Err(err) => {
             widgets.btn_nucleo_pinout.set_sensitive(false);
-            widgets
-                .btn_nucleo_pinout
-                .set_tooltip_text(Some("Nucleo Pinout visualizer is F446RE-only for now"));
+            widgets.btn_nucleo_pinout.set_tooltip_text(Some(
+                "Pinout visualizer supports Nucleo-F446RE and Black Pill F411CE",
+            ));
             let mod_string_list = gtk4::StringList::new(&["All Modules"]);
             widgets
                 .combo_pinout_module
