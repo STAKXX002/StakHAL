@@ -327,8 +327,8 @@ mod tests {
             // PB11 does not exist on UFQFPN48
             assert_ne!(pin, "PB11", "PB11 does not exist on UFQFPN48 package");
             // PC0-PC12 do not exist on UFQFPN48
-            if pin.starts_with("PC") {
-                let num: u8 = pin[2..].parse().expect("valid PC pin number");
+            if let Some(rest) = pin.strip_prefix("PC") {
+                let num: u8 = rest.parse().expect("valid PC pin number");
                 assert!(
                     num >= 13,
                     "PC{} should not exist on UFQFPN48 package (only PC13-PC15 exist)",
