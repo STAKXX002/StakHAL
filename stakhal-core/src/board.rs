@@ -4,6 +4,7 @@
 //! WeAct Studio Black Pill STM32F411CEU6) and provides hardware definitions
 //! including connector layouts, pinout tables, and reserved pin rules.
 
+use crate::blackpill_pinout::BLACKPILL_F411CE_PINOUT;
 use crate::nucleo_pinout::{
     PinLocation, ReservedPin, NUCLEO_F446RE_PINOUT, RESERVED_PINS as NUCLEO_RESERVED_PINS,
 };
@@ -56,7 +57,7 @@ pub static BLACK_PILL_F411CE_DEF: BoardDef = BoardDef {
     display_name: "[ STM32F411 BLACK PILL PHYSICAL CONNECTOR PINOUT ]",
     chip_label: "STM32F411",
     connectors: &["Left", "Right", "SWD"],
-    pin_table: &[],
+    pin_table: BLACKPILL_F411CE_PINOUT,
     reserved_pins: &[],
 };
 

@@ -1,3 +1,4 @@
+pub mod blackpill_pinout;
 pub mod board;
 pub mod graph;
 pub mod ioc;

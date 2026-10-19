@@ -24,6 +24,8 @@ pub struct PinLocation {
     /// Arduino connector name + physical pin number + Arduino label
     /// (e.g. "D13", "A0"), if present there.
     pub arduino: Option<(&'static str, u8, &'static str)>,
+    /// Physical header breakout on boards like Black Pill: (connector_name, pin_number, silkscreen_label).
+    pub header: Option<(&'static str, u8, &'static str)>,
 }
 
 /// Full pinout table for NUCLEO-F446RE. GPIO/peripheral-capable pins only
@@ -35,66 +37,79 @@ pub const NUCLEO_F446RE_PINOUT: &[PinLocation] = &[
         mcu_pin: "PC10",
         morpho: Some(("CN7", 1)),
         arduino: None,
+        header: None,
     },
     PinLocation {
         mcu_pin: "PC11",
         morpho: Some(("CN7", 2)),
         arduino: None,
+        header: None,
     },
     PinLocation {
         mcu_pin: "PC12",
         morpho: Some(("CN7", 3)),
         arduino: None,
+        header: None,
     },
     PinLocation {
         mcu_pin: "PD2",
         morpho: Some(("CN7", 4)),
         arduino: None,
+        header: None,
     },
     PinLocation {
         mcu_pin: "PA13",
         morpho: Some(("CN7", 13)),
         arduino: None,
+        header: None,
     },
     PinLocation {
         mcu_pin: "PA14",
         morpho: Some(("CN7", 15)),
         arduino: None,
+        header: None,
     },
     PinLocation {
         mcu_pin: "PA15",
         morpho: Some(("CN7", 17)),
         arduino: None,
+        header: None,
     },
     PinLocation {
         mcu_pin: "PB7",
         morpho: Some(("CN7", 21)),
         arduino: None,
+        header: None,
     },
     PinLocation {
         mcu_pin: "PC13",
         morpho: Some(("CN7", 23)),
         arduino: None,
+        header: None,
     },
     PinLocation {
         mcu_pin: "PC14",
         morpho: Some(("CN7", 25)),
         arduino: None,
+        header: None,
     },
     PinLocation {
         mcu_pin: "PC15",
         morpho: Some(("CN7", 27)),
         arduino: None,
+        header: None,
     },
     PinLocation {
         mcu_pin: "PH0",
         morpho: Some(("CN7", 29)),
         arduino: None,
+        header: None,
     },
     PinLocation {
         mcu_pin: "PH1",
         morpho: Some(("CN7", 31)),
         arduino: None,
+        header: None,
     },
     // PC2/PC3 (CN7 pins 35/37) are ADC-only breakouts, not general GPIO
     // signals in the .ioc pin-signal sense on this variant; included for
@@ -103,32 +118,38 @@ pub const NUCLEO_F446RE_PINOUT: &[PinLocation] = &[
         mcu_pin: "PC2",
         morpho: Some(("CN7", 35)),
         arduino: None,
+        header: None,
     },
     PinLocation {
         mcu_pin: "PC3",
         morpho: Some(("CN7", 37)),
         arduino: None,
+        header: None,
     },
     // --- Shared between CN7/CN8 (Morpho + Arduino analog) ---
     PinLocation {
         mcu_pin: "PA0",
         morpho: Some(("CN7", 28)),
         arduino: Some(("CN8", 1, "A0")),
+        header: None,
     },
     PinLocation {
         mcu_pin: "PA1",
         morpho: Some(("CN7", 30)),
         arduino: Some(("CN8", 2, "A1")),
+        header: None,
     },
     PinLocation {
         mcu_pin: "PA4",
         morpho: Some(("CN7", 32)),
         arduino: Some(("CN8", 3, "A2")),
+        header: None,
     },
     PinLocation {
         mcu_pin: "PB0",
         morpho: Some(("CN7", 34)),
         arduino: Some(("CN8", 4, "A3")),
+        header: None,
     },
     // PC1/PC0 share pins with PB9/PB8 via solder bridge (SB56/SB51) -
     // PC1/PC0 is the default (as-shipped) routing.
@@ -136,159 +157,190 @@ pub const NUCLEO_F446RE_PINOUT: &[PinLocation] = &[
         mcu_pin: "PC1",
         morpho: Some(("CN7", 36)),
         arduino: Some(("CN8", 5, "A4")),
+        header: None,
     },
     PinLocation {
         mcu_pin: "PC0",
         morpho: Some(("CN7", 38)),
         arduino: Some(("CN8", 6, "A5")),
+        header: None,
     },
     // --- CN10 (Morpho, right) only ---
     PinLocation {
         mcu_pin: "PC9",
         morpho: Some(("CN10", 1)),
         arduino: None,
+        header: None,
     },
     PinLocation {
         mcu_pin: "PC8",
         morpho: Some(("CN10", 2)),
         arduino: None,
+        header: None,
     },
     PinLocation {
         mcu_pin: "PC6",
         morpho: Some(("CN10", 4)),
         arduino: None,
+        header: None,
     },
     PinLocation {
         mcu_pin: "PC5",
         morpho: Some(("CN10", 6)),
         arduino: None,
+        header: None,
     },
     PinLocation {
         mcu_pin: "PA12",
         morpho: Some(("CN10", 12)),
         arduino: None,
+        header: None,
     },
     PinLocation {
         mcu_pin: "PA11",
         morpho: Some(("CN10", 14)),
         arduino: None,
+        header: None,
     },
     PinLocation {
         mcu_pin: "PB12",
         morpho: Some(("CN10", 16)),
         arduino: None,
+        header: None,
     },
     PinLocation {
         mcu_pin: "PB2",
         morpho: Some(("CN10", 22)),
         arduino: None,
+        header: None,
     },
     PinLocation {
         mcu_pin: "PB1",
         morpho: Some(("CN10", 24)),
         arduino: None,
+        header: None,
     },
     PinLocation {
         mcu_pin: "PB15",
         morpho: Some(("CN10", 26)),
         arduino: None,
+        header: None,
     },
     PinLocation {
         mcu_pin: "PB14",
         morpho: Some(("CN10", 28)),
         arduino: None,
+        header: None,
     },
     PinLocation {
         mcu_pin: "PB13",
         morpho: Some(("CN10", 30)),
         arduino: None,
+        header: None,
     },
     PinLocation {
         mcu_pin: "PC4",
         morpho: Some(("CN10", 34)),
         arduino: None,
+        header: None,
     },
     // --- Shared between CN10/CN5 (Morpho + Arduino digital) ---
     PinLocation {
         mcu_pin: "PB8",
         morpho: Some(("CN10", 3)),
         arduino: Some(("CN5", 10, "D15")),
+        header: None,
     },
     PinLocation {
         mcu_pin: "PB9",
         morpho: Some(("CN10", 5)),
         arduino: Some(("CN5", 9, "D14")),
+        header: None,
     },
     PinLocation {
         mcu_pin: "PA5",
         morpho: Some(("CN10", 11)),
         arduino: Some(("CN5", 6, "D13")),
+        header: None,
     },
     PinLocation {
         mcu_pin: "PA6",
         morpho: Some(("CN10", 13)),
         arduino: Some(("CN5", 5, "D12")),
+        header: None,
     },
     PinLocation {
         mcu_pin: "PA7",
         morpho: Some(("CN10", 15)),
         arduino: Some(("CN5", 4, "D11")),
+        header: None,
     },
     PinLocation {
         mcu_pin: "PB6",
         morpho: Some(("CN10", 17)),
         arduino: Some(("CN5", 3, "D10")),
+        header: None,
     },
     PinLocation {
         mcu_pin: "PC7",
         morpho: Some(("CN10", 19)),
         arduino: Some(("CN5", 2, "D9")),
+        header: None,
     },
     PinLocation {
         mcu_pin: "PA9",
         morpho: Some(("CN10", 21)),
         arduino: Some(("CN5", 1, "D8")),
+        header: None,
     },
     // --- Shared between CN10/CN9 (Morpho + Arduino digital) ---
     PinLocation {
         mcu_pin: "PA8",
         morpho: Some(("CN10", 23)),
         arduino: Some(("CN9", 8, "D7")),
+        header: None,
     },
     PinLocation {
         mcu_pin: "PB10",
         morpho: Some(("CN10", 25)),
         arduino: Some(("CN9", 7, "D6")),
+        header: None,
     },
     PinLocation {
         mcu_pin: "PB4",
         morpho: Some(("CN10", 27)),
         arduino: Some(("CN9", 6, "D5")),
+        header: None,
     },
     PinLocation {
         mcu_pin: "PB5",
         morpho: Some(("CN10", 29)),
         arduino: Some(("CN9", 5, "D4")),
+        header: None,
     },
     PinLocation {
         mcu_pin: "PB3",
         morpho: Some(("CN10", 31)),
         arduino: Some(("CN9", 4, "D3")),
+        header: None,
     },
     PinLocation {
         mcu_pin: "PA10",
         morpho: Some(("CN10", 33)),
         arduino: Some(("CN9", 3, "D2")),
+        header: None,
     },
     PinLocation {
         mcu_pin: "PA2",
         morpho: Some(("CN10", 35)),
         arduino: Some(("CN9", 2, "D1")),
+        header: None,
     },
     PinLocation {
         mcu_pin: "PA3",
         morpho: Some(("CN10", 37)),
         arduino: Some(("CN9", 1, "D0")),
+        header: None,
     },
 ];
 
