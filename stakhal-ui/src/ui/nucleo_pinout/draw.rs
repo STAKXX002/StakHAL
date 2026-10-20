@@ -2943,6 +2943,80 @@ pub fn draw_blackpill_f411_board(
     );
 }
 
+/// Computes the bounding rectangle of a connector header's title banner.
+pub fn get_header_title_rect(
+    conn_name: &str,
+    canvas_w: f64,
+    canvas_h: f64,
+) -> (f64, f64, f64, f64) {
+    let top_idx = match conn_name {
+        "CN5" => 9,
+        "CN9" => 7,
+        _ => 0,
+    };
+    let (cell_x, cell_y, cell_w, _cell_h) =
+        get_pin_cell_rect(conn_name, top_idx, canvas_w, canvas_h);
+    let title_y = cell_y - 24.0;
+    let title_h = 24.0;
+
+    let (title_x, title_w) = match conn_name {
+        "Right" | "CN10" => ((cell_x + cell_w - 260.0).max(0.0), 260.0),
+        "SWD" => {
+            let total_swd_w = cell_w * 4.0 + 12.0;
+            (cell_x - 40.0, total_swd_w + 80.0)
+        }
+        _ => (cell_x, 260.0),
+    };
+    (title_x, title_y, title_w, title_h)
+}
+
+/// Computes the floating position of the pin hover tooltip card, ensuring it never covers
+/// the hovered header's title.
+pub fn compute_tooltip_card_rect(
+    mx: f64,
+    my: f64,
+    tt_w: f64,
+    tt_h: f64,
+    conn_name: &str,
+    board_bounds: (f64, f64, f64, f64),
+) -> (f64, f64, f64, f64) {
+    let (board_x, board_y, board_w, board_h) = board_bounds;
+    let canvas_w = board_w + 2.0 * board_x;
+    let canvas_h = board_h + 2.0 * board_y;
+    let title_rect = get_header_title_rect(conn_name, canvas_w, canvas_h);
+
+    let mut tt_x = mx + 12.0;
+    let mut tt_y = my - (tt_h + 6.0);
+
+    if tt_x + tt_w > board_x + board_w - 15.0 {
+        tt_x = (mx - tt_w - 12.0).max(board_x + 15.0);
+    }
+    if tt_y < board_y + 15.0 {
+        tt_y = my + 20.0;
+    }
+    if tt_y + tt_h > board_y + board_h - 15.0 {
+        tt_y = (my - tt_h - 8.0).max(board_y + 15.0);
+    }
+
+    // Ensure tooltip never covers the hovered header's title
+    let (tx, ty, tw, th) = title_rect;
+    let overlaps_title = tt_x < tx + tw && tt_x + tt_w > tx && tt_y < ty + th && tt_y + tt_h > ty;
+    if overlaps_title {
+        let below_y = my + 20.0;
+        if below_y + tt_h <= board_y + board_h - 15.0 {
+            tt_y = below_y;
+        } else if ty - (tt_h + 6.0) >= board_y + 15.0 {
+            tt_y = ty - (tt_h + 6.0);
+        } else if tt_x < tx + tw / 2.0 {
+            tt_x = (tx - tt_w - 12.0).max(board_x + 15.0);
+        } else {
+            tt_x = (tx + tw + 12.0).min(board_x + board_w - tt_w - 15.0);
+        }
+    }
+
+    (tt_x, tt_y, tt_w, tt_h)
+}
+
 fn draw_pinout_tooltip_card(
     cr: &cairo::Context,
     hovered_pin: Option<&(String, u8)>,
@@ -3021,19 +3095,14 @@ fn draw_pinout_tooltip_card(
                 let tt_w = (w1.max(w2).max(w3) + 24.0).max(160.0);
                 let tt_h = if line3.is_some() { 58.0 } else { 42.0 };
 
-                // Compact Floating Position offset near cursor
-                let mut tt_x = mx + 12.0;
-                let mut tt_y = my - (tt_h + 6.0);
-
-                if tt_x + tt_w > board_x + board_w - 15.0 {
-                    tt_x = (mx - tt_w - 12.0).max(board_x + 15.0);
-                }
-                if tt_y < board_y + 15.0 {
-                    tt_y = my + 20.0;
-                }
-                if tt_y + tt_h > board_y + board_h - 15.0 {
-                    tt_y = (my - tt_h - 8.0).max(board_y + 15.0);
-                }
+                let (tt_x, tt_y, tt_w, tt_h) = compute_tooltip_card_rect(
+                    mx,
+                    my,
+                    tt_w,
+                    tt_h,
+                    conn_name,
+                    (board_x, board_y, board_w, board_h),
+                );
 
                 // Card Background BG_PANEL, sharp 0px corners
                 cr.set_source_rgb(
@@ -3620,5 +3689,40 @@ mod tests {
         let cr = cairo::Context::new(&surface).expect("Failed to create context");
         draw_blackpill_f411_board(&cr, 1200.0, 750.0, &state);
         surface.flush();
+    }
+
+    #[test]
+    fn test_tooltip_never_covers_header_title() {
+        let cw: f64 = 1200.0;
+        let ch: f64 = 750.0;
+        let margin_x = (cw * 0.025).max(16.0);
+        let margin_y = (ch * 0.035).max(20.0);
+        let bounds = (margin_x, margin_y, cw - 2.0 * margin_x, ch - 2.0 * margin_y);
+
+        let connectors = [
+            "Left", "Right", "SWD", "CN7", "CN10", "CN6", "CN8", "CN5", "CN9",
+        ];
+        for conn in connectors {
+            let title_rect = get_header_title_rect(conn, cw, ch);
+            let top_idx = match conn {
+                "CN5" => 9,
+                "CN9" => 7,
+                _ => 0,
+            };
+            let (cx, cy, _cw, _ch) = get_pin_cell_rect(conn, top_idx, cw, ch);
+            let hover_x = cx + 20.0;
+            let hover_y = cy + 10.0;
+
+            let (tt_x, tt_y, tt_w, tt_h) =
+                compute_tooltip_card_rect(hover_x, hover_y, 180.0, 58.0, conn, bounds);
+
+            let (tx, ty, tw, th) = title_rect;
+            let overlaps = tt_x < tx + tw && tt_x + tt_w > tx && tt_y < ty + th && tt_y + tt_h > ty;
+            assert!(
+                !overlaps,
+                "Tooltip at ({}, {}, {}, {}) overlaps header title for '{}' at ({}, {}, {}, {})",
+                tt_x, tt_y, tt_w, tt_h, conn, tx, ty, tw, th
+            );
+        }
     }
 }
