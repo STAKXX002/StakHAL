@@ -121,10 +121,8 @@ fn extract_function_name(mut node: tree_sitter::Node, source: &str) -> Option<St
             "function_declarator" | "pointer_declarator" | "parenthesized_declarator" | "array_declarator" => {
                 if let Some(child) = node.child_by_field_name("declarator") {
                     node = child;
-                } else if let Some(child) = node.child(0) {
-                    node = child;
                 } else {
-                    return None;
+                    node = node.child(0)?;
                 }
             }
             _ => {
@@ -172,18 +170,10 @@ fn extract_called_name(mut node: tree_sitter::Node, source: &str) -> Option<Stri
         match node.kind() {
             "identifier" => return Some(source[node.byte_range()].to_string()),
             "parenthesized_expression" => {
-                if let Some(child) = node.child(0) {
-                    node = child;
-                } else {
-                    return None;
-                }
+                node = node.child(0)?;
             }
             "field_expression" => {
-                if let Some(field) = node.child_by_field_name("field") {
-                    node = field;
-                } else {
-                    return None;
-                }
+                node = node.child_by_field_name("field")?;
             }
             _ => return None,
         }

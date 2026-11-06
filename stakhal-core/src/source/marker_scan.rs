@@ -42,10 +42,8 @@ enum MarkerType {
 fn parse_comment_marker(text: &str) -> Option<MarkerType> {
     let inner = if let Some(stripped) = text.strip_prefix("/*") {
         stripped.strip_suffix("*/").unwrap_or(stripped)
-    } else if let Some(stripped) = text.strip_prefix("//") {
-        stripped
     } else {
-        return None;
+        text.strip_prefix("//")?
     };
 
     let trimmed = inner.trim();

@@ -526,10 +526,8 @@ pub(crate) fn extract_ident_name(mut node: Node, source_bytes: &[u8]) -> Option<
             "function_declarator" | "pointer_declarator" | "parenthesized_declarator" | "array_declarator" => {
                 if let Some(child) = node.child_by_field_name("declarator") {
                     node = child;
-                } else if let Some(child) = node.child(0) {
-                    node = child;
                 } else {
-                    return None;
+                    node = node.child(0)?;
                 }
             }
             _ => return None,

@@ -134,7 +134,7 @@ fn find_uart_in_retarget_function(content: &str) -> Option<String> {
 }
 
 /// Finds the index where the body `{` of a function begins
-fn find_function_body<'a>(content: &'a str, fn_name: &str) -> Option<usize> {
+fn find_function_body(content: &str, fn_name: &str) -> Option<usize> {
     let mut search_from = 0;
     while let Some(pos) = content[search_from..].find(fn_name) {
         let abs_pos = search_from + pos;
