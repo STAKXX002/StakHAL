@@ -81,7 +81,7 @@ pub fn discover_state_machines_in_project(main_c_path: &Path) -> Result<Vec<Stat
     if let Ok(entries) = fs::read_dir(src_dir) {
         for entry in entries.flatten() {
             let p = entry.path();
-            if p.is_file() && p.extension().map_or(false, |ext| ext == "c") {
+            if p.is_file() && p.extension().is_some_and(|ext| ext == "c") {
                 c_files.push(p);
             }
         }
@@ -111,7 +111,7 @@ pub fn discover_state_machines_in_project(main_c_path: &Path) -> Result<Vec<Stat
         if let Ok(entries) = fs::read_dir(&dir) {
             for entry in entries.flatten() {
                 let p = entry.path();
-                if p.is_file() && p.extension().map_or(false, |ext| ext == "h") {
+                if p.is_file() && p.extension().is_some_and(|ext| ext == "h") {
                     h_files.push(p);
                 }
             }
@@ -547,10 +547,6 @@ pub(crate) fn extract_function_name(node: Node, source_bytes: &[u8]) -> Option<S
 
 pub(crate) fn find_child_of_kind<'a>(node: Node<'a>, kind: &str) -> Option<Node<'a>> {
     let mut cursor = node.walk();
-    for child in node.children(&mut cursor) {
-        if child.kind() == kind {
-            return Some(child);
-        }
-    }
-    None
+    let result = node.children(&mut cursor).find(|child| child.kind() == kind);
+    result
 }

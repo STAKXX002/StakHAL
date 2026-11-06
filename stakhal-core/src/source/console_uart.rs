@@ -42,10 +42,11 @@ fn collect_c_source_files(main_c_path: &Path) -> Vec<PathBuf> {
         if let Ok(entries) = fs::read_dir(&dir) {
             for entry in entries.flatten() {
                 let p = entry.path();
-                if p.is_file() && p.extension().map_or(false, |ext| ext == "c") {
-                    if !files.contains(&p) {
-                        files.push(p);
-                    }
+                if p.is_file()
+                    && p.extension().is_some_and(|ext| ext == "c")
+                    && !files.contains(&p)
+                {
+                    files.push(p);
                 }
             }
         }
@@ -318,10 +319,12 @@ fn parse_command_table_entries(content: &str) -> Vec<String> {
                             .chars()
                             .take_while(|c| c.is_alphanumeric() || *c == '_')
                             .collect();
-                        if !ident.is_empty() && !cmd_str.is_empty() && cmd_str.len() <= 16 {
-                            if cmd_str.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-') {
-                                commands.push(cmd_str.to_string());
-                            }
+                        if !ident.is_empty()
+                            && !cmd_str.is_empty()
+                            && cmd_str.len() <= 16
+                            && cmd_str.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+                        {
+                            commands.push(cmd_str.to_string());
                         }
                     }
                 }
