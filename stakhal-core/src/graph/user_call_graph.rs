@@ -225,7 +225,7 @@ void do_something(void) {
         let (fns, edges) = build_user_call_graph(&file_path).unwrap();
         assert_eq!(fns.len(), 1);
         assert_eq!(fns[0].name, "do_something");
-        assert_eq!(fns[0].is_hal_callback, false);
+        assert!(!fns[0].is_hal_callback);
 
         assert!(edges.is_empty());
     }
