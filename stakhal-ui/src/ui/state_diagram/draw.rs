@@ -369,8 +369,6 @@ pub fn draw_state_diagram(
             cr.set_source_rgba(tokens::color::TEXT_MUTED.0, tokens::color::TEXT_MUTED.1, tokens::color::TEXT_MUTED.2, 0.4);
         } else if node.is_fault {
             cr.set_source_rgb(COLOR_FAULT_RED.0, COLOR_FAULT_RED.1, COLOR_FAULT_RED.2);
-        } else if is_selected {
-            cr.set_source_rgb(tokens::color::TEXT_PRIMARY.0, tokens::color::TEXT_PRIMARY.1, tokens::color::TEXT_PRIMARY.2);
         } else {
             cr.set_source_rgb(tokens::color::TEXT_PRIMARY.0, tokens::color::TEXT_PRIMARY.1, tokens::color::TEXT_PRIMARY.2);
         }

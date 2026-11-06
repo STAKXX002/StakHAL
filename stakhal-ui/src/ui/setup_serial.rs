@@ -444,7 +444,7 @@ pub fn update_quick_send_buttons(main_c_path: &Path, state: &Rc<RefCell<AppState
         let btn = gtk4::Button::builder()
             .label(&cmd)
             .css_classes(vec!["stakhal-btn".to_string(), "flat".to_string(), "caption".to_string()])
-            .tooltip_text(&format!("Send command: {}", cmd))
+            .tooltip_text(format!("Send command: {}", cmd))
             .build();
         btn.set_cursor_from_name(Some("pointer"));
 

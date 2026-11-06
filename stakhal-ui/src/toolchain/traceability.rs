@@ -215,9 +215,7 @@ pub fn insert_traceability_into_source(main_c_path: &Path, project_dir: &Path) -
     let inc_content = &content[inc_region.byte_range.0..inc_region.byte_range.1];
     if !inc_content.contains("stakhal_build_info.h") {
         let mut new_inc = inc_content.to_string();
-        if new_inc.is_empty() {
-            new_inc.push('\n');
-        } else if !new_inc.ends_with('\n') {
+        if new_inc.is_empty() || !new_inc.ends_with('\n') {
             new_inc.push('\n');
         }
         new_inc.push_str("#include \"stakhal_build_info.h\"\n");
@@ -249,9 +247,7 @@ pub fn insert_traceability_into_source(main_c_path: &Path, project_dir: &Path) -
 
         let trimmed_content = &post_init_content[..post_init_content.len() - trailing_ws.len()];
         let mut new_post_init = trimmed_content.to_string();
-        if new_post_init.is_empty() {
-            new_post_init.push('\n');
-        } else if !new_post_init.ends_with('\n') {
+        if new_post_init.is_empty() || !new_post_init.ends_with('\n') {
             new_post_init.push('\n');
         }
         new_post_init.push_str(&format!(

@@ -759,11 +759,7 @@ pub fn draw_nucleo_pinout(
                 }
 
                 // MCU Pin & Label Text
-                if is_hovered {
-                    cr.set_source_rgb(tokens::color::TEXT_PRIMARY.0, tokens::color::TEXT_PRIMARY.1, tokens::color::TEXT_PRIMARY.2);
-                } else {
-                    cr.set_source_rgb(tokens::color::TEXT_PRIMARY.0, tokens::color::TEXT_PRIMARY.1, tokens::color::TEXT_PRIMARY.2);
-                }
+                cr.set_source_rgb(tokens::color::TEXT_PRIMARY.0, tokens::color::TEXT_PRIMARY.1, tokens::color::TEXT_PRIMARY.2);
                 let label_part = match p.default_label {
                     Some(lbl) => format!(" ({})", lbl),
                     None => "".to_string(),

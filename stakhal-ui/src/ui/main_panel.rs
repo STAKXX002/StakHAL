@@ -362,7 +362,7 @@ pub fn create_peripheral_row(name: &str, mode: Option<&str>, param_count: usize)
         .build();
 
     let badge = gtk4::Label::builder()
-        .label(&format!("{} params", param_count))
+        .label(format!("{} params", param_count))
         .valign(gtk4::Align::Center)
         .css_classes(vec!["dim-label".to_string(), "caption".to_string(), "data-mono".to_string()])
         .build();
