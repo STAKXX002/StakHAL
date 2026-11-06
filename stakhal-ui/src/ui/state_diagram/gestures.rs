@@ -248,6 +248,7 @@ pub fn setup_state_diagram_drawing_and_gestures(
 
 /// Compute new zoom level and pan offsets such that the world coordinate under the cursor
 /// remains invariant before and after the zoom operation.
+#[allow(clippy::too_many_arguments)]
 pub fn calculate_zoom_at_cursor(
     old_zoom: f64,
     old_pan_x: f64,

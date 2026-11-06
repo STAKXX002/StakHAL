@@ -480,6 +480,7 @@ fn draw_dot_grid(cr: &cairo::Context, max_w: f64, max_h: f64) {
     let _ = cr.fill();
 }
 
+#[allow(clippy::too_many_arguments)]
 fn draw_rounded_node(
     cr: &cairo::Context,
     x: f64,
