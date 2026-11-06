@@ -19,7 +19,7 @@ pub fn discover_project_files(project_dir: &Path) -> Result<(PathBuf, PathBuf), 
 
     for entry in read_dir.flatten() {
         let path = entry.path();
-        if path.is_file() && path.extension().map_or(false, |ext| ext == "ioc") {
+        if path.is_file() && path.extension().is_some_and(|ext| ext == "ioc") {
             ioc_files.push(path);
         }
     }

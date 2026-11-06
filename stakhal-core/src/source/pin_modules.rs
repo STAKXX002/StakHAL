@@ -39,8 +39,8 @@ pub fn discover_module_files(main_c_path: &Path) -> Vec<PathBuf> {
     if let Ok(entries) = fs::read_dir(src_dir) {
         for entry in entries.flatten() {
             let p = entry.path();
-            if p.is_file() && p.extension().map_or(false, |ext| ext == "c") && !is_infra_file(&p) {
-                if p.file_name().map_or(false, |n| n == "main.c") {
+            if p.is_file() && p.extension().is_some_and(|ext| ext == "c") && !is_infra_file(&p) {
+                if p.file_name().is_some_and(|n| n == "main.c") {
                     continue;
                 }
                 files.push(p);
@@ -122,20 +122,20 @@ fn build_pin_patterns(pins: &[PinConfig]) -> (Vec<PinPattern>, HashMap<String, u
                     .collect();
                 if !periph_name.is_empty() {
                     periph_tokens.push(periph_name.clone());
-                    let handle = if periph_name.starts_with("USART") {
-                        format!("huart{}", &periph_name[5..])
-                    } else if periph_name.starts_with("UART") {
-                        format!("huart{}", &periph_name[4..])
-                    } else if periph_name.starts_with("TIM") {
-                        format!("htim{}", &periph_name[3..])
-                    } else if periph_name.starts_with("SPI") {
-                        format!("hspi{}", &periph_name[3..])
-                    } else if periph_name.starts_with("I2C") {
-                        format!("hi2c{}", &periph_name[3..])
-                    } else if periph_name.starts_with("ADC") {
-                        format!("hadc{}", &periph_name[3..])
-                    } else if periph_name.starts_with("CAN") {
-                        format!("hcan{}", &periph_name[3..])
+                    let handle = if let Some(suffix) = periph_name.strip_prefix("USART") {
+                        format!("huart{}", suffix)
+                    } else if let Some(suffix) = periph_name.strip_prefix("UART") {
+                        format!("huart{}", suffix)
+                    } else if let Some(suffix) = periph_name.strip_prefix("TIM") {
+                        format!("htim{}", suffix)
+                    } else if let Some(suffix) = periph_name.strip_prefix("SPI") {
+                        format!("hspi{}", suffix)
+                    } else if let Some(suffix) = periph_name.strip_prefix("I2C") {
+                        format!("hi2c{}", suffix)
+                    } else if let Some(suffix) = periph_name.strip_prefix("ADC") {
+                        format!("hadc{}", suffix)
+                    } else if let Some(suffix) = periph_name.strip_prefix("CAN") {
+                        format!("hcan{}", suffix)
                     } else {
                         format!("h{}", periph_name.to_lowercase())
                     };
