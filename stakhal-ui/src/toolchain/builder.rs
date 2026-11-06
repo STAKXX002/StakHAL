@@ -321,10 +321,10 @@ pub fn resolve_artifact_for_build_system(
 
         // Check if target.elf exists, and convert it
         let expected_elf = build_dir.join(format!("{}.elf", target));
-        if expected_elf.is_file() {
-            if convert_elf_to_bin(&expected_elf, &expected_bin).is_ok() {
-                return ArtifactResolution::Exact(expected_bin);
-            }
+        if expected_elf.is_file()
+            && convert_elf_to_bin(&expected_elf, &expected_bin).is_ok()
+        {
+            return ArtifactResolution::Exact(expected_bin);
         }
     }
 

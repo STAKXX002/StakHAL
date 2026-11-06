@@ -48,10 +48,8 @@ pub fn spawn_streaming_process(
             let tx1 = tx.clone();
             Some(std::thread::spawn(move || {
                 let reader = BufReader::new(out);
-                for line in reader.lines() {
-                    if let Ok(l) = line {
-                        tx1.send(ProcessEvent::Line(l)).ok();
-                    }
+                for l in reader.lines().flatten() {
+                    tx1.send(ProcessEvent::Line(l)).ok();
                 }
             }))
         } else {
@@ -62,10 +60,8 @@ pub fn spawn_streaming_process(
             let tx2 = tx.clone();
             Some(std::thread::spawn(move || {
                 let reader = BufReader::new(err);
-                for line in reader.lines() {
-                    if let Ok(l) = line {
-                        tx2.send(ProcessEvent::Line(l)).ok();
-                    }
+                for l in reader.lines().flatten() {
+                    tx2.send(ProcessEvent::Line(l)).ok();
                 }
             }))
         } else {
