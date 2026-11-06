@@ -78,7 +78,7 @@ pub fn draw_state_diagram(
                 if let Some((lw, lh)) = st.state_diagram_layout.as_ref().map(|l| (l.width, l.height)) {
                     let avail_w = (width - 40.0).max(100.0);
                     let avail_h = (height - 40.0).max(100.0);
-                    let fit_zoom = (avail_w / lw).min(avail_h / lh).min(1.0).max(0.2);
+                    let fit_zoom = (avail_w / lw).min(avail_h / lh).clamp(0.2, 1.0);
                     st.diagram_zoom = fit_zoom;
                     st.diagram_pan_x = ((width - lw * fit_zoom) * 0.5).max(20.0);
                     st.diagram_pan_y = ((height - lh * fit_zoom) * 0.5).max(20.0);

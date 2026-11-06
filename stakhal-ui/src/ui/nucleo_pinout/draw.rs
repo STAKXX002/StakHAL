@@ -202,12 +202,7 @@ pub fn get_active_pin_highlights(state: &AppState) -> HashMap<(&'static str, u8)
 
         if let Some(loc) = stakhal_core::nucleo_pinout::lookup_pin(mcu_pin) {
             if let Some((conn, pin_num)) = loc.morpho {
-                let static_conn = match conn {
-                    "CN7" => "CN7",
-                    "CN10" => "CN10",
-                    _ => conn,
-                };
-                map.insert((static_conn, pin_num), PinHighlightInfo {
+                map.insert((conn, pin_num), PinHighlightInfo {
                     signal: signal.clone(),
                     label: label.clone(),
                     modules: modules.clone(),
@@ -215,14 +210,7 @@ pub fn get_active_pin_highlights(state: &AppState) -> HashMap<(&'static str, u8)
                 });
             }
             if let Some((conn, pin_num, _label)) = loc.arduino {
-                let static_conn = match conn {
-                    "CN5" => "CN5",
-                    "CN6" => "CN6",
-                    "CN8" => "CN8",
-                    "CN9" => "CN9",
-                    _ => conn,
-                };
-                map.insert((static_conn, pin_num), PinHighlightInfo {
+                map.insert((conn, pin_num), PinHighlightInfo {
                     signal: signal.clone(),
                     label: label.clone(),
                     modules: modules.clone(),
@@ -634,7 +622,7 @@ pub fn draw_nucleo_pinout(
             let (cell_x, cell_y, cell_w, cell_h) = get_pin_cell_rect(conn.name, idx, canvas_w, canvas_h);
 
             let is_hl = highlights.get(&(conn.name, p.pin_num));
-            let is_hovered = hovered_pin.map_or(false, |(c_name, p_num)| {
+            let is_hovered = hovered_pin.is_some_and(|(c_name, p_num)| {
                 c_name == conn.name && *p_num == p.pin_num
             });
 

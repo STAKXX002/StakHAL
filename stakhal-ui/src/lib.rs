@@ -80,12 +80,12 @@ pub fn navigate_stack(stack: &gtk4::Stack, child_name: &str, transition: gtk4::S
         return;
     }
 
-    let is_forward = match transition {
+    let is_forward = !matches!(
+        transition,
         gtk4::StackTransitionType::SlideRight
-        | gtk4::StackTransitionType::OverRight
-        | gtk4::StackTransitionType::UnderRight => false,
-        _ => true,
-    };
+            | gtk4::StackTransitionType::OverRight
+            | gtk4::StackTransitionType::UnderRight
+    );
 
     if let Some(child) = stack.child_by_name(child_name) {
         let initial_offset = 10;
