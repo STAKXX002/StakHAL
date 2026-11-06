@@ -306,10 +306,12 @@ pub(crate) fn condition_compares_var_to_variants(
         "parenthesized_expression" => {
             let mut cursor = node.walk();
             for child in node.children(&mut cursor) {
-                if child.kind() != "(" && child.kind() != ")" && child.kind() != "comment" {
-                    if condition_compares_var_to_variants(child, source_bytes, var_name, known_variants) {
-                        return true;
-                    }
+                if child.kind() != "("
+                    && child.kind() != ")"
+                    && child.kind() != "comment"
+                    && condition_compares_var_to_variants(child, source_bytes, var_name, known_variants)
+                {
+                    return true;
                 }
             }
             false

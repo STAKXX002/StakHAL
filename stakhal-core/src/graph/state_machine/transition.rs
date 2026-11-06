@@ -51,14 +51,16 @@ pub fn extract_state_machine_transitions(
 
     for fn_node in fn_nodes {
         let fn_name = extract_function_name(fn_node, source_bytes);
-        let is_helper = fn_name.as_ref().map(|n| helpers.contains_key(n)).unwrap_or(false);
+        let is_helper = fn_name.as_ref().is_some_and(|n| helpers.contains_key(n));
         if is_helper {
             continue;
         }
 
         if let Some(body) = fn_node.child_by_field_name("body") {
-            let mut ctx = ASTContext::default();
-            ctx.has_local_fault = candidate.enum_def.variants.iter().any(|v| is_fault_state(v));
+            let ctx = ASTContext {
+                has_local_fault: candidate.enum_def.variants.iter().any(|v| is_fault_state(v)),
+                ..Default::default()
+            };
             walk_statement(
                 body,
                 &ctx,
@@ -258,6 +260,7 @@ pub(crate) fn collect_functions<'a>(node: Node<'a>, out: &mut Vec<Node<'a>>) {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn walk_statement(
     node: Node,
     ctx: &ASTContext,
@@ -420,7 +423,7 @@ fn check_helper_call(
             }
         } else if !ctx.has_local_fault
             && is_fault_coordinator_name(&fn_name)
-            && ctx.active_states.as_ref().map_or(false, |st| !st.is_empty())
+            && ctx.active_states.as_ref().is_some_and(|st| !st.is_empty())
         {
             let line = node.start_position().row + 1;
             let arg_info = extract_first_argument_info(node, source_bytes);
@@ -502,6 +505,7 @@ fn is_fault_coordinator_name(name: &str) -> bool {
         && name != "Error_Handler"
 }
 
+#[allow(clippy::too_many_arguments)]
 fn walk_if_statement(
     node: Node,
     ctx: &ASTContext,
@@ -555,6 +559,7 @@ fn walk_if_statement(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn walk_switch_statement(
     node: Node,
     ctx: &ASTContext,

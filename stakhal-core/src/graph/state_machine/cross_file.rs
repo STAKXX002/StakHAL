@@ -9,6 +9,7 @@ use super::labels::{clean_guard_text, node_text};
 use super::model::{AmbiguousTransition, AppTransition, StateMachineCandidate, TransitionType};
 use super::{collect_functions, HelperFunctionInfo};
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn resolve_cross_file_command_transitions(
     src_dir: &Path,
     file_path: &Path,
@@ -26,7 +27,7 @@ pub(crate) fn resolve_cross_file_command_transitions(
     if let Ok(entries) = fs::read_dir(src_dir) {
         for entry in entries.flatten() {
             let p = entry.path();
-            if p.is_file() && p.extension().map_or(false, |ext| ext == "c") && p != file_path {
+            if p.is_file() && p.extension().is_some_and(|ext| ext == "c") && p != file_path {
                 other_c_files.push(p);
             }
         }
@@ -84,6 +85,7 @@ pub(crate) fn resolve_cross_file_command_transitions(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn walk_cross_file_statements(
     node: Node,
     source_bytes: &[u8],
@@ -286,14 +288,16 @@ fn collect_queried_states_in_node(
             if op == "==" {
                 let left_text = clean_guard_text(&node_text(left, source_bytes));
                 let right_text = clean_guard_text(&node_text(right, source_bytes));
-                if left_text == var_name && known_variants.contains(&right_text) {
-                    if !out.contains(&right_text) {
-                        out.push(right_text);
-                    }
-                } else if right_text == var_name && known_variants.contains(&left_text) {
-                    if !out.contains(&left_text) {
-                        out.push(left_text);
-                    }
+                if left_text == var_name
+                    && known_variants.contains(&right_text)
+                    && !out.contains(&right_text)
+                {
+                    out.push(right_text);
+                } else if right_text == var_name
+                    && known_variants.contains(&left_text)
+                    && !out.contains(&left_text)
+                {
+                    out.push(left_text);
                 }
             }
         }

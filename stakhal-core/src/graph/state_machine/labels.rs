@@ -203,13 +203,12 @@ pub fn to_title_case_identifier(ident: &str) -> String {
                 let is_cur_upper = c.is_ascii_uppercase();
                 let is_next_lower = i + 1 < chars.len() && chars[i + 1].is_ascii_lowercase();
 
-                if (is_prev_lower_or_digit && is_cur_upper)
-                    || (prev.is_ascii_uppercase() && is_cur_upper && is_next_lower)
+                if ((is_prev_lower_or_digit && is_cur_upper)
+                    || (prev.is_ascii_uppercase() && is_cur_upper && is_next_lower))
+                    && !cur_word.is_empty()
                 {
-                    if !cur_word.is_empty() {
-                        words.push(cur_word);
-                        cur_word = String::new();
-                    }
+                    words.push(cur_word);
+                    cur_word = String::new();
                 }
             }
             cur_word.push(c);
