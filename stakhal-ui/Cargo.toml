@@ -2,6 +2,7 @@
 name = "stakhal-ui"
 version = "0.4.0"
 edition = "2021"
+rust-version = "1.75.0"
 
 [dependencies]
 stakhal-core = { path = "../stakhal-core" }
@@ -14,4 +15,3 @@ serialport = "4.10"
 
 [dev-dependencies]
 cairo-rs = { version = "0.20", features = ["png"] }
-
