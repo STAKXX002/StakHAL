@@ -163,8 +163,8 @@ pub fn draw_launch_frame(cr: &cairo::Context, width: f64, height: f64, elapsed_m
     let text_alpha = reveal_p * global_alpha;
 
     cr.save().expect("cairo save");
-    let _ = cr.translate(cx, cy);
-    let _ = cr.scale(scale, scale);
+    cr.translate(cx, cy);
+    cr.scale(scale, scale);
 
     cr.select_font_face(
         tokens::font::CAIRO_SANS,
@@ -185,12 +185,12 @@ pub fn draw_launch_frame(cr: &cairo::Context, width: f64, height: f64, elapsed_m
 
     // "Stak" in primary text color
     cr.set_source_rgba(text_r, text_g, text_b, text_alpha);
-    let _ = cr.move_to(text_start_x, text_baseline_y);
+    cr.move_to(text_start_x, text_baseline_y);
     let _ = cr.show_text("Stak");
 
     // "HAL" in accent color
     cr.set_source_rgba(acc_r, acc_g, acc_b, text_alpha);
-    let _ = cr.move_to(text_start_x + stak_advance + spacing, text_baseline_y);
+    cr.move_to(text_start_x + stak_advance + spacing, text_baseline_y);
     let _ = cr.show_text("HAL");
 
     cr.restore().expect("cairo restore");

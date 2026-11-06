@@ -34,20 +34,20 @@ pub fn draw_verify_stroke_path(cr: &cairo::Context, progress: f64) {
     cr.set_line_cap(cairo::LineCap::Round);
     cr.set_line_join(cairo::LineJoin::Round);
 
-    let _ = cr.move_to(p1.0, p1.1);
+    cr.move_to(p1.0, p1.1);
 
     if target_d <= len1 {
         let f = target_d / len1;
         let cur_x = p1.0 + (p2.0 - p1.0) * f;
         let cur_y = p1.1 + (p2.1 - p1.1) * f;
-        let _ = cr.line_to(cur_x, cur_y);
+        cr.line_to(cur_x, cur_y);
     } else {
-        let _ = cr.line_to(p2.0, p2.1);
+        cr.line_to(p2.0, p2.1);
         let rem = target_d - len1;
         let f = (rem / len2).clamp(0.0, 1.0);
         let cur_x = p2.0 + (p3.0 - p2.0) * f;
         let cur_y = p2.1 + (p3.1 - p2.1) * f;
-        let _ = cr.line_to(cur_x, cur_y);
+        cr.line_to(cur_x, cur_y);
     }
 
     let _ = cr.stroke();

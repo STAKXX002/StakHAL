@@ -383,8 +383,8 @@ pub fn draw_nucleo_pinout(
     cr.set_line_width(tokens::shape::BORDER_WIDTH_HAIR);
     let mut gy = board_y + 40.0;
     while gy < board_y + board_h {
-        let _ = cr.move_to(board_x + 10.0, gy);
-        let _ = cr.line_to(board_x + board_w - 10.0, gy);
+        cr.move_to(board_x + 10.0, gy);
+        cr.line_to(board_x + board_w - 10.0, gy);
         let _ = cr.stroke();
         gy += 40.0;
     }
@@ -404,7 +404,7 @@ pub fn draw_nucleo_pinout(
     cr.set_font_size(9.0);
     cr.set_source_rgb(tokens::color::TEXT_MUTED.0, tokens::color::TEXT_MUTED.1, tokens::color::TEXT_MUTED.2);
     if let Ok(ext) = cr.text_extents("ST-LINK V2-1 ON-BOARD DEBUGGER") {
-        let _ = cr.move_to(notch_x + (notch_w - ext.width()) / 2.0, notch_y + 14.0);
+        cr.move_to(notch_x + (notch_w - ext.width()) / 2.0, notch_y + 14.0);
         let _ = cr.show_text("ST-LINK V2-1 ON-BOARD DEBUGGER");
     }
 
@@ -415,7 +415,7 @@ pub fn draw_nucleo_pinout(
     let title_str = "STMicroelectronics NUCLEO-F446RE";
     let title_y = board_y + 46.0;
     if let Ok(ext) = cr.text_extents(title_str) {
-        let _ = cr.move_to(board_x + (board_w - ext.width()) / 2.0, title_y);
+        cr.move_to(board_x + (board_w - ext.width()) / 2.0, title_y);
         let _ = cr.show_text(title_str);
     }
 
@@ -425,7 +425,7 @@ pub fn draw_nucleo_pinout(
     let subtitle_str = "ARM® Cortex®-M4 MCU @ 180MHz • Physical 64-Pin Connector Pinout";
     let subtitle_y = title_y + 20.0;
     if let Ok(ext) = cr.text_extents(subtitle_str) {
-        let _ = cr.move_to(board_x + (board_w - ext.width()) / 2.0, subtitle_y);
+        cr.move_to(board_x + (board_w - ext.width()) / 2.0, subtitle_y);
         let _ = cr.show_text(subtitle_str);
     }
 
@@ -450,7 +450,7 @@ pub fn draw_nucleo_pinout(
         cr.set_font_size(11.0);
         cr.set_source_rgb(cr_r, cr_g, cr_b);
         if let Ok(ext) = cr.text_extents(&banner_str) {
-            let _ = cr.move_to(board_x + (board_w - ext.width()) / 2.0, subtitle_y + 18.0);
+            cr.move_to(board_x + (board_w - ext.width()) / 2.0, subtitle_y + 18.0);
             let _ = cr.show_text(&banner_str);
         }
     }
@@ -483,19 +483,19 @@ pub fn draw_nucleo_pinout(
     cr.set_font_size(11.0);
     cr.set_source_rgb(tokens::color::TEXT_PRIMARY.0, tokens::color::TEXT_PRIMARY.1, tokens::color::TEXT_PRIMARY.2);
     if let Ok(ext) = cr.text_extents("STM32F446") {
-        let _ = cr.move_to(mcu_x + (mcu_w - ext.width()) / 2.0, mcu_y + mcu_h * 0.42);
+        cr.move_to(mcu_x + (mcu_w - ext.width()) / 2.0, mcu_y + mcu_h * 0.42);
         let _ = cr.show_text("STM32F446");
     }
     cr.set_font_size(10.0);
     cr.set_source_rgb(tokens::color::TEXT_PRIMARY.0, tokens::color::TEXT_PRIMARY.1, tokens::color::TEXT_PRIMARY.2);
     if let Ok(ext) = cr.text_extents("RET6") {
-        let _ = cr.move_to(mcu_x + (mcu_w - ext.width()) / 2.0, mcu_y + mcu_h * 0.55);
+        cr.move_to(mcu_x + (mcu_w - ext.width()) / 2.0, mcu_y + mcu_h * 0.55);
         let _ = cr.show_text("RET6");
     }
     cr.set_font_size(9.0);
     cr.set_source_rgb(tokens::color::TEXT_MUTED.0, tokens::color::TEXT_MUTED.1, tokens::color::TEXT_MUTED.2);
     if let Ok(ext) = cr.text_extents("LQFP64") {
-        let _ = cr.move_to(mcu_x + (mcu_w - ext.width()) / 2.0, mcu_y + mcu_h * 0.68);
+        cr.move_to(mcu_x + (mcu_w - ext.width()) / 2.0, mcu_y + mcu_h * 0.68);
         let _ = cr.show_text("LQFP64");
     }
 
@@ -519,7 +519,7 @@ pub fn draw_nucleo_pinout(
         cr.select_font_face(tokens::font::CAIRO_MONO, cairo::FontSlant::Normal, cairo::FontWeight::Bold);
         cr.set_font_size(10.0);
         cr.set_source_rgb(tokens::color::STATE_READY.0, tokens::color::STATE_READY.1, tokens::color::STATE_READY.2);
-        let _ = cr.move_to(mcu_x + 32.0, led_y + led_h / 2.0 + 4.0);
+        cr.move_to(mcu_x + 32.0, led_y + led_h / 2.0 + 4.0);
         let _ = cr.show_text("LD2 [ON]");
     } else {
         cr.set_source_rgb(tokens::color::BORDER_HAIR.0, tokens::color::BORDER_HAIR.1, tokens::color::BORDER_HAIR.2);
@@ -533,7 +533,7 @@ pub fn draw_nucleo_pinout(
         cr.select_font_face(tokens::font::CAIRO_MONO, cairo::FontSlant::Normal, cairo::FontWeight::Normal);
         cr.set_font_size(9.5);
         cr.set_source_rgb(tokens::color::TEXT_MUTED.0, tokens::color::TEXT_MUTED.1, tokens::color::TEXT_MUTED.2);
-        let _ = cr.move_to(mcu_x + 32.0, led_y + led_h / 2.0 + 4.0);
+        cr.move_to(mcu_x + 32.0, led_y + led_h / 2.0 + 4.0);
         let _ = cr.show_text("LD2 (PA5)");
     }
 
@@ -552,7 +552,7 @@ pub fn draw_nucleo_pinout(
     cr.select_font_face(tokens::font::CAIRO_SANS, cairo::FontSlant::Normal, cairo::FontWeight::Bold);
     cr.set_font_size(9.0);
     cr.set_source_rgb(tokens::color::TEXT_PRIMARY.0, tokens::color::TEXT_PRIMARY.1, tokens::color::TEXT_PRIMARY.2);
-    let _ = cr.move_to(mcu_x + 8.0, btn_y + btn_h / 2.0 + 3.0);
+    cr.move_to(mcu_x + 8.0, btn_y + btn_h / 2.0 + 3.0);
     let _ = cr.show_text("B1 USER");
 
     // B2 Button (RESET)
@@ -565,7 +565,7 @@ pub fn draw_nucleo_pinout(
     cr.select_font_face(tokens::font::CAIRO_SANS, cairo::FontSlant::Normal, cairo::FontWeight::Bold);
     cr.set_font_size(9.0);
     cr.set_source_rgb(tokens::color::TEXT_PRIMARY.0, tokens::color::TEXT_PRIMARY.1, tokens::color::TEXT_PRIMARY.2);
-    let _ = cr.move_to(mcu_x + b1_w + 10.0, btn_y + btn_h / 2.0 + 3.0);
+    cr.move_to(mcu_x + b1_w + 10.0, btn_y + btn_h / 2.0 + 3.0);
     let _ = cr.show_text("B2 RESET");
 
     // 5. Draw Connector Header Titles & Active Counts with Text Tags [MORPHO] / [ARDUINO]
@@ -607,11 +607,11 @@ pub fn draw_nucleo_pinout(
             let morpho_right_edge = col_cn10_1 + cell_w;
             if let Ok(ext) = cr.text_extents(&header_text) {
                 let hx = morpho_right_edge - ext.width();
-                let _ = cr.move_to(hx, hy);
+                cr.move_to(hx, hy);
                 let _ = cr.show_text(&header_text);
             }
         } else {
-            let _ = cr.move_to(cell_x, hy);
+            cr.move_to(cell_x, hy);
             let _ = cr.show_text(&header_text);
         }
     }
@@ -678,7 +678,7 @@ pub fn draw_nucleo_pinout(
                 let pnum_str = format!("{}", p.pin_num);
                 if let Ok(ext) = cr.text_extents(&pnum_str) {
                     let tx = cell_x + 3.0 + (badge_w - ext.width()) / 2.0;
-                    let _ = cr.move_to(tx, cell_y + cell_h * 0.64);
+                    cr.move_to(tx, cell_y + cell_h * 0.64);
                     let _ = cr.show_text(&pnum_str);
                 }
 
@@ -690,7 +690,7 @@ pub fn draw_nucleo_pinout(
                     cr.set_source_rgb(tokens::color::TEXT_PRIMARY.0, tokens::color::TEXT_PRIMARY.1, tokens::color::TEXT_PRIMARY.2);
                 }
                 let mcu_pin_x = cell_x + badge_w + 8.0;
-                let _ = cr.move_to(mcu_pin_x, cell_y + cell_h * 0.64);
+                cr.move_to(mcu_pin_x, cell_y + cell_h * 0.64);
                 let _ = cr.show_text(p.mcu_pin);
 
                 let mcu_ext_w = cr.text_extents(p.mcu_pin).map(|e| e.width()).unwrap_or(24.0);
@@ -720,7 +720,7 @@ pub fn draw_nucleo_pinout(
                     let min_x = mcu_pin_x + mcu_ext_w + 6.0;
                     let right_x = cell_x + cell_w - ext.width() - 6.0;
                     let text_x = right_x.max(min_x);
-                    let _ = cr.move_to(text_x, cell_y + cell_h * 0.64);
+                    cr.move_to(text_x, cell_y + cell_h * 0.64);
                     let _ = cr.show_text(&primary_text);
                 }
             } else {
@@ -754,7 +754,7 @@ pub fn draw_nucleo_pinout(
                 let pnum_str = format!("{}", p.pin_num);
                 if let Ok(ext) = cr.text_extents(&pnum_str) {
                     let tx = cell_x + 4.0 + (badge_w - ext.width()) / 2.0;
-                    let _ = cr.move_to(tx, cell_y + cell_h * 0.60);
+                    cr.move_to(tx, cell_y + cell_h * 0.60);
                     let _ = cr.show_text(&pnum_str);
                 }
 
@@ -766,7 +766,7 @@ pub fn draw_nucleo_pinout(
                 };
                 let left_str = format!("{}{}", p.mcu_pin, label_part);
                 let text_start_x = cell_x + badge_w + 10.0;
-                let _ = cr.move_to(text_start_x, cell_y + cell_h * 0.60);
+                cr.move_to(text_start_x, cell_y + cell_h * 0.60);
                 let _ = cr.show_text(&left_str);
             }
         }
@@ -785,7 +785,7 @@ pub fn draw_nucleo_pinout(
     let _ = cr.fill();
 
     cr.set_source_rgb(tokens::color::TEXT_PRIMARY.0, tokens::color::TEXT_PRIMARY.1, tokens::color::TEXT_PRIMARY.2);
-    let _ = cr.move_to(leg_x + 22.0, legend_y + 11.0);
+    cr.move_to(leg_x + 22.0, legend_y + 11.0);
     let active_label = if is_filtering_module {
         "Active in Module"
     } else {
@@ -803,7 +803,7 @@ pub fn draw_nucleo_pinout(
         let _ = cr.stroke();
 
         cr.set_source_rgb(tokens::color::TEXT_MUTED.0, tokens::color::TEXT_MUTED.1, tokens::color::TEXT_MUTED.2);
-        let _ = cr.move_to(leg_x2 + 22.0, legend_y + 11.0);
+        cr.move_to(leg_x2 + 22.0, legend_y + 11.0);
         let _ = cr.show_text("Active Elsewhere in Project");
     }
 
@@ -903,7 +903,7 @@ pub fn draw_nucleo_pinout(
                 cr.select_font_face(tokens::font::CAIRO_MONO, cairo::FontSlant::Normal, cairo::FontWeight::Bold);
                 cr.set_font_size(10.0);
                 cr.set_source_rgb(tokens::color::TEXT_PRIMARY.0, tokens::color::TEXT_PRIMARY.1, tokens::color::TEXT_PRIMARY.2);
-                let _ = cr.move_to(tt_x + 10.0, tt_y + 16.0);
+                cr.move_to(tt_x + 10.0, tt_y + 16.0);
                 let _ = cr.show_text(&line1);
 
                 // Line 2: Signal / Status Info
@@ -914,7 +914,7 @@ pub fn draw_nucleo_pinout(
                 } else {
                     cr.set_source_rgb(tokens::color::TEXT_MUTED.0, tokens::color::TEXT_MUTED.1, tokens::color::TEXT_MUTED.2);
                 }
-                let _ = cr.move_to(tt_x + 10.0, tt_y + 32.0);
+                cr.move_to(tt_x + 10.0, tt_y + 32.0);
                 let _ = cr.show_text(&line2);
 
                 // Line 3: Conflict Reason Warning
@@ -922,7 +922,7 @@ pub fn draw_nucleo_pinout(
                     cr.select_font_face(tokens::font::CAIRO_MONO, cairo::FontSlant::Normal, cairo::FontWeight::Bold);
                     cr.set_font_size(9.5);
                     cr.set_source_rgb(border_r, border_g, border_b);
-                    let _ = cr.move_to(tt_x + 10.0, tt_y + 48.0);
+                    cr.move_to(tt_x + 10.0, tt_y + 48.0);
                     let _ = cr.show_text(l3);
                 }
             }

@@ -124,7 +124,7 @@ pub fn draw_state_diagram(
             cr.select_font_face(tokens::font::CAIRO_SANS, cairo::FontSlant::Normal, cairo::FontWeight::Bold);
             cr.set_font_size(14.0);
             cr.set_source_rgb(tokens::color::TEXT_MUTED.0, tokens::color::TEXT_MUTED.1, tokens::color::TEXT_MUTED.2);
-            let _ = cr.move_to(width * 0.35, height * 0.5);
+            cr.move_to(width * 0.35, height * 0.5);
             let _ = cr.show_text("No state machines detected in current project.");
             return;
         }
@@ -169,8 +169,8 @@ pub fn draw_state_diagram(
     let _ = cr.fill();
 
     // Apply zoom and pan transforms
-    let _ = cr.translate(pan_x, pan_y);
-    let _ = cr.scale(zoom, zoom);
+    cr.translate(pan_x, pan_y);
+    cr.scale(zoom, zoom);
 
     // Draw technical dot grid
     draw_dot_grid(cr, layout.width.max(1600.0), layout.height.max(1200.0));
@@ -190,7 +190,7 @@ pub fn draw_state_diagram(
             } else {
                 format!("// FLOW LANE: {}", lane.name)
             };
-            let _ = cr.move_to(lane.x_start, lane.y - 12.0);
+            cr.move_to(lane.x_start, lane.y - 12.0);
             let _ = cr.show_text(&banner_text);
         }
     }
@@ -379,7 +379,7 @@ pub fn draw_state_diagram(
 
         let text_x = node.x + (node.width - text_w) * 0.5;
         let text_y = node.y + (node.height + text_h) * 0.5 - 2.0;
-        let _ = cr.move_to(text_x, text_y);
+        cr.move_to(text_x, text_y);
         let _ = cr.show_text(&node.label);
 
         // Top-left tag badge (INITIAL or FAULT) - Interface talking -> Sans
@@ -391,7 +391,7 @@ pub fn draw_state_diagram(
             } else {
                 cr.set_source_rgb(tokens::color::TEXT_MUTED.0, tokens::color::TEXT_MUTED.1, tokens::color::TEXT_MUTED.2);
             }
-            let _ = cr.move_to(node.x + 8.0, node.y + 12.0);
+            cr.move_to(node.x + 8.0, node.y + 12.0);
             let _ = cr.show_text("[INIT]");
         } else if node.is_fault {
             cr.select_font_face(tokens::font::CAIRO_SANS, cairo::FontSlant::Normal, cairo::FontWeight::Bold);
@@ -401,7 +401,7 @@ pub fn draw_state_diagram(
             } else {
                 cr.set_source_rgb(COLOR_FAULT_RED.0, COLOR_FAULT_RED.1, COLOR_FAULT_RED.2);
             }
-            let _ = cr.move_to(node.x + 8.0, node.y + 12.0);
+            cr.move_to(node.x + 8.0, node.y + 12.0);
             let _ = cr.show_text("[FAULT]");
         }
 
@@ -619,7 +619,7 @@ fn draw_node_badge(
             cr.set_source_rgb(tokens::color::TEXT_PRIMARY.0, tokens::color::TEXT_PRIMARY.1, tokens::color::TEXT_PRIMARY.2);
         }
     }
-    let _ = cr.move_to(x + pad_x - ext_xb, y + pad_y - ext_yb);
+    cr.move_to(x + pad_x - ext_xb, y + pad_y - ext_yb);
     let _ = cr.show_text(text);
 }
 
@@ -691,7 +691,7 @@ fn draw_guard_badge(
         cr.set_source_rgb(tokens::color::TEXT_PRIMARY.0, tokens::color::TEXT_PRIMARY.1, tokens::color::TEXT_PRIMARY.2);
     }
 
-    let _ = cr.move_to(badge_x + padding_x - ext_xb, badge_y + padding_y - ext_yb);
+    cr.move_to(badge_x + padding_x - ext_xb, badge_y + padding_y - ext_yb);
     let _ = cr.show_text(text);
 }
 
