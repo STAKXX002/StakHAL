@@ -116,14 +116,7 @@ pub fn generate_build_info_header(project_dir: &Path) -> Result<String, std::io:
     fs::create_dir_all(&inc_dir)?;
 
     let header_path = inc_dir.join("stakhal_build_info.h");
-    let content = format!(
-        "/* Generated automatically by StakHAL. Do not edit or commit. */\n\
-         #ifndef STAKHAL_BUILD_INFO_H\n\
-         #define STAKHAL_BUILD_INFO_H\n\n\
-         #define STAKHAL_BUILD_HASH \"{}\"\n\n\
-         #endif /* STAKHAL_BUILD_INFO_H */\n",
-        hash
-    );
+    let content = stakhal_core::target::TargetDefinition::legacy().render_header(&hash);
 
     fs::write(&header_path, content)?;
 

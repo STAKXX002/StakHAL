@@ -102,6 +102,40 @@ impl TargetDefinition {
             header_filename: "stakhal_build_info.h".to_string(),
         }
     }
+
+    /// Render stakhal_build_info.h header content for this target.
+    pub fn render_header(&self, hash: &str) -> String {
+        match self.id {
+            TargetId::AaNsStm => format!(
+                "/* Generated automatically by StakHAL. Do not edit or commit. */\n\
+                 #ifndef STAKHAL_BUILD_INFO_H\n\
+                 #define STAKHAL_BUILD_INFO_H\n\n\
+                 #define STAKHAL_BUILD_HASH \"{}\"\n\n\
+                 #endif /* STAKHAL_BUILD_INFO_H */\n",
+                hash
+            ),
+            TargetId::AaNsStm32 => format!(
+                "/* Generated automatically by StakHAL. Do not edit or commit. */\n\
+                 #ifndef STAKHAL_BUILD_INFO_H\n\
+                 #define STAKHAL_BUILD_INFO_H\n\n\
+                 #define STAKHAL_TARGET_NAME \"{}\"\n\
+                 #define STAKHAL_BUILD_HASH \"{}\"\n\
+                 #define AA_BUILD_HASH \"{}\"\n\
+                 #define STAKHAL_MCU_FAMILY \"{}\"\n\
+                 #define STAKHAL_MCU_PART \"{}\"\n\
+                 #define STAKHAL_SYSCLK_FREQ_HZ {}UL\n\
+                 #define STAKHAL_NUM_AXES {}\n\n\
+                 #endif /* STAKHAL_BUILD_INFO_H */\n",
+                self.name,
+                hash,
+                hash,
+                self.mcu_family,
+                self.mcu_part,
+                self.sysclk_freq_hz,
+                self.num_axes,
+            ),
+        }
+    }
 }
 
 #[cfg(test)]
