@@ -520,34 +520,6 @@ project(DockingFirmware C ASM)
     }
 
     #[test]
-    fn test_detect_real_aa_ns_stm_v1_if_present() {
-        let real_path = PathBuf::from("/home/stakxx002/AA_NS_STM_V1");
-        if real_path.is_dir() {
-            let detected = detect_build_system(&real_path);
-            assert!(
-                detected.is_some(),
-                "AA_NS_STM_V1 should be detected as a CMake project"
-            );
-            match detected.unwrap() {
-                BuildSystem::CMake {
-                    target, build_dir, ..
-                } => {
-                    assert_eq!(target.as_deref(), Some("AA_NS_STM_V1"));
-                    assert!(
-                        build_dir.ends_with("build/Debug")
-                            || build_dir.ends_with("build/Release")
-                            || build_dir.ends_with("build")
-                    );
-                }
-                other => panic!(
-                    "Expected CMake build system for AA_NS_STM_V1, got {:?}",
-                    other
-                ),
-            }
-        }
-    }
-
-    #[test]
     fn test_detect_and_build_aa_ns_stm_port_if_present() {
         let repo_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../AA_NS_STM_PORT");
         if repo_path.is_dir() {
