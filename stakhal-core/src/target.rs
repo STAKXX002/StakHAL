@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::fmt;
+use std::path::Path;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum TargetId {
@@ -167,6 +168,39 @@ impl TargetDefinition {
     }
 }
 
+/// Detect target platform from project directory files and layout.
+pub fn detect_target_from_project_dir(project_dir: &Path) -> Option<TargetDefinition> {
+    // 1. Check for AA_NS_STM32 signatures
+    if project_dir.join("AA_STM.ioc").is_file()
+        || project_dir.join("Core/Inc/aa_config.h").is_file()
+        || project_dir.join("Core").join("Inc").join("aa_config.h").is_file()
+    {
+        return Some(TargetDefinition::aa_ns_stm32());
+    }
+
+    if let Ok(cmake_content) = std::fs::read_to_string(project_dir.join("CMakeLists.txt")) {
+        if cmake_content.contains("CMAKE_PROJECT_NAME AA_STM")
+            || cmake_content.contains("project(AA_STM")
+            || cmake_content.contains("add_executable(AA_STM")
+        {
+            return Some(TargetDefinition::aa_ns_stm32());
+        }
+    }
+
+    // 2. Check for legacy AA_NS_STM signatures
+    if project_dir.join("aa_ns_stm_port.ioc").is_file() {
+        return Some(TargetDefinition::legacy());
+    }
+
+    if let Ok(cmake_content) = std::fs::read_to_string(project_dir.join("CMakeLists.txt")) {
+        if cmake_content.contains("AA_NS_STM_V1") || cmake_content.contains("aa_ns_stm_port") {
+            return Some(TargetDefinition::legacy());
+        }
+    }
+
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -220,5 +254,29 @@ mod tests {
             Some(TargetId::AaNsStm32)
         );
         assert!(TargetDefinition::from_name("unknown_target").is_none());
+    }
+
+    #[test]
+    fn test_detect_target_from_project_dir_aa_ns_stm32() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path();
+
+        // Initially unknown
+        assert!(detect_target_from_project_dir(path).is_none());
+
+        // Add AA_STM.ioc
+        std::fs::write(path.join("AA_STM.ioc"), "Mcu.Family=STM32F4\n").unwrap();
+        let detected = detect_target_from_project_dir(path);
+        assert_eq!(detected.map(|t| t.id), Some(TargetId::AaNsStm32));
+    }
+
+    #[test]
+    fn test_detect_target_from_project_dir_legacy_fixture() {
+        let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
+        let fixture_path = manifest_dir.join("tests/fixtures/aa_ns_stm_port");
+        if fixture_path.exists() {
+            let detected = detect_target_from_project_dir(&fixture_path);
+            assert_eq!(detected.map(|t| t.id), Some(TargetId::AaNsStm));
+        }
     }
 }
