@@ -56,13 +56,27 @@ fn test_detect_target_legacy_fixture() {
 
 #[test]
 fn test_detect_target_external_ref_if_present() {
-    let ref_path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../_ref/AA_NS_STM32");
-    if ref_path.is_dir() {
-        let target = detect_target_from_project_dir(&ref_path)
-            .expect("Should detect AA_NS_STM32 for ref repo");
-        assert_eq!(target.id, TargetId::AaNsStm32);
-        assert_eq!(target.num_axes, 4);
+    let ref_var = match std::env::var("STAKHAL_TEST_AA_NS_STM32") {
+        Ok(val) => val,
+        Err(_) => {
+            eprintln!(
+                "skipping test_detect_target_external_ref_if_present: STAKHAL_TEST_AA_NS_STM32 not set or path missing"
+            );
+            return;
+        }
+    };
+    let ref_path = std::path::PathBuf::from(ref_var);
+    if !ref_path.is_dir() {
+        eprintln!(
+            "skipping test_detect_target_external_ref_if_present: STAKHAL_TEST_AA_NS_STM32 not set or path missing"
+        );
+        return;
     }
+
+    let target =
+        detect_target_from_project_dir(&ref_path).expect("Should detect AA_NS_STM32 for ref repo");
+    assert_eq!(target.id, TargetId::AaNsStm32);
+    assert_eq!(target.num_axes, 4);
 }
 
 #[test]
