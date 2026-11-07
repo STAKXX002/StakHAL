@@ -97,7 +97,7 @@ fn test_visual_nav_transitions() {
     let m_start_50 = diagram_child.margin_start();
     println!("Forward t=50ms: margin_start={}", m_start_50);
     assert!(
-        m_start_50 <= 10 && m_start_50 >= 0,
+        (0..=10).contains(&m_start_50),
         "In flight margin_start must interpolate downwards"
     );
 
@@ -181,7 +181,7 @@ fn test_visual_nav_transitions() {
     let m_end_back_50 = overview_child.margin_end();
     println!("Backward t=50ms: margin_end={}", m_end_back_50);
     assert!(
-        m_end_back_50 <= 10 && m_end_back_50 >= 0,
+        (0..=10).contains(&m_end_back_50),
         "In flight margin_end must interpolate downwards"
     );
 

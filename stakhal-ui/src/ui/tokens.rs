@@ -142,7 +142,7 @@ pub mod motion {
                 let t = step as f64 / 100.0;
                 let val = ease_out_cubic(t);
                 assert!(val >= prev, "Curve must be monotonically non-decreasing");
-                assert!(val >= 0.0 && val <= 1.0, "Curve must strictly stay within [0.0, 1.0], no overshoot");
+                assert!((0.0..=1.0).contains(&val), "Curve must strictly stay within [0.0, 1.0], no overshoot");
                 prev = val;
             }
         }
