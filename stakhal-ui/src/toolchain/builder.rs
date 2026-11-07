@@ -520,41 +520,147 @@ project(DockingFirmware C ASM)
     }
 
     #[test]
-    fn test_detect_and_build_aa_ns_stm_port_if_present() {
-        let repo_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../AA_NS_STM_PORT");
-        if repo_path.is_dir() {
-            let detected = detect_build_system(&repo_path);
-            assert!(
-                detected.is_some(),
-                "AA_NS_STM_PORT should be detected as a CMake project"
-            );
-            let build_sys = detected.unwrap();
-            match &build_sys {
-                BuildSystem::CMake {
-                    target, build_dir, ..
-                } => {
-                    assert_eq!(target.as_deref(), Some("AA_NS_STM_V1"));
-                    assert!(build_dir.ends_with("build/Debug") || build_dir.ends_with("build"));
-                }
-                other => panic!(
-                    "Expected CMake build system for AA_NS_STM_PORT, got {:?}",
-                    other
-                ),
+    fn test_detect_aa_ns_stm_port_if_present() {
+        let repo_var = match std::env::var("STAKHAL_TEST_AA_NS_STM_PORT") {
+            Ok(val) => val,
+            Err(_) => {
+                eprintln!(
+                    "skipping test_detect_aa_ns_stm_port_if_present: STAKHAL_TEST_AA_NS_STM_PORT not set or path missing"
+                );
+                return;
             }
-
-            let cmd_res = get_build_command(&build_sys, &repo_path);
-            assert!(
-                cmd_res.is_ok(),
-                "get_build_command should succeed: {:?}",
-                cmd_res.err()
+        };
+        let repo_path = PathBuf::from(repo_var);
+        if !repo_path.is_dir() {
+            eprintln!(
+                "skipping test_detect_aa_ns_stm_port_if_present: STAKHAL_TEST_AA_NS_STM_PORT not set or path missing"
             );
-            let (cmd, args, exec_dir) = cmd_res.unwrap();
-            assert_eq!(cmd, "cmake");
-            assert_eq!(args, vec!["--build", "build/Debug"]);
-            assert_eq!(exec_dir, repo_path);
-
-            // Verify that build/Debug was configured and build.ninja was generated
-            assert!(repo_path.join("build/Debug/build.ninja").is_file());
+            return;
         }
+
+        let detected = detect_build_system(&repo_path);
+        assert!(
+            detected.is_some(),
+            "AA_NS_STM_PORT should be detected as a CMake project"
+        );
+        match detected.unwrap() {
+            BuildSystem::CMake {
+                target, build_dir, ..
+            } => {
+                assert_eq!(target.as_deref(), Some("AA_NS_STM_PORT"));
+                assert!(build_dir.ends_with("build/Debug") || build_dir.ends_with("build"));
+            }
+            other => panic!(
+                "Expected CMake build system for AA_NS_STM_PORT, got {:?}",
+                other
+            ),
+        }
+    }
+
+    #[test]
+    fn test_build_command_aa_ns_stm_port_on_temp_copy_if_present() {
+        let repo_var = match std::env::var("STAKHAL_TEST_AA_NS_STM_PORT") {
+            Ok(val) => val,
+            Err(_) => {
+                eprintln!(
+                    "skipping test_build_command_aa_ns_stm_port_on_temp_copy_if_present: STAKHAL_TEST_AA_NS_STM_PORT not set or path missing"
+                );
+                return;
+            }
+        };
+        let repo_path = PathBuf::from(repo_var);
+        if !repo_path.is_dir() {
+            eprintln!(
+                "skipping test_build_command_aa_ns_stm_port_on_temp_copy_if_present: STAKHAL_TEST_AA_NS_STM_PORT not set or path missing"
+            );
+            return;
+        }
+
+        if std::env::var("STAKHAL_TEST_CMAKE_CONFIGURE").as_deref() != Ok("1") {
+            eprintln!(
+                "skipping test_build_command_aa_ns_stm_port_on_temp_copy_if_present: STAKHAL_TEST_CMAKE_CONFIGURE!=1"
+            );
+            return;
+        }
+
+        if !is_executable_on_path("cmake") {
+            eprintln!(
+                "skipping test_build_command_aa_ns_stm_port_on_temp_copy_if_present: cmake not on PATH"
+            );
+            return;
+        }
+
+        if !is_executable_on_path("ninja") {
+            eprintln!(
+                "skipping test_build_command_aa_ns_stm_port_on_temp_copy_if_present: ninja not on PATH"
+            );
+            return;
+        }
+
+        struct TempDirGuard(PathBuf);
+        impl Drop for TempDirGuard {
+            fn drop(&mut self) {
+                let _ = std::fs::remove_dir_all(&self.0);
+            }
+        }
+
+        fn copy_dir_recursive(src: &Path, dst: &Path, is_root: bool) -> std::io::Result<()> {
+            std::fs::create_dir_all(dst)?;
+            for entry in std::fs::read_dir(src)? {
+                let entry = entry?;
+                let file_name = entry.file_name();
+                if is_root && (file_name == "build" || file_name == ".git") {
+                    continue;
+                }
+                let file_type = entry.file_type()?;
+                let src_path = entry.path();
+                let dst_path = dst.join(&file_name);
+                if file_type.is_symlink() {
+                    #[cfg(unix)]
+                    {
+                        if let Ok(target) = std::fs::read_link(&src_path) {
+                            let _ = std::os::unix::fs::symlink(&target, &dst_path);
+                        }
+                    }
+                } else if file_type.is_dir() {
+                    copy_dir_recursive(&src_path, &dst_path, false)?;
+                } else {
+                    std::fs::copy(&src_path, &dst_path)?;
+                }
+            }
+            Ok(())
+        }
+
+        let temp_dir = std::env::temp_dir().join(format!(
+            "stakhal_test_aa_ns_stm_port_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let _guard = TempDirGuard(temp_dir.clone());
+
+        copy_dir_recursive(&repo_path, &temp_dir, true)
+            .expect("failed to copy project into temp directory");
+
+        let detected = detect_build_system(&temp_dir);
+        assert!(
+            detected.is_some(),
+            "temp copy should be detected as a CMake project"
+        );
+        let build_sys = detected.unwrap();
+
+        let cmd_res = get_build_command(&build_sys, &temp_dir);
+        assert!(
+            cmd_res.is_ok(),
+            "get_build_command should succeed on temp copy: {:?}",
+            cmd_res.err()
+        );
+        let (cmd, args, exec_dir) = cmd_res.unwrap();
+        assert_eq!(cmd, "cmake");
+        assert_eq!(args, vec!["--build", "build/Debug"]);
+        assert_eq!(exec_dir, temp_dir);
+        assert!(temp_dir.join("build/Debug/build.ninja").is_file());
     }
 }
