@@ -1174,9 +1174,15 @@ mod tests {
         surface.flush();
 
         // Save visual artifact at midpoint
-        let artifact_dir = std::path::PathBuf::from(
-            "/home/stakxx002/.gemini/antigravity-ide/brain/e21edbbd-844e-44ef-9dfa-1af3c8e3a19b",
-        );
+        let artifact_dir = std::env::temp_dir().join(format!(
+            "stakhal_test_state_diagram_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let _ = std::fs::create_dir_all(&artifact_dir);
         if artifact_dir.exists() {
             if let Ok(mut f) =
                 std::fs::File::create(artifact_dir.join("state_diagram_edge_pulse_mid.png"))
