@@ -1,7 +1,10 @@
 use tree_sitter::Node;
 
 pub(crate) fn node_text(node: Node, source_bytes: &[u8]) -> String {
-    node.utf8_text(source_bytes).unwrap_or("").trim().to_string()
+    node.utf8_text(source_bytes)
+        .unwrap_or("")
+        .trim()
+        .to_string()
 }
 
 pub(crate) fn clean_guard_text(raw: &str) -> String {
@@ -36,11 +39,18 @@ pub(crate) struct CallArgInfo {
     pub(crate) is_string_literal: bool,
 }
 
-pub(crate) fn extract_first_argument_info(call_node: Node, source_bytes: &[u8]) -> Option<CallArgInfo> {
+pub(crate) fn extract_first_argument_info(
+    call_node: Node,
+    source_bytes: &[u8],
+) -> Option<CallArgInfo> {
     if let Some(arg_list) = call_node.child_by_field_name("arguments") {
         let mut cursor = arg_list.walk();
         for child in arg_list.children(&mut cursor) {
-            if child.kind() != "(" && child.kind() != ")" && child.kind() != "," && child.kind() != "comment" {
+            if child.kind() != "("
+                && child.kind() != ")"
+                && child.kind() != ","
+                && child.kind() != "comment"
+            {
                 let is_string_literal = child.kind() == "string_literal";
                 let mut text = node_text(child, source_bytes);
                 if text.starts_with('"') && text.ends_with('"') && text.len() >= 2 {
@@ -81,7 +91,10 @@ pub(crate) fn clean_printf_literal(raw: &str) -> String {
         .replace("\\n", "")
         .replace("\r", "")
         .replace("\n", "");
-    s.trim().trim_matches(|c| c == '.' || c == '!').trim().to_string()
+    s.trim()
+        .trim_matches(|c| c == '.' || c == '!')
+        .trim()
+        .to_string()
 }
 
 pub(crate) fn differs_meaningfully(printf_msg: &str, dest_state: &str) -> bool {
@@ -104,11 +117,28 @@ pub(crate) fn differs_meaningfully(printf_msg: &str, dest_state: &str) -> bool {
 
     // Status / state confirmations in fixture
     let known_redundant = [
-        "hold", "cal ok", "returned", "stopping", "backoff", "go", "ret",
-        "rst", "opening", "closing", "closed", "opened", "busy", "no cal",
-        "invalid", "hatch stopped", "ok",
+        "hold",
+        "cal ok",
+        "returned",
+        "stopping",
+        "backoff",
+        "go",
+        "ret",
+        "rst",
+        "opening",
+        "closing",
+        "closed",
+        "opened",
+        "busy",
+        "no cal",
+        "invalid",
+        "hatch stopped",
+        "ok",
     ];
-    if known_redundant.iter().any(|&r| clean_msg == r || clean_msg.contains(r)) {
+    if known_redundant
+        .iter()
+        .any(|&r| clean_msg == r || clean_msg.contains(r))
+    {
         return false;
     }
 
@@ -221,7 +251,9 @@ pub fn to_title_case_identifier(ident: &str) -> String {
     let capitalized: Vec<String> = words
         .into_iter()
         .map(|w| {
-            if w.chars().all(|c| c.is_ascii_uppercase() || c.is_ascii_digit()) {
+            if w.chars()
+                .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit())
+            {
                 w
             } else {
                 let mut chars = w.chars();
@@ -334,7 +366,11 @@ pub(crate) fn is_camel_case_ident(s: &str) -> bool {
 
 pub(crate) fn strip_variant_prefix(s: &str) -> Option<String> {
     let clean = s.trim();
-    if clean.contains('_') && clean.chars().all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == '_') {
+    if clean.contains('_')
+        && clean
+            .chars()
+            .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == '_')
+    {
         let idx = clean.find('_')?;
         let stripped = &clean[idx + 1..];
         if !stripped.is_empty() {

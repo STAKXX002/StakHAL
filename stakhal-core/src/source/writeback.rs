@@ -42,9 +42,8 @@ pub fn write_region(
         ));
     }
 
-    let mut new_bytes = Vec::with_capacity(
-        start_byte + new_content.len() + (content_bytes.len() - end_byte),
-    );
+    let mut new_bytes =
+        Vec::with_capacity(start_byte + new_content.len() + (content_bytes.len() - end_byte));
     new_bytes.extend_from_slice(&content_bytes[..start_byte]);
     new_bytes.extend_from_slice(new_content.as_bytes());
     new_bytes.extend_from_slice(&content_bytes[end_byte..]);
@@ -178,7 +177,10 @@ int old_var = 0;
 
         let dir_entries: Vec<String> = fs::read_dir(dir.path())
             .unwrap()
-            .filter_map(|e| e.ok().map(|de| de.file_name().to_string_lossy().to_string()))
+            .filter_map(|e| {
+                e.ok()
+                    .map(|de| de.file_name().to_string_lossy().to_string())
+            })
             .collect();
 
         assert_eq!(dir_entries, vec!["main.c"]);

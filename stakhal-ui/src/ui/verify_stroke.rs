@@ -1,10 +1,10 @@
-use std::cell::RefCell;
-use std::rc::Rc;
+use crate::state::AppState;
+use crate::ui::tokens;
 use gtk4::cairo;
 use gtk4::glib;
 use gtk4::prelude::*;
-use crate::state::AppState;
-use crate::ui::tokens;
+use std::cell::RefCell;
+use std::rc::Rc;
 
 pub const VERIFY_STROKE_SIZE: i32 = 16;
 pub const COLOR_SUCCESS_RGB: (f64, f64, f64) = (0.204, 0.827, 0.600); // #34D399 (state_ready)
@@ -29,7 +29,11 @@ pub fn draw_verify_stroke_path(cr: &cairo::Context, progress: f64) {
     let total_len = len1 + len2;
     let target_d = eased * total_len;
 
-    cr.set_source_rgb(COLOR_SUCCESS_RGB.0, COLOR_SUCCESS_RGB.1, COLOR_SUCCESS_RGB.2);
+    cr.set_source_rgb(
+        COLOR_SUCCESS_RGB.0,
+        COLOR_SUCCESS_RGB.1,
+        COLOR_SUCCESS_RGB.2,
+    );
     cr.set_line_width(2.0);
     cr.set_line_cap(cairo::LineCap::Round);
     cr.set_line_join(cairo::LineJoin::Round);
@@ -142,11 +146,7 @@ mod tests {
         let cr = cairo::Context::new(&surface).unwrap();
 
         let anim_enabled = false;
-        let progress = if !anim_enabled {
-            1.0
-        } else {
-            0.0
-        };
+        let progress = if !anim_enabled { 1.0 } else { 0.0 };
         assert_eq!(progress, 1.0);
         draw_verify_stroke_path(&cr, progress);
         surface.flush();

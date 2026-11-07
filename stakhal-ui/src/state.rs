@@ -1,9 +1,9 @@
-use std::cell::RefCell;
-use std::rc::Rc;
-use std::path::PathBuf;
 use gtk4::prelude::*;
 use libadwaita as adw;
 use stakhal_core::ir::schema::Project;
+use std::cell::RefCell;
+use std::path::PathBuf;
+use std::rc::Rc;
 
 /// Domain cell: project files and loaded core model
 #[derive(Default, Clone)]
@@ -112,13 +112,19 @@ impl Default for DiagramCanvasState {
 }
 
 /// Defense-in-depth closure helper for read-access to DiagramCanvasState.
-pub fn with_canvas_state<R>(cell: &Rc<RefCell<DiagramCanvasState>>, f: impl FnOnce(&DiagramCanvasState) -> R) -> R {
+pub fn with_canvas_state<R>(
+    cell: &Rc<RefCell<DiagramCanvasState>>,
+    f: impl FnOnce(&DiagramCanvasState) -> R,
+) -> R {
     let canvas = cell.borrow();
     f(&canvas)
 }
 
 /// Defense-in-depth closure helper for mutable access to DiagramCanvasState.
-pub fn with_canvas_state_mut<R>(cell: &Rc<RefCell<DiagramCanvasState>>, f: impl FnOnce(&mut DiagramCanvasState) -> R) -> R {
+pub fn with_canvas_state_mut<R>(
+    cell: &Rc<RefCell<DiagramCanvasState>>,
+    f: impl FnOnce(&mut DiagramCanvasState) -> R,
+) -> R {
     let mut canvas = cell.borrow_mut();
     f(&mut canvas)
 }
@@ -213,7 +219,6 @@ pub struct AppWidgets {
     #[allow(dead_code)]
     pub box_quick_commands: gtk4::Box,
 }
-
 
 pub fn create_icon_button(label_text: &str, icon_name: &str, is_suggested: bool) -> gtk4::Button {
     let bx = gtk4::Box::builder()

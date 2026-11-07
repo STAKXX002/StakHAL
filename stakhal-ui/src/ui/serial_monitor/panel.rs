@@ -1,6 +1,6 @@
-use gtk4::prelude::*;
 use crate::state::create_icon_button;
 use crate::toolchain::serial::COMMON_BAUD_RATES;
+use gtk4::prelude::*;
 
 pub struct SerialMonitorWidgets {
     pub serial_panel_box: gtk4::Box,
@@ -63,7 +63,10 @@ pub fn build_serial_monitor_panel() -> SerialMonitorWidgets {
 
     let btn_connect = gtk4::Button::builder()
         .label("Connect")
-        .css_classes(vec!["stakhal-btn".to_string(), "suggested-action".to_string()])
+        .css_classes(vec![
+            "stakhal-btn".to_string(),
+            "suggested-action".to_string(),
+        ])
         .tooltip_text("Open serial communication port")
         .build();
     btn_connect.set_cursor_from_name(Some("pointer"));
@@ -143,7 +146,10 @@ pub fn build_serial_monitor_panel() -> SerialMonitorWidgets {
 
     let btn_send = gtk4::Button::builder()
         .label("Send")
-        .css_classes(vec!["stakhal-btn".to_string(), "suggested-action".to_string()])
+        .css_classes(vec![
+            "stakhal-btn".to_string(),
+            "suggested-action".to_string(),
+        ])
         .tooltip_text("Send command followed by CRLF (Enter)")
         .build();
     btn_send.set_cursor_from_name(Some("pointer"));

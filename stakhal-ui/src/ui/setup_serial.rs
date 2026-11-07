@@ -1,12 +1,14 @@
+use gtk4::{gdk, glib, prelude::*};
+use libadwaita as adw;
 use std::cell::RefCell;
 use std::path::Path;
 use std::rc::Rc;
-use gtk4::{gdk, glib, prelude::*};
-use libadwaita as adw;
 
 use crate::state::{AppState, AppWidgets};
 use crate::toolchain;
-use crate::{append_log_text, append_serial_text, clear_box_children, update_build_status, StatusKind};
+use crate::{
+    append_log_text, append_serial_text, clear_box_children, update_build_status, StatusKind,
+};
 
 pub fn refresh_serial_ports(state: &Rc<RefCell<AppState>>, widgets: &Rc<AppWidgets>) {
     let ports = crate::toolchain::serial::enumerate_serial_ports();
@@ -81,11 +83,17 @@ pub fn attach_serial_rx_pump(
 
         while let Ok(evt) = event_rx.try_recv() {
             match evt {
-                crate::toolchain::serial::SerialRxEvent::Connected { port_name, baud_rate } => {
+                crate::toolchain::serial::SerialRxEvent::Connected {
+                    port_name,
+                    baud_rate,
+                } => {
                     append_serial_text(
                         &widgets_timer.serial_log_view,
                         &widgets_timer.serial_scrolled,
-                        &format!("\n[SERIAL] Connected to {} at {} baud (8N1).\n", port_name, baud_rate),
+                        &format!(
+                            "\n[SERIAL] Connected to {} at {} baud (8N1).\n",
+                            port_name, baud_rate
+                        ),
                     );
                 }
                 crate::toolchain::serial::SerialRxEvent::Data(data) => {
@@ -95,7 +103,9 @@ pub fn attach_serial_rx_pump(
                         &data,
                     );
 
-                    if let Some((hash, is_dirty)) = toolchain::traceability::parse_build_banner_line(&data) {
+                    if let Some((hash, is_dirty)) =
+                        toolchain::traceability::parse_build_banner_line(&data)
+                    {
                         {
                             let st = state_timer.borrow();
                             let mut bt = st.build_trace.borrow_mut();
@@ -106,11 +116,15 @@ pub fn attach_serial_rx_pump(
                             &widgets_timer.build_log_view,
                             &format!("[TRACE] Captured running build hash from serial: {}", hash),
                         );
-                        crate::ui::setup_build_flash::update_traceability_ui(&state_timer, &widgets_timer);
+                        crate::ui::setup_build_flash::update_traceability_ui(
+                            &state_timer,
+                            &widgets_timer,
+                        );
                     }
 
                     // Live state machine transition recognition (Phase 5)
-                    let is_serial_connected = state_timer.borrow().serial.borrow().is_serial_connected;
+                    let is_serial_connected =
+                        state_timer.borrow().serial.borrow().is_serial_connected;
                     if is_serial_connected {
                         let known_nodes: Vec<String> = {
                             let st = state_timer.borrow();
@@ -128,19 +142,35 @@ pub fn attach_serial_rx_pump(
                         };
 
                         if !known_nodes.is_empty() {
-                            if let Some(matched_node) = toolchain::traceability::parse_state_transition_line(&data, &known_nodes) {
-                                let is_diagram_open = widgets_timer.stack.visible_child_name().as_deref() == Some("state_diagram");
+                            if let Some(matched_node) =
+                                toolchain::traceability::parse_state_transition_line(
+                                    &data,
+                                    &known_nodes,
+                                )
+                            {
+                                let is_diagram_open =
+                                    widgets_timer.stack.visible_child_name().as_deref()
+                                        == Some("state_diagram");
                                 {
                                     let st = state_timer.borrow();
                                     st.with_canvas_state_mut(|c| {
                                         let prev_node = c.live_state_node.clone();
                                         c.live_state_node = Some(matched_node.clone());
                                         c.selected_state_node = Some(matched_node.clone());
-                                        if is_diagram_open && crate::ui::tokens::motion::is_animations_enabled() {
-                                            c.node_flash_animation = Some((matched_node.clone(), std::time::Instant::now()));
+                                        if is_diagram_open
+                                            && crate::ui::tokens::motion::is_animations_enabled()
+                                        {
+                                            c.node_flash_animation = Some((
+                                                matched_node.clone(),
+                                                std::time::Instant::now(),
+                                            ));
                                             if let Some(prev) = prev_node {
                                                 if prev != matched_node {
-                                                    c.edge_pulse_animation = Some((prev, matched_node.clone(), std::time::Instant::now()));
+                                                    c.edge_pulse_animation = Some((
+                                                        prev,
+                                                        matched_node.clone(),
+                                                        std::time::Instant::now(),
+                                                    ));
                                                 } else {
                                                     c.edge_pulse_animation = None;
                                                 }
@@ -154,7 +184,10 @@ pub fn attach_serial_rx_pump(
                                     });
                                 }
                                 if is_diagram_open {
-                                    crate::ui::state_diagram::update_selected_state_info_label(&widgets_timer.lbl_selected_info, &state_timer.borrow());
+                                    crate::ui::state_diagram::update_selected_state_info_label(
+                                        &widgets_timer.lbl_selected_info,
+                                        &state_timer.borrow(),
+                                    );
                                     widgets_timer.diagram_drawing_area.queue_draw();
                                 }
                             }
@@ -182,13 +215,19 @@ pub fn attach_serial_rx_pump(
                         !ser.available_serial_ports.is_empty()
                     };
                     widgets_timer.btn_connect_serial.set_label("Connect");
-                    widgets_timer.btn_connect_serial.remove_css_class("destructive-action");
-                    widgets_timer.btn_connect_serial.add_css_class("suggested-action");
                     widgets_timer
                         .btn_connect_serial
-                        .set_sensitive(has_ports);
+                        .remove_css_class("destructive-action");
+                    widgets_timer
+                        .btn_connect_serial
+                        .add_css_class("suggested-action");
+                    widgets_timer.btn_connect_serial.set_sensitive(has_ports);
 
-                    update_build_status(&widgets_timer.lbl_serial_status, "DISCONNECTED", StatusKind::Idle);
+                    update_build_status(
+                        &widgets_timer.lbl_serial_status,
+                        "DISCONNECTED",
+                        StatusKind::Idle,
+                    );
                     widgets_timer.combo_port.set_sensitive(true);
                     widgets_timer.combo_baud.set_sensitive(true);
                     widgets_timer.btn_refresh_ports.set_sensitive(true);
@@ -220,7 +259,11 @@ pub fn auto_reconnect_serial_after_flash(state: &Rc<RefCell<AppState>>, widgets:
             .ok();
     }
 
-    update_build_status(&widgets.lbl_serial_status, "RECONNECTING...", StatusKind::Active);
+    update_build_status(
+        &widgets.lbl_serial_status,
+        "RECONNECTING...",
+        StatusKind::Active,
+    );
     widgets.btn_connect_serial.set_label("Connecting...");
     widgets.btn_connect_serial.set_sensitive(false);
     widgets.combo_port.set_sensitive(false);
@@ -267,10 +310,18 @@ pub fn auto_reconnect_serial_after_flash(state: &Rc<RefCell<AppState>>, widgets:
                     }
 
                     widgets_retry.btn_connect_serial.set_label("Disconnect");
-                    widgets_retry.btn_connect_serial.remove_css_class("suggested-action");
-                    widgets_retry.btn_connect_serial.add_css_class("destructive-action");
+                    widgets_retry
+                        .btn_connect_serial
+                        .remove_css_class("suggested-action");
+                    widgets_retry
+                        .btn_connect_serial
+                        .add_css_class("destructive-action");
                     widgets_retry.btn_connect_serial.set_sensitive(true);
-                    update_build_status(&widgets_retry.lbl_serial_status, "CONNECTED", StatusKind::Ready);
+                    update_build_status(
+                        &widgets_retry.lbl_serial_status,
+                        "CONNECTED",
+                        StatusKind::Ready,
+                    );
                     widgets_retry.combo_port.set_sensitive(false);
                     widgets_retry.combo_baud.set_sensitive(false);
                     widgets_retry.btn_refresh_ports.set_sensitive(false);
@@ -280,7 +331,10 @@ pub fn auto_reconnect_serial_after_flash(state: &Rc<RefCell<AppState>>, widgets:
                     append_serial_text(
                         &widgets_retry.serial_log_view,
                         &widgets_retry.serial_scrolled,
-                        &format!("[SERIAL] Connected to {} at {} baud (8N1).\n", port_name, baud_rate),
+                        &format!(
+                            "[SERIAL] Connected to {} at {} baud (8N1).\n",
+                            port_name, baud_rate
+                        ),
                     );
                     widgets_retry
                         .toast_overlay
@@ -300,13 +354,26 @@ pub fn auto_reconnect_serial_after_flash(state: &Rc<RefCell<AppState>>, widgets:
                 &widgets_retry.serial_scrolled,
                 "[SERIAL] Auto-reconnect timed out. Click Connect to manually establish connection.\n",
             );
-            update_build_status(&widgets_retry.lbl_serial_status, "DISCONNECTED", StatusKind::Idle);
+            update_build_status(
+                &widgets_retry.lbl_serial_status,
+                "DISCONNECTED",
+                StatusKind::Idle,
+            );
             widgets_retry.btn_connect_serial.set_label("Connect");
-            widgets_retry.btn_connect_serial.remove_css_class("destructive-action");
-            widgets_retry.btn_connect_serial.add_css_class("suggested-action");
             widgets_retry
                 .btn_connect_serial
-                .set_sensitive(!state_retry.borrow().serial.borrow().available_serial_ports.is_empty());
+                .remove_css_class("destructive-action");
+            widgets_retry
+                .btn_connect_serial
+                .add_css_class("suggested-action");
+            widgets_retry.btn_connect_serial.set_sensitive(
+                !state_retry
+                    .borrow()
+                    .serial
+                    .borrow()
+                    .available_serial_ports
+                    .is_empty(),
+            );
             widgets_retry.combo_port.set_sensitive(true);
             widgets_retry.combo_baud.set_sensitive(true);
             widgets_retry.btn_refresh_ports.set_sensitive(true);
@@ -346,7 +413,11 @@ pub fn toggle_serial_connection(state: &Rc<RefCell<AppState>>, widgets: &Rc<AppW
             (port, baud)
         };
 
-        update_build_status(&widgets.lbl_serial_status, "CONNECTING...", StatusKind::Active);
+        update_build_status(
+            &widgets.lbl_serial_status,
+            "CONNECTING...",
+            StatusKind::Active,
+        );
 
         match crate::toolchain::serial::spawn_serial_connection(port_name.clone(), baud_rate) {
             Ok((session, event_rx)) => {
@@ -358,8 +429,12 @@ pub fn toggle_serial_connection(state: &Rc<RefCell<AppState>>, widgets: &Rc<AppW
                 }
 
                 widgets.btn_connect_serial.set_label("Disconnect");
-                widgets.btn_connect_serial.remove_css_class("suggested-action");
-                widgets.btn_connect_serial.add_css_class("destructive-action");
+                widgets
+                    .btn_connect_serial
+                    .remove_css_class("suggested-action");
+                widgets
+                    .btn_connect_serial
+                    .add_css_class("destructive-action");
                 update_build_status(&widgets.lbl_serial_status, "CONNECTED", StatusKind::Ready);
                 widgets.combo_port.set_sensitive(false);
                 widgets.combo_baud.set_sensitive(false);
@@ -374,9 +449,10 @@ pub fn toggle_serial_connection(state: &Rc<RefCell<AppState>>, widgets: &Rc<AppW
                     &format!("\n[SERIAL ERROR] {}\n", err),
                 );
                 update_build_status(&widgets.lbl_serial_status, "ERROR", StatusKind::Error);
-                widgets
-                    .toast_overlay
-                    .add_toast(adw::Toast::new(&format!("Serial connection error: {}", err)));
+                widgets.toast_overlay.add_toast(adw::Toast::new(&format!(
+                    "Serial connection error: {}",
+                    err
+                )));
             }
         }
     }
@@ -425,7 +501,11 @@ pub fn send_serial_command(text: &str, state: &Rc<RefCell<AppState>>, widgets: &
         .ok();
 }
 
-pub fn update_quick_send_buttons(main_c_path: &Path, state: &Rc<RefCell<AppState>>, widgets: &Rc<AppWidgets>) {
+pub fn update_quick_send_buttons(
+    main_c_path: &Path,
+    state: &Rc<RefCell<AppState>>,
+    widgets: &Rc<AppWidgets>,
+) {
     clear_box_children(&widgets.box_quick_commands);
 
     let commands = stakhal_core::source::extract_project_command_names(main_c_path);
@@ -435,7 +515,11 @@ pub fn update_quick_send_buttons(main_c_path: &Path, state: &Rc<RefCell<AppState
 
     let lbl_quick = gtk4::Label::builder()
         .label("QUICK:")
-        .css_classes(vec!["caption".to_string(), "dim-label".to_string(), "data-mono".to_string()])
+        .css_classes(vec![
+            "caption".to_string(),
+            "dim-label".to_string(),
+            "data-mono".to_string(),
+        ])
         .valign(gtk4::Align::Center)
         .build();
     widgets.box_quick_commands.append(&lbl_quick);
@@ -443,7 +527,11 @@ pub fn update_quick_send_buttons(main_c_path: &Path, state: &Rc<RefCell<AppState
     for cmd in commands {
         let btn = gtk4::Button::builder()
             .label(&cmd)
-            .css_classes(vec!["stakhal-btn".to_string(), "flat".to_string(), "caption".to_string()])
+            .css_classes(vec![
+                "stakhal-btn".to_string(),
+                "flat".to_string(),
+                "caption".to_string(),
+            ])
             .tooltip_text(format!("Send command: {}", cmd))
             .build();
         btn.set_cursor_from_name(Some("pointer"));

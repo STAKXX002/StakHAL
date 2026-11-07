@@ -21,7 +21,8 @@ pub(crate) fn resolve_cross_file_command_transitions(
     transitions: &mut Vec<AppTransition>,
     ambiguous_transitions: &mut Vec<AmbiguousTransition>,
 ) {
-    let query_funcs = collect_query_functions(root, source_bytes, &candidate.var.name, known_variants);
+    let query_funcs =
+        collect_query_functions(root, source_bytes, &candidate.var.name, known_variants);
 
     let mut other_c_files = Vec::new();
     if let Ok(entries) = fs::read_dir(src_dir) {
@@ -156,7 +157,10 @@ fn walk_cross_file_statements(
                     for target in &helper.target_states {
                         if !active_query_states.is_empty() {
                             for from in active_query_states {
-                                if !transitions.iter().any(|t| t.from == *from && t.to == *target && t.label == label) {
+                                if !transitions
+                                    .iter()
+                                    .any(|t| t.from == *from && t.to == *target && t.label == label)
+                                {
                                     transitions.push(AppTransition {
                                         from: from.clone(),
                                         to: target.clone(),
@@ -169,7 +173,10 @@ fn walk_cross_file_statements(
                                 }
                             }
                         } else if target == initial_state {
-                            if !ambiguous_transitions.iter().any(|a| a.target == *target && a.guard == guard) {
+                            if !ambiguous_transitions
+                                .iter()
+                                .any(|a| a.target == *target && a.guard == guard)
+                            {
                                 ambiguous_transitions.push(AmbiguousTransition {
                                     target: target.clone(),
                                     guard: guard.clone(),
@@ -177,7 +184,9 @@ fn walk_cross_file_statements(
                                     note: format!("Command dispatch via {}", fn_name),
                                 });
                             }
-                            if !transitions.iter().any(|t| t.from == "(any state)" && t.to == *target && t.label == label) {
+                            if !transitions.iter().any(|t| {
+                                t.from == "(any state)" && t.to == *target && t.label == label
+                            }) {
                                 transitions.push(AppTransition {
                                     from: "(any state)".to_string(),
                                     to: target.clone(),
@@ -189,7 +198,9 @@ fn walk_cross_file_statements(
                                 });
                             }
                         } else {
-                            if !transitions.iter().any(|t| t.from == initial_state && t.to == *target && t.label == label) {
+                            if !transitions.iter().any(|t| {
+                                t.from == initial_state && t.to == *target && t.label == label
+                            }) {
                                 transitions.push(AppTransition {
                                     from: initial_state.to_string(),
                                     to: target.clone(),
@@ -262,7 +273,13 @@ fn collect_query_functions(
     for fn_node in fn_nodes {
         if let Some(fn_name) = extract_function_name(fn_node, source_bytes) {
             let mut queried_states = Vec::new();
-            collect_queried_states_in_node(fn_node, source_bytes, var_name, known_variants, &mut queried_states);
+            collect_queried_states_in_node(
+                fn_node,
+                source_bytes,
+                var_name,
+                known_variants,
+                &mut queried_states,
+            );
             if !queried_states.is_empty() {
                 query_funcs.insert(fn_name, queried_states);
             }
@@ -314,7 +331,11 @@ fn collect_command_table(root: Node, source_bytes: &[u8]) -> HashMap<String, Str
     fn_to_cmd
 }
 
-fn collect_command_table_recursive(node: Node, source_bytes: &[u8], out: &mut HashMap<String, String>) {
+fn collect_command_table_recursive(
+    node: Node,
+    source_bytes: &[u8],
+    out: &mut HashMap<String, String>,
+) {
     if node.kind() == "initializer_list" {
         let mut cursor = node.walk();
         for child in node.children(&mut cursor) {

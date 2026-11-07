@@ -1,12 +1,10 @@
+use serialport::{available_ports, SerialPortType};
 use std::io::{Read, Write};
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::thread;
 use std::time::Duration;
-use serialport::{available_ports, SerialPortType};
 
-pub const COMMON_BAUD_RATES: &[u32] = &[
-    9600, 19200, 38400, 57600, 115200, 230400, 460800, 921600,
-];
+pub const COMMON_BAUD_RATES: &[u32] = &[9600, 19200, 38400, 57600, 115200, 230400, 460800, 921600];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SerialPortInfo {
@@ -17,10 +15,7 @@ pub struct SerialPortInfo {
 
 #[derive(Debug, Clone)]
 pub enum SerialRxEvent {
-    Connected {
-        port_name: String,
-        baud_rate: u32,
-    },
+    Connected { port_name: String, baud_rate: u32 },
     Data(String),
     Disconnected,
     Error(String),
@@ -78,9 +73,19 @@ pub fn enumerate_serial_ports() -> Vec<SerialPortInfo> {
 
     // Sort so USB/ACM ports appear first
     result.sort_by(|a, b| {
-        let a_score = if a.is_usb || a.port_name.contains("ACM") || a.port_name.contains("USB") { 0 } else { 1 };
-        let b_score = if b.is_usb || b.port_name.contains("ACM") || b.port_name.contains("USB") { 0 } else { 1 };
-        a_score.cmp(&b_score).then_with(|| a.port_name.cmp(&b.port_name))
+        let a_score = if a.is_usb || a.port_name.contains("ACM") || a.port_name.contains("USB") {
+            0
+        } else {
+            1
+        };
+        let b_score = if b.is_usb || b.port_name.contains("ACM") || b.port_name.contains("USB") {
+            0
+        } else {
+            1
+        };
+        a_score
+            .cmp(&b_score)
+            .then_with(|| a.port_name.cmp(&b.port_name))
     });
 
     result
@@ -157,7 +162,9 @@ pub fn spawn_serial_connection(
                 match cmd {
                     SerialTxCommand::Send(text) => {
                         if let Err(e) = port.write_all(text.as_bytes()) {
-                            event_tx.send(SerialRxEvent::Error(format!("Tx error: {}", e))).ok();
+                            event_tx
+                                .send(SerialRxEvent::Error(format!("Tx error: {}", e)))
+                                .ok();
                         } else {
                             let _ = port.flush();
                         }
@@ -177,7 +184,8 @@ pub fn spawn_serial_connection(
             match port.read(&mut buf) {
                 Ok(n) if n > 0 => {
                     last_rx_instant = std::time::Instant::now();
-                    let lines = process_incoming_bytes(&mut byte_buffer, &buf[..n], false, Duration::ZERO);
+                    let lines =
+                        process_incoming_bytes(&mut byte_buffer, &buf[..n], false, Duration::ZERO);
                     for line in lines {
                         event_tx.send(SerialRxEvent::Data(line)).ok();
                     }
@@ -195,16 +203,14 @@ pub fn spawn_serial_connection(
                     }
                 }
                 Err(e) => {
-                    let lines = process_incoming_bytes(
-                        &mut byte_buffer,
-                        &[],
-                        true,
-                        Duration::from_secs(1),
-                    );
+                    let lines =
+                        process_incoming_bytes(&mut byte_buffer, &[], true, Duration::from_secs(1));
                     for line in lines {
                         event_tx.send(SerialRxEvent::Data(line)).ok();
                     }
-                    event_tx.send(SerialRxEvent::Error(format!("Rx error: {}", e))).ok();
+                    event_tx
+                        .send(SerialRxEvent::Error(format!("Rx error: {}", e)))
+                        .ok();
                     break;
                 }
             }

@@ -1,9 +1,9 @@
-use std::cell::RefCell;
-use std::rc::Rc;
+use super::draw::draw_state_diagram_canvas;
+use crate::state::AppState;
 use gtk4::glib;
 use gtk4::prelude::*;
-use crate::state::AppState;
-use super::draw::draw_state_diagram_canvas;
+use std::cell::RefCell;
+use std::rc::Rc;
 
 pub fn setup_state_diagram_drawing_and_gestures(
     drawing_area: &gtk4::DrawingArea,
@@ -83,7 +83,11 @@ pub fn setup_state_diagram_drawing_and_gestures(
             let mut hit_node = None;
             if let Some(ref layout) = st.state_diagram_layout {
                 for (id, node) in &layout.nodes {
-                    if gx >= node.x && gx <= node.x + node.width && gy >= node.y && gy <= node.y + node.height {
+                    if gx >= node.x
+                        && gx <= node.x + node.width
+                        && gy >= node.y
+                        && gy <= node.y + node.height
+                    {
                         hit_node = Some(id.clone());
                         break;
                     }
@@ -132,7 +136,11 @@ pub fn setup_state_diagram_drawing_and_gestures(
             let mut hovered = None;
             if let Some(ref layout) = st.state_diagram_layout {
                 for (id, node) in &layout.nodes {
-                    if gx >= node.x && gx <= node.x + node.width && gy >= node.y && gy <= node.y + node.height {
+                    if gx >= node.x
+                        && gx <= node.x + node.width
+                        && gy >= node.y
+                        && gy <= node.y + node.height
+                    {
                         hovered = Some(id.clone());
                         break;
                     }
@@ -195,9 +203,8 @@ pub fn setup_state_diagram_drawing_and_gestures(
     drawing_area.add_controller(drag_gesture);
 
     // 5. Scroll Controller for Zooming Anchored to Mouse Cursor
-    let scroll_controller = gtk4::EventControllerScroll::new(
-        gtk4::EventControllerScrollFlags::VERTICAL,
-    );
+    let scroll_controller =
+        gtk4::EventControllerScroll::new(gtk4::EventControllerScrollFlags::VERTICAL);
 
     let state_scroll = Rc::clone(&state);
     let area_scroll = drawing_area.clone();
@@ -208,7 +215,10 @@ pub fn setup_state_diagram_drawing_and_gestures(
                 .diagram_mouse_pos
                 .or_else(|| controller.current_event().and_then(|e| e.position()))
                 .unwrap_or_else(|| {
-                    (area_scroll.width().max(800) as f64 * 0.5, area_scroll.height().max(600) as f64 * 0.5)
+                    (
+                        area_scroll.width().max(800) as f64 * 0.5,
+                        area_scroll.height().max(600) as f64 * 0.5,
+                    )
                 });
 
             // 2. Apply new zoom scale and pan offset anchored to cursor
@@ -275,7 +285,8 @@ pub fn calculate_zoom_at_cursor(
 
 /// Update the diagram panel's selected state info label based on the current AppState selection.
 pub fn update_selected_state_info_label(label: &gtk4::Label, state: &AppState) {
-    let (sel_node, sel_sm_idx) = state.with_canvas_state(|c| (c.selected_state_node.clone(), c.selected_state_machine));
+    let (sel_node, sel_sm_idx) =
+        state.with_canvas_state(|c| (c.selected_state_node.clone(), c.selected_state_machine));
     if let Some(ref sel) = sel_node {
         let proj = state.project.borrow();
         if let Some(ref p) = proj.loaded_project {
@@ -283,7 +294,12 @@ pub fn update_selected_state_info_label(label: &gtk4::Label, state: &AppState) {
                 let outgoing: Vec<_> = sm.transitions.iter().filter(|t| &t.from == sel).collect();
                 let incoming: Vec<_> = sm.transitions.iter().filter(|t| &t.to == sel).collect();
 
-                let mut info = format!("STATE: {} | Incoming: {} | Outgoing: {}", sel, incoming.len(), outgoing.len());
+                let mut info = format!(
+                    "STATE: {} | Incoming: {} | Outgoing: {}",
+                    sel,
+                    incoming.len(),
+                    outgoing.len()
+                );
                 if !outgoing.is_empty() {
                     let out_summary: Vec<_> = outgoing
                         .iter()
@@ -362,9 +378,8 @@ mod tests {
 
         // Repeatedly zoom in 8 times
         for step in 1..=8 {
-            let (next_zoom, next_pan_x, next_pan_y) = calculate_zoom_at_cursor(
-                zoom, pan_x, pan_y, cursor_x, cursor_y, 1.15, 0.2, 5.0,
-            );
+            let (next_zoom, next_pan_x, next_pan_y) =
+                calculate_zoom_at_cursor(zoom, pan_x, pan_y, cursor_x, cursor_y, 1.15, 0.2, 5.0);
             zoom = next_zoom;
             pan_x = next_pan_x;
             pan_y = next_pan_y;
@@ -391,7 +406,14 @@ mod tests {
         // Repeatedly zoom back out 8 times
         for step in 1..=8 {
             let (next_zoom, next_pan_x, next_pan_y) = calculate_zoom_at_cursor(
-                zoom, pan_x, pan_y, cursor_x, cursor_y, 1.0 / 1.15, 0.2, 5.0,
+                zoom,
+                pan_x,
+                pan_y,
+                cursor_x,
+                cursor_y,
+                1.0 / 1.15,
+                0.2,
+                5.0,
             );
             zoom = next_zoom;
             pan_x = next_pan_x;
@@ -461,42 +483,75 @@ mod tests {
 
         // 1. t = 0ms: in flight, needs_redraw = true, edge_pulse_animation is Some
         state.borrow().with_canvas_state_mut(|c| {
-            c.edge_pulse_animation = Some(("A".to_string(), "B".to_string(), std::time::Instant::now()));
+            c.edge_pulse_animation =
+                Some(("A".to_string(), "B".to_string(), std::time::Instant::now()));
         });
         let redraw = run_tick(&state, true);
         assert!(redraw, "Tick at t=0ms must request redraw");
-        assert!(state.borrow().with_canvas_state(|c| c.edge_pulse_animation.is_some()));
+        assert!(state
+            .borrow()
+            .with_canvas_state(|c| c.edge_pulse_animation.is_some()));
 
         // 2. mid (t = 175ms): in flight, needs_redraw = true, edge_pulse_animation is Some
         state.borrow().with_canvas_state_mut(|c| {
-            c.edge_pulse_animation = Some(("A".to_string(), "B".to_string(), std::time::Instant::now() - std::time::Duration::from_millis(175)));
+            c.edge_pulse_animation = Some((
+                "A".to_string(),
+                "B".to_string(),
+                std::time::Instant::now() - std::time::Duration::from_millis(175),
+            ));
         });
         let redraw = run_tick(&state, true);
         assert!(redraw, "Tick at mid must request redraw");
-        assert!(state.borrow().with_canvas_state(|c| c.edge_pulse_animation.is_some()));
+        assert!(state
+            .borrow()
+            .with_canvas_state(|c| c.edge_pulse_animation.is_some()));
 
         // 3. exactly t = 350ms: progress >= 1.0, edge_pulse_animation cleared to None, needs_redraw = true for final flush
         state.borrow().with_canvas_state_mut(|c| {
-            c.edge_pulse_animation = Some(("A".to_string(), "B".to_string(), std::time::Instant::now() - std::time::Duration::from_millis(350)));
+            c.edge_pulse_animation = Some((
+                "A".to_string(),
+                "B".to_string(),
+                std::time::Instant::now() - std::time::Duration::from_millis(350),
+            ));
         });
         let redraw = run_tick(&state, true);
-        assert!(redraw, "Tick at exactly 350ms must request final redraw to clear pulse");
-        assert!(state.borrow().with_canvas_state(|c| c.edge_pulse_animation.is_none()), "edge_pulse_animation must be None at 350ms");
+        assert!(
+            redraw,
+            "Tick at exactly 350ms must request final redraw to clear pulse"
+        );
+        assert!(
+            state
+                .borrow()
+                .with_canvas_state(|c| c.edge_pulse_animation.is_none()),
+            "edge_pulse_animation must be None at 350ms"
+        );
 
         // 4. t = 380ms (+30ms past): edge_pulse_animation is None, needs_redraw = false (no clock starvation, frame clock idles)
         let redraw = run_tick(&state, true);
-        assert!(!redraw, "Tick at +30ms must NOT request redraw when pulse completed");
+        assert!(
+            !redraw,
+            "Tick at +30ms must NOT request redraw when pulse completed"
+        );
 
         // 5. t = 430ms (+80ms past): edge_pulse_animation is None, needs_redraw = false
         let redraw = run_tick(&state, true);
-        assert!(!redraw, "Tick at +80ms must NOT request redraw when pulse completed");
+        assert!(
+            !redraw,
+            "Tick at +80ms must NOT request redraw when pulse completed"
+        );
 
         // 6. Reduced motion: immediately cleared to None on first tick
         state.borrow().with_canvas_state_mut(|c| {
-            c.edge_pulse_animation = Some(("A".to_string(), "B".to_string(), std::time::Instant::now()));
+            c.edge_pulse_animation =
+                Some(("A".to_string(), "B".to_string(), std::time::Instant::now()));
         });
         let redraw = run_tick(&state, false);
         assert!(redraw, "Reduced motion tick must request redraw to clear");
-        assert!(state.borrow().with_canvas_state(|c| c.edge_pulse_animation.is_none()), "Reduced motion must clear pulse immediately");
+        assert!(
+            state
+                .borrow()
+                .with_canvas_state(|c| c.edge_pulse_animation.is_none()),
+            "Reduced motion must clear pulse immediately"
+        );
     }
 }

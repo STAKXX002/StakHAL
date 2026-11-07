@@ -203,7 +203,10 @@ mod tests {
     #[test]
     #[allow(clippy::assertions_on_constants)]
     fn test_launch_animation_timing_constants() {
-        assert!(TOTAL_DURATION_MS < 700.0, "Total duration must be strictly under 700ms");
+        assert!(
+            TOTAL_DURATION_MS < 700.0,
+            "Total duration must be strictly under 700ms"
+        );
         assert_eq!(REVEAL_DURATION_MS, 350.0);
         assert_eq!(HOLD_DURATION_MS, 70.0);
         assert_eq!(FADE_OUT_DURATION_MS, 140.0);

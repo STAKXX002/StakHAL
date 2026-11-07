@@ -77,10 +77,12 @@ pub fn spawn_streaming_process(
 
         match child.wait() {
             Ok(status) => {
-                tx.send(ProcessEvent::Finished(status.success(), status.code())).ok();
+                tx.send(ProcessEvent::Finished(status.success(), status.code()))
+                    .ok();
             }
             Err(e) => {
-                tx.send(ProcessEvent::Line(format!("Process wait error: {}", e))).ok();
+                tx.send(ProcessEvent::Line(format!("Process wait error: {}", e)))
+                    .ok();
                 tx.send(ProcessEvent::Finished(false, None)).ok();
             }
         }
@@ -133,7 +135,11 @@ mod tests {
     #[test]
     fn test_spawn_streaming_process_echo() {
         let temp = std::env::temp_dir();
-        let rx = spawn_streaming_process("echo".to_string(), vec!["Hello from runner".to_string()], temp);
+        let rx = spawn_streaming_process(
+            "echo".to_string(),
+            vec!["Hello from runner".to_string()],
+            temp,
+        );
 
         let mut lines = Vec::new();
         let mut finished = false;

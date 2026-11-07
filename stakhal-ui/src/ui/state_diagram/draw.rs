@@ -1,9 +1,9 @@
-use std::cell::RefCell;
-use std::rc::Rc;
-use gtk4::cairo;
-use stakhal_core::graph::{compute_state_machine_layout, is_fault_state};
 use crate::state::AppState;
 use crate::ui::tokens;
+use gtk4::cairo;
+use stakhal_core::graph::{compute_state_machine_layout, is_fault_state};
+use std::cell::RefCell;
+use std::rc::Rc;
 
 // Strict Design Tokens Integration
 const COLOR_CANVAS_BG: (f64, f64, f64) = tokens::color::BG_VOID;
@@ -25,9 +25,12 @@ const COLOR_NODE_FILL_DEFAULT: (f64, f64, f64, f64) = (
     tokens::color::BG_PANEL.2,
     0.95,
 );
-const COLOR_NODE_FILL_INITIAL: (f64, f64, f64, f64) = (24.0 / 255.0, 30.0 / 255.0, 36.0 / 255.0, 0.95);
-const COLOR_NODE_FILL_HOVER: (f64, f64, f64, f64) = (28.0 / 255.0, 36.0 / 255.0, 44.0 / 255.0, 0.95);
-const COLOR_NODE_FILL_SELECTED: (f64, f64, f64, f64) = (20.0 / 255.0, 32.0 / 255.0, 38.0 / 255.0, 0.95);
+const COLOR_NODE_FILL_INITIAL: (f64, f64, f64, f64) =
+    (24.0 / 255.0, 30.0 / 255.0, 36.0 / 255.0, 0.95);
+const COLOR_NODE_FILL_HOVER: (f64, f64, f64, f64) =
+    (28.0 / 255.0, 36.0 / 255.0, 44.0 / 255.0, 0.95);
+const COLOR_NODE_FILL_SELECTED: (f64, f64, f64, f64) =
+    (20.0 / 255.0, 32.0 / 255.0, 38.0 / 255.0, 0.95);
 
 // 1px Hairline Borders
 const COLOR_BORDER_DEFAULT: (f64, f64, f64) = tokens::color::BORDER_HAIR;
@@ -75,7 +78,11 @@ pub fn draw_state_diagram(
             }
 
             if st.diagram_needs_fit && width > 100.0 && height > 100.0 {
-                if let Some((lw, lh)) = st.state_diagram_layout.as_ref().map(|l| (l.width, l.height)) {
+                if let Some((lw, lh)) = st
+                    .state_diagram_layout
+                    .as_ref()
+                    .map(|l| (l.width, l.height))
+                {
                     let avail_w = (width - 40.0).max(100.0);
                     let avail_h = (height - 40.0).max(100.0);
                     let fit_zoom = (avail_w / lw).min(avail_h / lh).clamp(0.2, 1.0);
@@ -121,9 +128,17 @@ pub fn draw_state_diagram(
             cr.rectangle(0.0, 0.0, width, height);
             let _ = cr.fill();
 
-            cr.select_font_face(tokens::font::CAIRO_SANS, cairo::FontSlant::Normal, cairo::FontWeight::Bold);
+            cr.select_font_face(
+                tokens::font::CAIRO_SANS,
+                cairo::FontSlant::Normal,
+                cairo::FontWeight::Bold,
+            );
             cr.set_font_size(14.0);
-            cr.set_source_rgb(tokens::color::TEXT_MUTED.0, tokens::color::TEXT_MUTED.1, tokens::color::TEXT_MUTED.2);
+            cr.set_source_rgb(
+                tokens::color::TEXT_MUTED.0,
+                tokens::color::TEXT_MUTED.1,
+                tokens::color::TEXT_MUTED.2,
+            );
             cr.move_to(width * 0.35, height * 0.5);
             let _ = cr.show_text("No state machines detected in current project.");
             return;
@@ -178,12 +193,26 @@ pub fn draw_state_diagram(
     // Draw Lane Header Banners (Interface talking -> Sans)
     for lane in &layout.lanes {
         if lane.name != "INITIAL" {
-            cr.select_font_face(tokens::font::CAIRO_SANS, cairo::FontSlant::Normal, cairo::FontWeight::Bold);
+            cr.select_font_face(
+                tokens::font::CAIRO_SANS,
+                cairo::FontSlant::Normal,
+                cairo::FontWeight::Bold,
+            );
             cr.set_font_size(8.5);
             if selected_node.is_some() {
-                cr.set_source_rgba(tokens::color::TEXT_MUTED.0, tokens::color::TEXT_MUTED.1, tokens::color::TEXT_MUTED.2, 0.35);
+                cr.set_source_rgba(
+                    tokens::color::TEXT_MUTED.0,
+                    tokens::color::TEXT_MUTED.1,
+                    tokens::color::TEXT_MUTED.2,
+                    0.35,
+                );
             } else {
-                cr.set_source_rgba(tokens::color::TEXT_MUTED.0, tokens::color::TEXT_MUTED.1, tokens::color::TEXT_MUTED.2, 0.75);
+                cr.set_source_rgba(
+                    tokens::color::TEXT_MUTED.0,
+                    tokens::color::TEXT_MUTED.1,
+                    tokens::color::TEXT_MUTED.2,
+                    0.75,
+                );
             }
             let banner_text = if lane.name == "FAULT" {
                 "// GLOBAL FAULT HANDLER".to_string()
@@ -238,18 +267,43 @@ pub fn draw_state_diagram(
 
         let (edge_r, edge_g, edge_b, edge_a) = if edge.is_fault {
             if is_dimmed {
-                (COLOR_FAULT_RED.0, COLOR_FAULT_RED.1, COLOR_FAULT_RED.2, 0.15)
+                (
+                    COLOR_FAULT_RED.0,
+                    COLOR_FAULT_RED.1,
+                    COLOR_FAULT_RED.2,
+                    0.15,
+                )
             } else if is_connected_to_selection {
                 (COLOR_FAULT_RED.0, COLOR_FAULT_RED.1, COLOR_FAULT_RED.2, 1.0)
             } else {
-                (COLOR_FAULT_RED.0, COLOR_FAULT_RED.1, COLOR_FAULT_RED.2, 0.85)
+                (
+                    COLOR_FAULT_RED.0,
+                    COLOR_FAULT_RED.1,
+                    COLOR_FAULT_RED.2,
+                    0.85,
+                )
             }
         } else if is_connected_to_selection {
-            (tokens::color::ACCENT.0, tokens::color::ACCENT.1, tokens::color::ACCENT.2, 0.95)
+            (
+                tokens::color::ACCENT.0,
+                tokens::color::ACCENT.1,
+                tokens::color::ACCENT.2,
+                0.95,
+            )
         } else if is_dimmed {
-            (COLOR_BORDER_DEFAULT.0, COLOR_BORDER_DEFAULT.1, COLOR_BORDER_DEFAULT.2, 0.25)
+            (
+                COLOR_BORDER_DEFAULT.0,
+                COLOR_BORDER_DEFAULT.1,
+                COLOR_BORDER_DEFAULT.2,
+                0.25,
+            )
         } else {
-            (COLOR_BORDER_DEFAULT.0, COLOR_BORDER_DEFAULT.1, COLOR_BORDER_DEFAULT.2, 0.85)
+            (
+                COLOR_BORDER_DEFAULT.0,
+                COLOR_BORDER_DEFAULT.1,
+                COLOR_BORDER_DEFAULT.2,
+                0.85,
+            )
         };
 
         let is_pulse_edge = match &pulse_edge {
@@ -292,7 +346,12 @@ pub fn draw_state_diagram(
 
         // Overlay pass: traveling signal pulse along active state transition edge
         if is_pulse_edge {
-            cr.set_source_rgba(tokens::color::ACCENT.0, tokens::color::ACCENT.1, tokens::color::ACCENT.2, 1.0);
+            cr.set_source_rgba(
+                tokens::color::ACCENT.0,
+                tokens::color::ACCENT.1,
+                tokens::color::ACCENT.2,
+                1.0,
+            );
             cr.set_line_width(2.0);
             let pulse_len = 24.0_f64.min(total_len * 0.4).max(8.0);
             cr.set_dash(&[pulse_len, total_len * 2.0], -(pulse_t * total_len));
@@ -305,7 +364,10 @@ pub fn draw_state_diagram(
         if edge_reveal_progress >= 0.95 {
             let (arrow_dx, arrow_dy) = if edge.waypoints.len() >= 2 {
                 let n = edge.waypoints.len();
-                (edge.waypoints[n - 1].0 - edge.waypoints[n - 2].0, edge.waypoints[n - 1].1 - edge.waypoints[n - 2].1)
+                (
+                    edge.waypoints[n - 1].0 - edge.waypoints[n - 2].0,
+                    edge.waypoints[n - 1].1 - edge.waypoints[n - 2].1,
+                )
             } else {
                 (edge.end.0 - edge.control2.0, edge.end.1 - edge.control2.1)
             };
@@ -333,7 +395,11 @@ pub fn draw_state_diagram(
         let is_selected = selected_node == Some(id.as_str());
         let is_hovered = hovered_node == Some(id.as_str());
         let is_flashing = flash_node.as_deref() == Some(id.as_str()) && flash_progress < 1.0;
-        let flash_intensity = if is_flashing { 1.0 - flash_progress } else { 0.0 };
+        let flash_intensity = if is_flashing {
+            1.0 - flash_progress
+        } else {
+            0.0
+        };
 
         let is_connected_to_selection = match selected_node {
             Some(sel) => {
@@ -362,15 +428,28 @@ pub fn draw_state_diagram(
         );
 
         // Draw node label (Data -> JetBrains Mono)
-        cr.select_font_face(tokens::font::CAIRO_MONO, cairo::FontSlant::Normal, cairo::FontWeight::Bold);
+        cr.select_font_face(
+            tokens::font::CAIRO_MONO,
+            cairo::FontSlant::Normal,
+            cairo::FontWeight::Bold,
+        );
         cr.set_font_size(12.0);
 
         if is_dimmed_node {
-            cr.set_source_rgba(tokens::color::TEXT_MUTED.0, tokens::color::TEXT_MUTED.1, tokens::color::TEXT_MUTED.2, 0.4);
+            cr.set_source_rgba(
+                tokens::color::TEXT_MUTED.0,
+                tokens::color::TEXT_MUTED.1,
+                tokens::color::TEXT_MUTED.2,
+                0.4,
+            );
         } else if node.is_fault {
             cr.set_source_rgb(COLOR_FAULT_RED.0, COLOR_FAULT_RED.1, COLOR_FAULT_RED.2);
         } else {
-            cr.set_source_rgb(tokens::color::TEXT_PRIMARY.0, tokens::color::TEXT_PRIMARY.1, tokens::color::TEXT_PRIMARY.2);
+            cr.set_source_rgb(
+                tokens::color::TEXT_PRIMARY.0,
+                tokens::color::TEXT_PRIMARY.1,
+                tokens::color::TEXT_PRIMARY.2,
+            );
         }
 
         let ext = cr.text_extents(&node.label);
@@ -384,17 +463,34 @@ pub fn draw_state_diagram(
 
         // Top-left tag badge (INITIAL or FAULT) - Interface talking -> Sans
         if node.is_initial {
-            cr.select_font_face(tokens::font::CAIRO_SANS, cairo::FontSlant::Normal, cairo::FontWeight::Bold);
+            cr.select_font_face(
+                tokens::font::CAIRO_SANS,
+                cairo::FontSlant::Normal,
+                cairo::FontWeight::Bold,
+            );
             cr.set_font_size(8.0);
             if is_dimmed_node {
-                cr.set_source_rgba(tokens::color::TEXT_MUTED.0, tokens::color::TEXT_MUTED.1, tokens::color::TEXT_MUTED.2, 0.3);
+                cr.set_source_rgba(
+                    tokens::color::TEXT_MUTED.0,
+                    tokens::color::TEXT_MUTED.1,
+                    tokens::color::TEXT_MUTED.2,
+                    0.3,
+                );
             } else {
-                cr.set_source_rgb(tokens::color::TEXT_MUTED.0, tokens::color::TEXT_MUTED.1, tokens::color::TEXT_MUTED.2);
+                cr.set_source_rgb(
+                    tokens::color::TEXT_MUTED.0,
+                    tokens::color::TEXT_MUTED.1,
+                    tokens::color::TEXT_MUTED.2,
+                );
             }
             cr.move_to(node.x + 8.0, node.y + 12.0);
             let _ = cr.show_text("[INIT]");
         } else if node.is_fault {
-            cr.select_font_face(tokens::font::CAIRO_SANS, cairo::FontSlant::Normal, cairo::FontWeight::Bold);
+            cr.select_font_face(
+                tokens::font::CAIRO_SANS,
+                cairo::FontSlant::Normal,
+                cairo::FontWeight::Bold,
+            );
             cr.set_font_size(8.0);
             if is_dimmed_node {
                 cr.set_source_rgba(COLOR_FAULT_RED.0, COLOR_FAULT_RED.1, COLOR_FAULT_RED.2, 0.3);
@@ -423,7 +519,11 @@ pub fn draw_state_diagram(
         if !node.is_fault {
             for (idx, target) in node.collapsed_out_badges.iter().enumerate() {
                 let is_fault_target = is_fault_state(target);
-                let badge_label = if is_fault_target { "[FAULT]" } else { target.as_ref() };
+                let badge_label = if is_fault_target {
+                    "[FAULT]"
+                } else {
+                    target.as_ref()
+                };
                 let bx = node.x + node.width - 56.0 - idx as f64 * 58.0;
                 let by = node.y + node.height - 15.0;
                 draw_node_badge(cr, bx, by, badge_label, is_fault_target, is_dimmed_node);
@@ -465,7 +565,12 @@ pub fn draw_state_diagram(
 }
 
 fn draw_dot_grid(cr: &cairo::Context, max_w: f64, max_h: f64) {
-    cr.set_source_rgba(COLOR_DOT_GRID.0, COLOR_DOT_GRID.1, COLOR_DOT_GRID.2, COLOR_DOT_GRID.3);
+    cr.set_source_rgba(
+        COLOR_DOT_GRID.0,
+        COLOR_DOT_GRID.1,
+        COLOR_DOT_GRID.2,
+        COLOR_DOT_GRID.3,
+    );
     let step = 32.0;
     let mut x = 20.0;
     cr.new_path();
@@ -498,23 +603,65 @@ fn draw_rounded_node(
     cr.new_path();
     cr.arc(x + w - r, y + r, r, -std::f64::consts::FRAC_PI_2, 0.0);
     cr.arc(x + w - r, y + h - r, r, 0.0, std::f64::consts::FRAC_PI_2);
-    cr.arc(x + r, y + h - r, r, std::f64::consts::FRAC_PI_2, std::f64::consts::PI);
-    cr.arc(x + r, y + r, r, std::f64::consts::PI, 3.0 * std::f64::consts::FRAC_PI_2);
+    cr.arc(
+        x + r,
+        y + h - r,
+        r,
+        std::f64::consts::FRAC_PI_2,
+        std::f64::consts::PI,
+    );
+    cr.arc(
+        x + r,
+        y + r,
+        r,
+        std::f64::consts::PI,
+        3.0 * std::f64::consts::FRAC_PI_2,
+    );
     cr.close_path();
 
     // Node fill
     if is_dimmed {
-        cr.set_source_rgba(tokens::color::BG_VOID.0, tokens::color::BG_VOID.1, tokens::color::BG_VOID.2, 0.5);
+        cr.set_source_rgba(
+            tokens::color::BG_VOID.0,
+            tokens::color::BG_VOID.1,
+            tokens::color::BG_VOID.2,
+            0.5,
+        );
     } else if is_fault {
-        cr.set_source_rgba(COLOR_FAULT_FILL.0, COLOR_FAULT_FILL.1, COLOR_FAULT_FILL.2, COLOR_FAULT_FILL.3);
+        cr.set_source_rgba(
+            COLOR_FAULT_FILL.0,
+            COLOR_FAULT_FILL.1,
+            COLOR_FAULT_FILL.2,
+            COLOR_FAULT_FILL.3,
+        );
     } else if is_selected {
-        cr.set_source_rgba(COLOR_NODE_FILL_SELECTED.0, COLOR_NODE_FILL_SELECTED.1, COLOR_NODE_FILL_SELECTED.2, COLOR_NODE_FILL_SELECTED.3);
+        cr.set_source_rgba(
+            COLOR_NODE_FILL_SELECTED.0,
+            COLOR_NODE_FILL_SELECTED.1,
+            COLOR_NODE_FILL_SELECTED.2,
+            COLOR_NODE_FILL_SELECTED.3,
+        );
     } else if is_hovered {
-        cr.set_source_rgba(COLOR_NODE_FILL_HOVER.0, COLOR_NODE_FILL_HOVER.1, COLOR_NODE_FILL_HOVER.2, COLOR_NODE_FILL_HOVER.3);
+        cr.set_source_rgba(
+            COLOR_NODE_FILL_HOVER.0,
+            COLOR_NODE_FILL_HOVER.1,
+            COLOR_NODE_FILL_HOVER.2,
+            COLOR_NODE_FILL_HOVER.3,
+        );
     } else if is_initial {
-        cr.set_source_rgba(COLOR_NODE_FILL_INITIAL.0, COLOR_NODE_FILL_INITIAL.1, COLOR_NODE_FILL_INITIAL.2, COLOR_NODE_FILL_INITIAL.3);
+        cr.set_source_rgba(
+            COLOR_NODE_FILL_INITIAL.0,
+            COLOR_NODE_FILL_INITIAL.1,
+            COLOR_NODE_FILL_INITIAL.2,
+            COLOR_NODE_FILL_INITIAL.3,
+        );
     } else {
-        cr.set_source_rgba(COLOR_NODE_FILL_DEFAULT.0, COLOR_NODE_FILL_DEFAULT.1, COLOR_NODE_FILL_DEFAULT.2, COLOR_NODE_FILL_DEFAULT.3);
+        cr.set_source_rgba(
+            COLOR_NODE_FILL_DEFAULT.0,
+            COLOR_NODE_FILL_DEFAULT.1,
+            COLOR_NODE_FILL_DEFAULT.2,
+            COLOR_NODE_FILL_DEFAULT.3,
+        );
     }
     let _ = cr.fill_preserve();
 
@@ -537,17 +684,38 @@ fn draw_rounded_node(
             (0.6 + 0.4 * flash_intensity).min(1.0),
         );
     } else if is_dimmed {
-        cr.set_source_rgba(tokens::color::BORDER_HAIR.0, tokens::color::BORDER_HAIR.1, tokens::color::BORDER_HAIR.2, 0.35);
+        cr.set_source_rgba(
+            tokens::color::BORDER_HAIR.0,
+            tokens::color::BORDER_HAIR.1,
+            tokens::color::BORDER_HAIR.2,
+            0.35,
+        );
     } else if is_fault {
         cr.set_source_rgb(COLOR_FAULT_RED.0, COLOR_FAULT_RED.1, COLOR_FAULT_RED.2);
     } else if is_selected {
-        cr.set_source_rgb(COLOR_BORDER_SELECTED.0, COLOR_BORDER_SELECTED.1, COLOR_BORDER_SELECTED.2);
+        cr.set_source_rgb(
+            COLOR_BORDER_SELECTED.0,
+            COLOR_BORDER_SELECTED.1,
+            COLOR_BORDER_SELECTED.2,
+        );
     } else if is_hovered {
-        cr.set_source_rgb(COLOR_BORDER_HOVER.0, COLOR_BORDER_HOVER.1, COLOR_BORDER_HOVER.2);
+        cr.set_source_rgb(
+            COLOR_BORDER_HOVER.0,
+            COLOR_BORDER_HOVER.1,
+            COLOR_BORDER_HOVER.2,
+        );
     } else if is_initial {
-        cr.set_source_rgb(COLOR_BORDER_INITIAL.0, COLOR_BORDER_INITIAL.1, COLOR_BORDER_INITIAL.2);
+        cr.set_source_rgb(
+            COLOR_BORDER_INITIAL.0,
+            COLOR_BORDER_INITIAL.1,
+            COLOR_BORDER_INITIAL.2,
+        );
     } else {
-        cr.set_source_rgb(COLOR_BORDER_DEFAULT.0, COLOR_BORDER_DEFAULT.1, COLOR_BORDER_DEFAULT.2);
+        cr.set_source_rgb(
+            COLOR_BORDER_DEFAULT.0,
+            COLOR_BORDER_DEFAULT.1,
+            COLOR_BORDER_DEFAULT.2,
+        );
     }
     cr.set_line_width(tokens::shape::BORDER_WIDTH_HAIR);
     let _ = cr.stroke();
@@ -561,7 +729,11 @@ fn draw_node_badge(
     is_fault: bool,
     is_dimmed: bool,
 ) {
-    cr.select_font_face(tokens::font::CAIRO_MONO, cairo::FontSlant::Normal, cairo::FontWeight::Bold);
+    cr.select_font_face(
+        tokens::font::CAIRO_MONO,
+        cairo::FontSlant::Normal,
+        cairo::FontWeight::Bold,
+    );
     cr.set_font_size(7.5);
 
     let (ext_w, ext_h, ext_xb, ext_yb) = if let Ok(e) = cr.text_extents(text) {
@@ -579,29 +751,81 @@ fn draw_node_badge(
     cr.new_path();
     cr.arc(x + w - r, y + r, r, -std::f64::consts::FRAC_PI_2, 0.0);
     cr.arc(x + w - r, y + h - r, r, 0.0, std::f64::consts::FRAC_PI_2);
-    cr.arc(x + r, y + h - r, r, std::f64::consts::FRAC_PI_2, std::f64::consts::PI);
-    cr.arc(x + r, y + r, r, std::f64::consts::PI, 3.0 * std::f64::consts::FRAC_PI_2);
+    cr.arc(
+        x + r,
+        y + h - r,
+        r,
+        std::f64::consts::FRAC_PI_2,
+        std::f64::consts::PI,
+    );
+    cr.arc(
+        x + r,
+        y + r,
+        r,
+        std::f64::consts::PI,
+        3.0 * std::f64::consts::FRAC_PI_2,
+    );
     cr.close_path();
 
     if is_fault {
         if is_dimmed {
-            cr.set_source_rgba(COLOR_FAULT_FILL.0, COLOR_FAULT_FILL.1, COLOR_FAULT_FILL.2, 0.3);
+            cr.set_source_rgba(
+                COLOR_FAULT_FILL.0,
+                COLOR_FAULT_FILL.1,
+                COLOR_FAULT_FILL.2,
+                0.3,
+            );
             let _ = cr.fill_preserve();
-            cr.set_source_rgba(COLOR_FAULT_RED.0, COLOR_FAULT_RED.1, COLOR_FAULT_RED.2, 0.25);
+            cr.set_source_rgba(
+                COLOR_FAULT_RED.0,
+                COLOR_FAULT_RED.1,
+                COLOR_FAULT_RED.2,
+                0.25,
+            );
         } else {
-            cr.set_source_rgba(COLOR_FAULT_FILL.0, COLOR_FAULT_FILL.1, COLOR_FAULT_FILL.2, 0.95);
+            cr.set_source_rgba(
+                COLOR_FAULT_FILL.0,
+                COLOR_FAULT_FILL.1,
+                COLOR_FAULT_FILL.2,
+                0.95,
+            );
             let _ = cr.fill_preserve();
-            cr.set_source_rgba(COLOR_FAULT_RED.0, COLOR_FAULT_RED.1, COLOR_FAULT_RED.2, 0.85);
+            cr.set_source_rgba(
+                COLOR_FAULT_RED.0,
+                COLOR_FAULT_RED.1,
+                COLOR_FAULT_RED.2,
+                0.85,
+            );
         }
     } else {
         if is_dimmed {
-            cr.set_source_rgba(tokens::color::BG_PANEL.0, tokens::color::BG_PANEL.1, tokens::color::BG_PANEL.2, 0.3);
+            cr.set_source_rgba(
+                tokens::color::BG_PANEL.0,
+                tokens::color::BG_PANEL.1,
+                tokens::color::BG_PANEL.2,
+                0.3,
+            );
             let _ = cr.fill_preserve();
-            cr.set_source_rgba(tokens::color::BORDER_HAIR.0, tokens::color::BORDER_HAIR.1, tokens::color::BORDER_HAIR.2, 0.25);
+            cr.set_source_rgba(
+                tokens::color::BORDER_HAIR.0,
+                tokens::color::BORDER_HAIR.1,
+                tokens::color::BORDER_HAIR.2,
+                0.25,
+            );
         } else {
-            cr.set_source_rgba(tokens::color::BG_PANEL.0, tokens::color::BG_PANEL.1, tokens::color::BG_PANEL.2, 0.95);
+            cr.set_source_rgba(
+                tokens::color::BG_PANEL.0,
+                tokens::color::BG_PANEL.1,
+                tokens::color::BG_PANEL.2,
+                0.95,
+            );
             let _ = cr.fill_preserve();
-            cr.set_source_rgba(tokens::color::BORDER_HAIR.0, tokens::color::BORDER_HAIR.1, tokens::color::BORDER_HAIR.2, 0.85);
+            cr.set_source_rgba(
+                tokens::color::BORDER_HAIR.0,
+                tokens::color::BORDER_HAIR.1,
+                tokens::color::BORDER_HAIR.2,
+                0.85,
+            );
         }
     }
     cr.set_line_width(tokens::shape::BORDER_WIDTH_HAIR);
@@ -615,9 +839,18 @@ fn draw_node_badge(
         }
     } else {
         if is_dimmed {
-            cr.set_source_rgba(tokens::color::TEXT_MUTED.0, tokens::color::TEXT_MUTED.1, tokens::color::TEXT_MUTED.2, 0.3);
+            cr.set_source_rgba(
+                tokens::color::TEXT_MUTED.0,
+                tokens::color::TEXT_MUTED.1,
+                tokens::color::TEXT_MUTED.2,
+                0.3,
+            );
         } else {
-            cr.set_source_rgb(tokens::color::TEXT_PRIMARY.0, tokens::color::TEXT_PRIMARY.1, tokens::color::TEXT_PRIMARY.2);
+            cr.set_source_rgb(
+                tokens::color::TEXT_PRIMARY.0,
+                tokens::color::TEXT_PRIMARY.1,
+                tokens::color::TEXT_PRIMARY.2,
+            );
         }
     }
     cr.move_to(x + pad_x - ext_xb, y + pad_y - ext_yb);
@@ -632,7 +865,11 @@ fn draw_guard_badge(
     is_fault: bool,
     is_dimmed: bool,
 ) {
-    cr.select_font_face(tokens::font::CAIRO_MONO, cairo::FontSlant::Normal, cairo::FontWeight::Normal);
+    cr.select_font_face(
+        tokens::font::CAIRO_MONO,
+        cairo::FontSlant::Normal,
+        cairo::FontWeight::Normal,
+    );
     cr.set_font_size(9.5);
 
     let (ext_w, ext_h, ext_xb, ext_yb) = if let Ok(e) = cr.text_extents(text) {
@@ -650,17 +887,51 @@ fn draw_guard_badge(
     let r = tokens::shape::BORDER_RADIUS_ELEMENT as f64;
 
     cr.new_path();
-    cr.arc(badge_x + badge_w - r, badge_y + r, r, -std::f64::consts::FRAC_PI_2, 0.0);
-    cr.arc(badge_x + badge_w - r, badge_y + badge_h - r, r, 0.0, std::f64::consts::FRAC_PI_2);
-    cr.arc(badge_x + r, badge_y + badge_h - r, r, std::f64::consts::FRAC_PI_2, std::f64::consts::PI);
-    cr.arc(badge_x + r, badge_y + r, r, std::f64::consts::PI, 3.0 * std::f64::consts::FRAC_PI_2);
+    cr.arc(
+        badge_x + badge_w - r,
+        badge_y + r,
+        r,
+        -std::f64::consts::FRAC_PI_2,
+        0.0,
+    );
+    cr.arc(
+        badge_x + badge_w - r,
+        badge_y + badge_h - r,
+        r,
+        0.0,
+        std::f64::consts::FRAC_PI_2,
+    );
+    cr.arc(
+        badge_x + r,
+        badge_y + badge_h - r,
+        r,
+        std::f64::consts::FRAC_PI_2,
+        std::f64::consts::PI,
+    );
+    cr.arc(
+        badge_x + r,
+        badge_y + r,
+        r,
+        std::f64::consts::PI,
+        3.0 * std::f64::consts::FRAC_PI_2,
+    );
     cr.close_path();
 
     // Badge fill
     if is_dimmed {
-        cr.set_source_rgba(tokens::color::BG_PANEL.0, tokens::color::BG_PANEL.1, tokens::color::BG_PANEL.2, 0.4);
+        cr.set_source_rgba(
+            tokens::color::BG_PANEL.0,
+            tokens::color::BG_PANEL.1,
+            tokens::color::BG_PANEL.2,
+            0.4,
+        );
     } else {
-        cr.set_source_rgba(tokens::color::BG_PANEL.0, tokens::color::BG_PANEL.1, tokens::color::BG_PANEL.2, 0.95);
+        cr.set_source_rgba(
+            tokens::color::BG_PANEL.0,
+            tokens::color::BG_PANEL.1,
+            tokens::color::BG_PANEL.2,
+            0.95,
+        );
     }
     let _ = cr.fill_preserve();
 
@@ -669,12 +940,27 @@ fn draw_guard_badge(
         if is_dimmed {
             cr.set_source_rgba(COLOR_FAULT_RED.0, COLOR_FAULT_RED.1, COLOR_FAULT_RED.2, 0.3);
         } else {
-            cr.set_source_rgba(COLOR_FAULT_RED.0, COLOR_FAULT_RED.1, COLOR_FAULT_RED.2, 0.85);
+            cr.set_source_rgba(
+                COLOR_FAULT_RED.0,
+                COLOR_FAULT_RED.1,
+                COLOR_FAULT_RED.2,
+                0.85,
+            );
         }
     } else if is_dimmed {
-        cr.set_source_rgba(tokens::color::BORDER_HAIR.0, tokens::color::BORDER_HAIR.1, tokens::color::BORDER_HAIR.2, 0.3);
+        cr.set_source_rgba(
+            tokens::color::BORDER_HAIR.0,
+            tokens::color::BORDER_HAIR.1,
+            tokens::color::BORDER_HAIR.2,
+            0.3,
+        );
     } else {
-        cr.set_source_rgba(tokens::color::BORDER_HAIR.0, tokens::color::BORDER_HAIR.1, tokens::color::BORDER_HAIR.2, 0.85);
+        cr.set_source_rgba(
+            tokens::color::BORDER_HAIR.0,
+            tokens::color::BORDER_HAIR.1,
+            tokens::color::BORDER_HAIR.2,
+            0.85,
+        );
     }
     cr.set_line_width(tokens::shape::BORDER_WIDTH_HAIR);
     let _ = cr.stroke();
@@ -687,9 +973,18 @@ fn draw_guard_badge(
             cr.set_source_rgb(COLOR_FAULT_RED.0, COLOR_FAULT_RED.1, COLOR_FAULT_RED.2);
         }
     } else if is_dimmed {
-        cr.set_source_rgba(tokens::color::TEXT_MUTED.0, tokens::color::TEXT_MUTED.1, tokens::color::TEXT_MUTED.2, 0.3);
+        cr.set_source_rgba(
+            tokens::color::TEXT_MUTED.0,
+            tokens::color::TEXT_MUTED.1,
+            tokens::color::TEXT_MUTED.2,
+            0.3,
+        );
     } else {
-        cr.set_source_rgb(tokens::color::TEXT_PRIMARY.0, tokens::color::TEXT_PRIMARY.1, tokens::color::TEXT_PRIMARY.2);
+        cr.set_source_rgb(
+            tokens::color::TEXT_PRIMARY.0,
+            tokens::color::TEXT_PRIMARY.1,
+            tokens::color::TEXT_PRIMARY.2,
+        );
     }
 
     cr.move_to(badge_x + padding_x - ext_xb, badge_y + padding_y - ext_yb);
@@ -734,8 +1029,13 @@ mod tests {
         surface.flush();
 
         // Verify layout was computed
-        assert!(state.borrow().with_canvas_state(|c| c.state_diagram_layout.is_some()));
-        let layout = state.borrow().with_canvas_state(|c| c.state_diagram_layout.clone()).unwrap();
+        assert!(state
+            .borrow()
+            .with_canvas_state(|c| c.state_diagram_layout.is_some()));
+        let layout = state
+            .borrow()
+            .with_canvas_state(|c| c.state_diagram_layout.clone())
+            .unwrap();
         assert_eq!(layout.nodes.len(), 14);
         assert_eq!(layout.edges.len(), 31);
         assert!(!layout.lanes.is_empty());
@@ -743,17 +1043,23 @@ mod tests {
         assert!(layout.lanes.iter().any(|l| l.name == "FAULT"));
 
         // 2. Select GOING node (expand outgoing edges including to FAULT)
-        state.borrow().with_canvas_state_mut(|c| c.selected_state_node = Some("GOING".to_string()));
+        state
+            .borrow()
+            .with_canvas_state_mut(|c| c.selected_state_node = Some("GOING".to_string()));
         draw_state_diagram(&cr, 1200.0, 800.0, &state);
         surface.flush();
 
         // 3. Select FAULT node (expand all 12 fault triggers)
-        state.borrow().with_canvas_state_mut(|c| c.selected_state_node = Some("FAULT".to_string()));
+        state
+            .borrow()
+            .with_canvas_state_mut(|c| c.selected_state_node = Some("FAULT".to_string()));
         draw_state_diagram(&cr, 1200.0, 800.0, &state);
         surface.flush();
 
         // 4. Hover CALIBRATING node while FAULT is selected
-        state.borrow().with_canvas_state_mut(|c| c.hovered_state_node = Some("CALIBRATING".to_string()));
+        state
+            .borrow()
+            .with_canvas_state_mut(|c| c.hovered_state_node = Some("CALIBRATING".to_string()));
         draw_state_diagram(&cr, 1200.0, 800.0, &state);
         surface.flush();
 
@@ -805,12 +1111,16 @@ mod tests {
         surface.flush();
 
         // 4. Test Session Revealed Machine Tracking
-        let is_revealed = state.borrow().with_canvas_state(|c| c.session_revealed_machines.contains(&0));
+        let is_revealed = state
+            .borrow()
+            .with_canvas_state(|c| c.session_revealed_machines.contains(&0));
         assert!(!is_revealed);
         state.borrow().with_canvas_state_mut(|c| {
             c.session_revealed_machines.insert(0);
         });
-        let is_revealed2 = state.borrow().with_canvas_state(|c| c.session_revealed_machines.contains(&0));
+        let is_revealed2 = state
+            .borrow()
+            .with_canvas_state(|c| c.session_revealed_machines.contains(&0));
         assert!(is_revealed2);
     }
 
@@ -838,7 +1148,8 @@ mod tests {
         // 1. Milestone t = 0ms
         let start_0 = std::time::Instant::now();
         state.borrow().with_canvas_state_mut(|c| {
-            c.edge_pulse_animation = Some(("RETURNING".to_string(), "RETURNED".to_string(), start_0));
+            c.edge_pulse_animation =
+                Some(("RETURNING".to_string(), "RETURNED".to_string(), start_0));
         });
         let elapsed_0 = start_0.elapsed().as_millis() as f64;
         let t_0 = (elapsed_0 / tokens::motion::DURATION_MEDIUM_MS as f64).clamp(0.0, 1.0);
@@ -849,18 +1160,27 @@ mod tests {
         // 2. Milestone mid (t = 175ms)
         let start_mid = std::time::Instant::now() - std::time::Duration::from_millis(175);
         state.borrow().with_canvas_state_mut(|c| {
-            c.edge_pulse_animation = Some(("RETURNING".to_string(), "RETURNED".to_string(), start_mid));
+            c.edge_pulse_animation =
+                Some(("RETURNING".to_string(), "RETURNED".to_string(), start_mid));
         });
         let elapsed_mid = start_mid.elapsed().as_millis() as f64;
         let t_mid = (elapsed_mid / tokens::motion::DURATION_MEDIUM_MS as f64).clamp(0.0, 1.0);
-        assert!((t_mid - 0.5).abs() < 0.05, "Progress at mid must be ~0.5, got {}", t_mid);
+        assert!(
+            (t_mid - 0.5).abs() < 0.05,
+            "Progress at mid must be ~0.5, got {}",
+            t_mid
+        );
         draw_state_diagram(&cr, 1200.0, 800.0, &state);
         surface.flush();
 
         // Save visual artifact at midpoint
-        let artifact_dir = std::path::PathBuf::from("/home/stakxx002/.gemini/antigravity-ide/brain/e21edbbd-844e-44ef-9dfa-1af3c8e3a19b");
+        let artifact_dir = std::path::PathBuf::from(
+            "/home/stakxx002/.gemini/antigravity-ide/brain/e21edbbd-844e-44ef-9dfa-1af3c8e3a19b",
+        );
         if artifact_dir.exists() {
-            if let Ok(mut f) = std::fs::File::create(artifact_dir.join("state_diagram_edge_pulse_mid.png")) {
+            if let Ok(mut f) =
+                std::fs::File::create(artifact_dir.join("state_diagram_edge_pulse_mid.png"))
+            {
                 let _ = surface.write_to_png(&mut f);
             }
         }
@@ -868,7 +1188,8 @@ mod tests {
         // 3. Milestone at exactly t = 350ms
         let start_350 = std::time::Instant::now() - std::time::Duration::from_millis(350);
         state.borrow().with_canvas_state_mut(|c| {
-            c.edge_pulse_animation = Some(("RETURNING".to_string(), "RETURNED".to_string(), start_350));
+            c.edge_pulse_animation =
+                Some(("RETURNING".to_string(), "RETURNED".to_string(), start_350));
         });
         let elapsed_350 = start_350.elapsed().as_millis() as f64;
         let t_350 = (elapsed_350 / tokens::motion::DURATION_MEDIUM_MS as f64).clamp(0.0, 1.0);
@@ -879,22 +1200,30 @@ mod tests {
         // 4. Milestone at t = 380ms (+30ms past duration)
         let start_380 = std::time::Instant::now() - std::time::Duration::from_millis(380);
         state.borrow().with_canvas_state_mut(|c| {
-            c.edge_pulse_animation = Some(("RETURNING".to_string(), "RETURNED".to_string(), start_380));
+            c.edge_pulse_animation =
+                Some(("RETURNING".to_string(), "RETURNED".to_string(), start_380));
         });
         let elapsed_380 = start_380.elapsed().as_millis() as f64;
         let t_380 = (elapsed_380 / tokens::motion::DURATION_MEDIUM_MS as f64).clamp(0.0, 1.0);
-        assert_eq!(t_380, 1.0, "Progress at +30ms (380ms) must be clamped to 1.0");
+        assert_eq!(
+            t_380, 1.0,
+            "Progress at +30ms (380ms) must be clamped to 1.0"
+        );
         draw_state_diagram(&cr, 1200.0, 800.0, &state);
         surface.flush();
 
         // 5. Milestone at t = 430ms (+80ms past duration)
         let start_430 = std::time::Instant::now() - std::time::Duration::from_millis(430);
         state.borrow().with_canvas_state_mut(|c| {
-            c.edge_pulse_animation = Some(("RETURNING".to_string(), "RETURNED".to_string(), start_430));
+            c.edge_pulse_animation =
+                Some(("RETURNING".to_string(), "RETURNED".to_string(), start_430));
         });
         let elapsed_430 = start_430.elapsed().as_millis() as f64;
         let t_430 = (elapsed_430 / tokens::motion::DURATION_MEDIUM_MS as f64).clamp(0.0, 1.0);
-        assert_eq!(t_430, 1.0, "Progress at +80ms (430ms) must be clamped to 1.0");
+        assert_eq!(
+            t_430, 1.0,
+            "Progress at +80ms (430ms) must be clamped to 1.0"
+        );
         draw_state_diagram(&cr, 1200.0, 800.0, &state);
         surface.flush();
 

@@ -116,7 +116,8 @@ fn build_pin_patterns(pins: &[PinConfig]) -> (Vec<PinPattern>, HashMap<String, u
         for prefix in &["USART", "UART", "SPI", "I2C", "TIM", "ADC", "CAN"] {
             if pin.signal.starts_with(prefix) {
                 periph_family = Some(prefix.to_string());
-                let periph_name: String = pin.signal
+                let periph_name: String = pin
+                    .signal
                     .chars()
                     .take_while(|c| c.is_ascii_alphanumeric())
                     .collect();
@@ -191,7 +192,10 @@ fn walk_node(
         }
     }
 
-    if node.kind() == "identifier" || node.kind() == "field_identifier" || node.kind() == "type_identifier" {
+    if node.kind() == "identifier"
+        || node.kind() == "field_identifier"
+        || node.kind() == "type_identifier"
+    {
         if let Ok(text) = node.utf8_text(source_bytes) {
             let trimmed = text.trim();
             if !trimmed.is_empty() {
@@ -222,10 +226,7 @@ fn get_declarator_name(mut node: tree_sitter::Node, source_bytes: &[u8]) -> Stri
 
 /// Scan candidate C files in project to map each pin to its owning module(s).
 /// Returns updated PinConfig list and sorted list of discovered modules.
-pub fn scan_pin_modules(
-    pins: &[PinConfig],
-    main_c_path: &Path,
-) -> (Vec<PinConfig>, Vec<String>) {
+pub fn scan_pin_modules(pins: &[PinConfig], main_c_path: &Path) -> (Vec<PinConfig>, Vec<String>) {
     let mut updated_pins: Vec<PinConfig> = pins.to_vec();
     let candidate_files = discover_module_files(main_c_path);
 
@@ -272,7 +273,8 @@ pub fn scan_pin_modules(
             // 3. Generic peripheral calls if this peripheral family is present in module
             if !matched {
                 if let Some(family) = &pattern.periph_family {
-                    let is_unique_family = periph_family_counts.get(family).copied().unwrap_or(0) <= 2;
+                    let is_unique_family =
+                        periph_family_counts.get(family).copied().unwrap_or(0) <= 2;
                     if is_unique_family {
                         let family_matched = match family.as_str() {
                             "USART" | "UART" => {
@@ -380,24 +382,26 @@ mod tests {
 
     #[test]
     fn test_shared_pin_ownership() {
-        let pins = vec![
-            PinConfig {
-                pin: "PB10".to_string(),
-                signal: "GPIO_Input".to_string(),
-                label: Some("SHARED_FLAG".to_string()),
-                modules: Vec::new(),
-            },
-        ];
+        let pins = vec![PinConfig {
+            pin: "PB10".to_string(),
+            signal: "GPIO_Input".to_string(),
+            label: Some("SHARED_FLAG".to_string()),
+            modules: Vec::new(),
+        }];
 
         let (patterns, _) = build_pin_patterns(&pins);
-        let source1 = "void f1(void) { if (HAL_GPIO_ReadPin(SHARED_FLAG_GPIO_Port, SHARED_FLAG_Pin)) {} }";
-        let source2 = "void f2(void) { HAL_GPIO_WritePin(SHARED_FLAG_GPIO_Port, SHARED_FLAG_Pin, 1); }";
+        let source1 =
+            "void f1(void) { if (HAL_GPIO_ReadPin(SHARED_FLAG_GPIO_Port, SHARED_FLAG_Pin)) {} }";
+        let source2 =
+            "void f2(void) { HAL_GPIO_WritePin(SHARED_FLAG_GPIO_Port, SHARED_FLAG_Pin, 1); }";
 
         let idents1 = extract_ast_identifiers(source1, false);
         let idents2 = extract_ast_identifiers(source2, false);
 
         assert!(idents1.contains("SHARED_FLAG_Pin"));
         assert!(idents2.contains("SHARED_FLAG_Pin"));
-        assert!(patterns[0].label_macros.contains(&"SHARED_FLAG_Pin".to_string()));
+        assert!(patterns[0]
+            .label_macros
+            .contains(&"SHARED_FLAG_Pin".to_string()));
     }
 }

@@ -4,7 +4,6 @@ use std::path::Path;
 
 use tree_sitter::{Node, Parser};
 
-use crate::source::marker_scan::ScanError;
 use super::cross_file::resolve_cross_file_command_transitions;
 use super::discovery::extract_function_name;
 use super::labels::{
@@ -15,6 +14,7 @@ use super::labels::{
 use super::model::{
     AmbiguousTransition, AppStateMachine, AppTransition, StateMachineCandidate, TransitionType,
 };
+use crate::source::marker_scan::ScanError;
 
 /// Extract all transitions (direct and event-triggered) and ambiguous assignments for a state machine candidate.
 pub fn extract_state_machine_transitions(
@@ -43,7 +43,8 @@ pub fn extract_state_machine_transitions(
     let mut ambiguous_transitions = Vec::new();
 
     // 1. Identify helper functions that assign to tracked variable
-    let helpers = collect_helper_functions(root, source_bytes, &candidate.var.name, &known_variants);
+    let helpers =
+        collect_helper_functions(root, source_bytes, &candidate.var.name, &known_variants);
 
     // 2. Walk all function definitions (skip helper function bodies for direct assignment tracking)
     let mut fn_nodes = Vec::new();
@@ -58,7 +59,11 @@ pub fn extract_state_machine_transitions(
 
         if let Some(body) = fn_node.child_by_field_name("body") {
             let ctx = ASTContext {
-                has_local_fault: candidate.enum_def.variants.iter().any(|v| is_fault_state(v)),
+                has_local_fault: candidate
+                    .enum_def
+                    .variants
+                    .iter()
+                    .any(|v| is_fault_state(v)),
                 ..Default::default()
             };
             walk_statement(
@@ -89,7 +94,9 @@ pub fn extract_state_machine_transitions(
     );
 
     let mut states = candidate.enum_def.variants.clone();
-    if transitions.iter().any(|t| t.to == "SYSTEM FAULT") && !states.contains(&"SYSTEM FAULT".to_string()) {
+    if transitions.iter().any(|t| t.to == "SYSTEM FAULT")
+        && !states.contains(&"SYSTEM FAULT".to_string())
+    {
         states.push("SYSTEM FAULT".to_string());
     }
 
@@ -126,7 +133,13 @@ pub(crate) fn collect_helper_functions(
                 continue;
             }
             let mut targets = Vec::new();
-            collect_assignments_to_var(*fn_node, source_bytes, var_name, known_variants, &mut targets);
+            collect_assignments_to_var(
+                *fn_node,
+                source_bytes,
+                var_name,
+                known_variants,
+                &mut targets,
+            );
             if !targets.is_empty() {
                 helpers.insert(
                     fn_name.clone(),
@@ -158,10 +171,13 @@ pub(crate) fn collect_helper_functions(
                 collect_called_helpers(*fn_node, source_bytes, &helpers, &mut called_helpers);
                 for h_name in called_helpers {
                     if let Some(h_info) = helpers.get(&h_name).cloned() {
-                        let entry = helpers.entry(fn_name.clone()).or_insert_with(|| HelperFunctionInfo {
-                            name: fn_name.clone(),
-                            target_states: Vec::new(),
-                        });
+                        let entry =
+                            helpers
+                                .entry(fn_name.clone())
+                                .or_insert_with(|| HelperFunctionInfo {
+                                    name: fn_name.clone(),
+                                    target_states: Vec::new(),
+                                });
                         for t in h_info.target_states {
                             if !entry.target_states.contains(&t) {
                                 entry.target_states.push(t);
@@ -308,13 +324,7 @@ fn walk_statement(
             );
         }
         "call_expression" => {
-            check_helper_call(
-                node,
-                ctx,
-                source_bytes,
-                helpers,
-                transitions,
-            );
+            check_helper_call(node, ctx, source_bytes, helpers, transitions);
         }
         _ => {
             let mut cursor = node.walk();
@@ -365,7 +375,10 @@ fn check_helper_call(
 
                 // Priority Tier 1: Edges into FAULT via fault() helper with string literal
                 let label = if (helper.name == "fault" || is_fault)
-                    && arg_info.as_ref().map(|a| a.is_string_literal).unwrap_or(false)
+                    && arg_info
+                        .as_ref()
+                        .map(|a| a.is_string_literal)
+                        .unwrap_or(false)
                 {
                     arg_info.as_ref().unwrap().text.clone()
                 } else if let Some(cmd) = extract_command_string(&base_guard) {
@@ -641,7 +654,8 @@ fn check_assignment(
     ) {
         let left_ident = extract_target_ident(left, source_bytes);
         if left_ident.as_deref() == Some(var_name) {
-            if let Some(target_variant) = extract_variant_ident(right, source_bytes, known_variants) {
+            if let Some(target_variant) = extract_variant_ident(right, source_bytes, known_variants)
+            {
                 let line = node.start_position().row + 1;
                 let guard_text = ctx.guards.join(" && ");
                 let is_fault = is_fault_state(&target_variant);
@@ -679,7 +693,9 @@ fn check_assignment(
                                 guard: guard_text.clone(),
                                 label: label.clone(),
                                 is_fault,
-                                transition_type: if guard_text.contains("cmd") || guard_text.contains("strcmp") {
+                                transition_type: if guard_text.contains("cmd")
+                                    || guard_text.contains("strcmp")
+                                {
                                     TransitionType::EventTriggered
                                 } else {
                                     TransitionType::Direct
@@ -732,7 +748,14 @@ fn resolve_variable_assignment(
     let mut curr = node.parent();
     while let Some(parent_node) = curr {
         if parent_node.kind() == "compound_statement" || parent_node.kind() == "case_statement" {
-            find_staging_branches(parent_node, source_bytes, staging_var, known_variants, &active_states, &mut resolved_branches);
+            find_staging_branches(
+                parent_node,
+                source_bytes,
+                staging_var,
+                known_variants,
+                &active_states,
+                &mut resolved_branches,
+            );
             if !resolved_branches.is_empty() {
                 break;
             }
@@ -746,7 +769,10 @@ fn resolve_variable_assignment(
     let line = node.start_position().row + 1;
     for from_state in &active_states {
         for (target, guard, label) in &resolved_branches {
-            if !direct_transitions.iter().any(|t| &t.from == from_state && &t.to == target && &t.label == label) {
+            if !direct_transitions
+                .iter()
+                .any(|t| &t.from == from_state && &t.to == target && &t.label == label)
+            {
                 direct_transitions.push(AppTransition {
                     from: from_state.clone(),
                     to: target.clone(),
@@ -773,8 +799,11 @@ fn find_staging_branches(
     for child in block_node.children(&mut cursor) {
         if child.kind() == "if_statement" {
             if let Some(cond) = child.child_by_field_name("condition") {
-                if let Some(tested_variant) = extract_tested_variant(cond, source_bytes, staging_var, known_variants) {
-                    let stripped_tested = strip_variant_prefix(&tested_variant).unwrap_or_else(|| tested_variant.clone());
+                if let Some(tested_variant) =
+                    extract_tested_variant(cond, source_bytes, staging_var, known_variants)
+                {
+                    let stripped_tested = strip_variant_prefix(&tested_variant)
+                        .unwrap_or_else(|| tested_variant.clone());
                     let tested_guard = format!("{} == {}", staging_var, tested_variant);
                     let tested_label = format!("{} is {}", staging_var, stripped_tested);
                     out.push((tested_variant.clone(), tested_guard, tested_label));
@@ -794,16 +823,29 @@ fn find_staging_branches(
                         }
 
                         if let Some(else_if_node) = chained_if {
-                            find_staging_branches(else_if_node, source_bytes, staging_var, known_variants, active_states, out);
+                            find_staging_branches(
+                                else_if_node,
+                                source_bytes,
+                                staging_var,
+                                known_variants,
+                                active_states,
+                                out,
+                            );
                         } else {
                             let mut remaining: Vec<String> = known_variants
                                 .iter()
-                                .filter(|v| *v != &tested_variant && !active_states.contains(v) && !is_initial_variant(v) && !is_fault_state(v))
+                                .filter(|v| {
+                                    *v != &tested_variant
+                                        && !active_states.contains(v)
+                                        && !is_initial_variant(v)
+                                        && !is_fault_state(v)
+                                })
                                 .cloned()
                                 .collect();
                             remaining.sort();
                             if let Some(other_var) = remaining.first() {
-                                let stripped_other = strip_variant_prefix(other_var).unwrap_or_else(|| other_var.clone());
+                                let stripped_other = strip_variant_prefix(other_var)
+                                    .unwrap_or_else(|| other_var.clone());
                                 let other_guard = format!("{} == {}", staging_var, other_var);
                                 let other_label = format!("{} is {}", staging_var, stripped_other);
                                 out.push((other_var.clone(), other_guard, other_label));
@@ -827,7 +869,9 @@ fn extract_tested_variant(
             let mut cursor = cond.walk();
             for child in cond.children(&mut cursor) {
                 if child.kind() != "(" && child.kind() != ")" && child.kind() != "comment" {
-                    if let Some(v) = extract_tested_variant(child, source_bytes, staging_var, known_variants) {
+                    if let Some(v) =
+                        extract_tested_variant(child, source_bytes, staging_var, known_variants)
+                    {
                         return Some(v);
                     }
                 }
@@ -835,7 +879,9 @@ fn extract_tested_variant(
             None
         }
         "binary_expression" => {
-            let op = cond.child_by_field_name("operator").map(|n| node_text(n, source_bytes));
+            let op = cond
+                .child_by_field_name("operator")
+                .map(|n| node_text(n, source_bytes));
             let left = cond.child_by_field_name("left");
             let right = cond.child_by_field_name("right");
             if let (Some(op), Some(left), Some(right)) = (op, left, right) {
@@ -860,7 +906,10 @@ fn extract_tested_variant(
 
 fn is_initial_variant(v: &str) -> bool {
     let lower = v.to_lowercase();
-    lower.contains("idle") || lower.contains("init") || lower.contains("boot") || lower.contains("reset")
+    lower.contains("idle")
+        || lower.contains("init")
+        || lower.contains("boot")
+        || lower.contains("reset")
 }
 
 #[derive(Debug, Clone, Default)]
@@ -893,7 +942,15 @@ fn analyze_condition(
                     for i in 0..node.child_count() {
                         if let Some(c) = node.child(i) {
                             let t = node_text(c, source_bytes);
-                            if t == "==" || t == "!=" || t == "&&" || t == "||" || t == ">" || t == "<" || t == ">=" || t == "<=" {
+                            if t == "=="
+                                || t == "!="
+                                || t == "&&"
+                                || t == "||"
+                                || t == ">"
+                                || t == "<"
+                                || t == ">="
+                                || t == "<="
+                            {
                                 return Some(t);
                             }
                         }
@@ -917,7 +974,8 @@ fn analyze_condition(
                         }
                     }
                     let left_variant = extract_variant_ident(left, source_bytes, known_variants);
-                    let right_target = extract_target_ident(right, source_bytes).unwrap_or_default();
+                    let right_target =
+                        extract_target_ident(right, source_bytes).unwrap_or_default();
                     if right_target == var_name {
                         if let Some(variant) = left_variant {
                             return ConditionAnalysis {
@@ -928,8 +986,10 @@ fn analyze_condition(
                     }
                 } else if op == "||" {
                     let left_res = analyze_condition(left, source_bytes, var_name, known_variants);
-                    let right_res = analyze_condition(right, source_bytes, var_name, known_variants);
-                    if left_res.state_restriction.is_some() || right_res.state_restriction.is_some() {
+                    let right_res =
+                        analyze_condition(right, source_bytes, var_name, known_variants);
+                    if left_res.state_restriction.is_some() || right_res.state_restriction.is_some()
+                    {
                         let mut combined = Vec::new();
                         if let Some(l) = left_res.state_restriction {
                             combined.extend(l);
@@ -946,17 +1006,19 @@ fn analyze_condition(
                     }
                 } else if op == "&&" {
                     let left_res = analyze_condition(left, source_bytes, var_name, known_variants);
-                    let right_res = analyze_condition(right, source_bytes, var_name, known_variants);
+                    let right_res =
+                        analyze_condition(right, source_bytes, var_name, known_variants);
 
-                    let state_restriction = match (left_res.state_restriction, right_res.state_restriction) {
-                        (Some(l), Some(r)) => {
-                            let set: HashSet<_> = r.into_iter().collect();
-                            Some(l.into_iter().filter(|x| set.contains(x)).collect())
-                        }
-                        (Some(l), None) => Some(l),
-                        (None, Some(r)) => Some(r),
-                        (None, None) => None,
-                    };
+                    let state_restriction =
+                        match (left_res.state_restriction, right_res.state_restriction) {
+                            (Some(l), Some(r)) => {
+                                let set: HashSet<_> = r.into_iter().collect();
+                                Some(l.into_iter().filter(|x| set.contains(x)).collect())
+                            }
+                            (Some(l), None) => Some(l),
+                            (None, Some(r)) => Some(r),
+                            (None, None) => None,
+                        };
 
                     let mut guards = left_res.guards;
                     guards.extend(right_res.guards);
