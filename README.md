@@ -97,7 +97,10 @@ sudo apt install -y \
 > **Note on USB permissions**: If flashing without `sudo`, ensure your user has access to ST-Link USB devices by installing udev rules (included with `stlink-tools` or under `/etc/udev/rules.d/49-stlinkv*.rules`).
 
 ##### 3. Install Rust Toolchain
-Install the official Rust toolchain (MSRV: Rust 1.75+):
+Install the official Rust toolchain:
+- Minimum Supported Rust Version (MSRV): Rust 1.75.0 (Rust 2021 edition)
+- Verified toolchains: Rust 1.75.0 through 1.97.1+ (stable channel)
+
 ```bash
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 source "$HOME/.cargo/env"
