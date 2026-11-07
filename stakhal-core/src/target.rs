@@ -173,7 +173,11 @@ pub fn detect_target_from_project_dir(project_dir: &Path) -> Option<TargetDefini
     // 1. Check for AA_NS_STM32 signatures
     if project_dir.join("AA_STM.ioc").is_file()
         || project_dir.join("Core/Inc/aa_config.h").is_file()
-        || project_dir.join("Core").join("Inc").join("aa_config.h").is_file()
+        || project_dir
+            .join("Core")
+            .join("Inc")
+            .join("aa_config.h")
+            .is_file()
     {
         return Some(TargetDefinition::aa_ns_stm32());
     }

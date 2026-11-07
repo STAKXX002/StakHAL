@@ -6,7 +6,8 @@ use std::path::Path;
 fn test_golden_file_aa_ns_stm32_header_output() {
     let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
     let golden_path = manifest_dir.join("tests/fixtures/golden_aa_ns_stm32_build_info.h");
-    let golden_bytes = fs::read(&golden_path).expect("Failed to read AA_NS_STM32 golden header fixture");
+    let golden_bytes =
+        fs::read(&golden_path).expect("Failed to read AA_NS_STM32 golden header fixture");
 
     let target = TargetDefinition::aa_ns_stm32();
     let generated = target.render_header("abcdef12");
@@ -22,7 +23,8 @@ fn test_golden_file_aa_ns_stm32_header_output() {
 fn test_regression_guard_aa_ns_stm_header_unchanged() {
     let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
     let golden_path = manifest_dir.join("tests/fixtures/golden_aa_ns_stm_build_info.h");
-    let golden_bytes = fs::read(&golden_path).expect("Failed to read AA_NS_STM golden header fixture");
+    let golden_bytes =
+        fs::read(&golden_path).expect("Failed to read AA_NS_STM golden header fixture");
 
     let target = TargetDefinition::legacy();
     let generated = target.render_header("test1234");

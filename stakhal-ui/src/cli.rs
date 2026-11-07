@@ -15,11 +15,9 @@ pub fn parse_cli_args(args: &[String]) -> CliAction {
         match args[i].as_str() {
             "-h" | "--help" | "help" => return CliAction::ShowHelp,
             "--list-targets" => return CliAction::ListTargets,
-            "--target" => {
-                if i + 1 < args.len() {
-                    target_override = Some(args[i + 1].clone());
-                    i += 1;
-                }
+            "--target" if i + 1 < args.len() => {
+                target_override = Some(args[i + 1].clone());
+                i += 1;
             }
             _ => {}
         }
@@ -104,4 +102,3 @@ mod tests {
         );
     }
 }
-

@@ -47,7 +47,8 @@ fn test_detect_target_legacy_fixture() {
     let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
     let fixture_dir = manifest_dir.join("tests/fixtures/aa_ns_stm_port");
     if fixture_dir.exists() {
-        let target = detect_target_from_project_dir(&fixture_dir).expect("Should detect legacy AA_NS_STM");
+        let target =
+            detect_target_from_project_dir(&fixture_dir).expect("Should detect legacy AA_NS_STM");
         assert_eq!(target.id, TargetId::AaNsStm);
         assert_eq!(target.name, "AA_NS_STM");
     }
@@ -57,7 +58,8 @@ fn test_detect_target_legacy_fixture() {
 fn test_detect_target_external_ref_if_present() {
     let ref_path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../_ref/AA_NS_STM32");
     if ref_path.is_dir() {
-        let target = detect_target_from_project_dir(&ref_path).expect("Should detect AA_NS_STM32 for ref repo");
+        let target = detect_target_from_project_dir(&ref_path)
+            .expect("Should detect AA_NS_STM32 for ref repo");
         assert_eq!(target.id, TargetId::AaNsStm32);
         assert_eq!(target.num_axes, 4);
     }
