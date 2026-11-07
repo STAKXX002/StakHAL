@@ -184,9 +184,9 @@ fn test_visual_nav_transitions() {
         "Forward navigation margin_end must remain 0px at t=260ms"
     );
 
-    let artifact_dir = std::path::PathBuf::from(
-        "/home/stakxx002/.gemini/antigravity-ide/brain/e21edbbd-844e-44ef-9dfa-1af3c8e3a19b",
-    );
+    let artifact_dir =
+        std::path::PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("visual_nav_artifacts");
+    let _ = std::fs::create_dir_all(&artifact_dir);
     if artifact_dir.exists() {
         let paintable = gtk4::WidgetPaintable::new(Some(&win));
         let snapshot = gtk4::Snapshot::new();
