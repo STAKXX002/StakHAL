@@ -135,7 +135,7 @@ pub fn parse_ioc_str(source: &str) -> Result<IocProject, IocParseError> {
         }
     }
 
-    let mut pins = Vec::with_capacity(raw_pins.len());
+    let mut pins_with_keys = Vec::with_capacity(raw_pins.len());
     for (mut pin, full_name) in raw_pins {
         let label_key = format!("{}.GPIO_Label", full_name);
         let fallback_key = format!("{}.GPIO_Label", pin.pin);
@@ -145,8 +145,29 @@ pub fn parse_ioc_str(source: &str) -> Result<IocProject, IocParseError> {
                 pin.label = Some(trimmed_lbl.to_string());
             }
         }
-        pins.push(pin);
+        pins_with_keys.push((pin, full_name));
     }
+
+    for periph in peripherals_map.values_mut() {
+        if periph.mode.is_none() {
+            let prefix = format!("{}_", periph.name);
+            for (pin, full_name) in &pins_with_keys {
+                if pin.signal.starts_with(&prefix) {
+                    let mode_key = format!("{}.Mode", full_name);
+                    let fallback_key = format!("{}.Mode", pin.pin);
+                    if let Some(mode) = raw.get(&mode_key).or_else(|| raw.get(&fallback_key)) {
+                        let trimmed = mode.trim();
+                        if !trimmed.is_empty() {
+                            periph.mode = Some(trimmed.to_string());
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    let pins: Vec<PinConfig> = pins_with_keys.into_iter().map(|(p, _)| p).collect();
 
     let mcu_family = raw
         .get("Mcu.Family")
@@ -359,5 +380,44 @@ GPIO.SomeOtherParam=value
         let project = parse_ioc_str(fixture).unwrap();
         assert_eq!(project.peripherals.len(), 1);
         assert_eq!(project.peripherals[0].name, "GPIO");
+    }
+
+    #[test]
+    fn test_derive_peripheral_mode_from_pin_keys() {
+        let fixture = r#"
+Mcu.Family=STM32F4
+Mcu.UserName=STM32F446RETx
+USART2.IPParameters=BaudRate
+USART2.BaudRate=115200
+PA2.Signal=USART2_TX
+PA2.Mode=Asynchronous
+"#;
+        let project = parse_ioc_str(fixture).unwrap();
+        let usart2 = project
+            .peripherals
+            .iter()
+            .find(|p| p.name == "USART2")
+            .expect("USART2 not found");
+        assert_eq!(usart2.mode.as_deref(), Some("Asynchronous"));
+    }
+
+    #[test]
+    fn test_derive_peripheral_mode_does_not_overwrite_existing() {
+        let fixture = r#"
+Mcu.Family=STM32F4
+Mcu.UserName=STM32F446RETx
+USART2.IPParameters=BaudRate
+USART2.Mode=Synchronous
+USART2.BaudRate=115200
+PA2.Signal=USART2_TX
+PA2.Mode=Asynchronous
+"#;
+        let project = parse_ioc_str(fixture).unwrap();
+        let usart2 = project
+            .peripherals
+            .iter()
+            .find(|p| p.name == "USART2")
+            .expect("USART2 not found");
+        assert_eq!(usart2.mode.as_deref(), Some("Synchronous"));
     }
 }
