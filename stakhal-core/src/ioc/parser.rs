@@ -42,7 +42,7 @@ pub enum IocParseError {
 
 const PERIPHERAL_PREFIXES: &[&str] = &[
     "USART", "UART", "SPI", "I2C", "TIM", "ADC", "DMA", "GPIO", "CAN", "USB", "RTC", "DAC", "CRC",
-    "RNG", "I2S", "SAI", "FMC", "SDMMC", "SDIO",
+    "RNG", "I2S", "SAI", "FMC", "SDMMC", "SDIO", "IWDG", "WWDG",
 ];
 
 fn is_pin_signal(key: &str) -> Option<(&str, &str)> {
@@ -161,7 +161,16 @@ pub fn parse_ioc_str(source: &str) -> Result<IocProject, IocParseError> {
         .filter(|s| !s.is_empty())
         .ok_or_else(|| IocParseError::MissingRequiredKey("Mcu.UserName or Mcu.Name".to_string()))?;
 
-    let peripherals = peripherals_map.into_values().collect();
+    let peripherals = peripherals_map
+        .into_values()
+        .filter(|p| {
+            if p.name == "GPIO" {
+                !(p.parameters.len() == 1 && p.parameters.contains_key("groupedBy"))
+            } else {
+                true
+            }
+        })
+        .collect();
 
     Ok(IocProject {
         mcu_family,
@@ -295,5 +304,60 @@ PA5.GPIO_Label=LD2
             .expect("PA5 not found");
         assert_eq!(pa5.label.as_deref(), Some("LD2"));
         assert_eq!(pa5.signal, "GPIO_Output");
+    }
+
+    #[test]
+    fn test_iwdg_wwdg_peripherals() {
+        let fixture = r#"
+Mcu.Family=STM32F4
+Mcu.UserName=STM32F446RETx
+IWDG.IPParameters=Prescaler,Reload
+IWDG.Prescaler=IWDG_PRESCALER_64
+IWDG.Reload=999
+WWDG.IPParameters=Prescaler
+WWDG.Prescaler=8
+"#;
+        let project = parse_ioc_str(fixture).unwrap();
+        assert_eq!(project.peripherals.len(), 2);
+        let iwdg = project
+            .peripherals
+            .iter()
+            .find(|p| p.name == "IWDG")
+            .unwrap();
+        assert_eq!(
+            iwdg.parameters.get("Prescaler").unwrap(),
+            "IWDG_PRESCALER_64"
+        );
+        assert_eq!(iwdg.parameters.get("Reload").unwrap(), "999");
+        let wwdg = project
+            .peripherals
+            .iter()
+            .find(|p| p.name == "WWDG")
+            .unwrap();
+        assert_eq!(wwdg.parameters.get("Prescaler").unwrap(), "8");
+    }
+
+    #[test]
+    fn test_gpio_grouped_by_not_peripheral() {
+        let fixture = r#"
+Mcu.Family=STM32F4
+Mcu.UserName=STM32F446RETx
+GPIO.groupedBy=Group By Peripherals
+"#;
+        let project = parse_ioc_str(fixture).unwrap();
+        assert!(project.peripherals.is_empty());
+    }
+
+    #[test]
+    fn test_gpio_with_other_keys_treated_as_peripheral() {
+        let fixture = r#"
+Mcu.Family=STM32F4
+Mcu.UserName=STM32F446RETx
+GPIO.groupedBy=Group By Peripherals
+GPIO.SomeOtherParam=value
+"#;
+        let project = parse_ioc_str(fixture).unwrap();
+        assert_eq!(project.peripherals.len(), 1);
+        assert_eq!(project.peripherals[0].name, "GPIO");
     }
 }
