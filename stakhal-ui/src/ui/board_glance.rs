@@ -106,7 +106,7 @@ pub fn draw_board_glance(cr: &cairo::Context, width: f64, height: f64, state: &A
         // Render board graphic fitted to viewport
         let _ = cr.save();
         cr.rectangle(board_x, board_y, board_w, board_h);
-        let _ = cr.clip();
+        cr.clip();
         cr.translate(board_x, board_y);
         cr.scale(board_w / surface_w, board_h / surface_h);
         let _ = cr.set_source_surface(surface, 0.0, 0.0);
@@ -132,7 +132,7 @@ pub fn draw_board_glance(cr: &cairo::Context, width: f64, height: f64, state: &A
                 );
                 let msg = "[ No project loaded ]";
                 if let Ok(ext) = cr.text_extents(msg) {
-                    let _ = cr.move_to((width - ext.width()) / 2.0, height - 12.0);
+                    cr.move_to((width - ext.width()) / 2.0, height - 12.0);
                     let _ = cr.show_text(msg);
                 }
                 return;
