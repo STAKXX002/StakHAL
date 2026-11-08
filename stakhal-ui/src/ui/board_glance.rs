@@ -549,10 +549,17 @@ mod tests {
         draw_board_glance(&cr, 500.0, 600.0, &state);
         surface.flush();
 
-        let out_path = "/home/stakxx002/.gemini/antigravity-ide/brain/e21edbbd-844e-44ef-9dfa-1af3c8e3a19b/dashboard_board_glance_verification.png";
-        let mut file = std::fs::File::create(out_path).expect("Failed to create output PNG");
+        let out_dir =
+            std::env::temp_dir().join(format!("stakhal_board_glance_{}", std::process::id()));
+        std::fs::create_dir_all(&out_dir).expect("Failed to create output directory");
+        let out_path = out_dir.join("dashboard_board_glance_verification.png");
+        let mut file = std::fs::File::create(&out_path).expect("Failed to create output PNG");
         surface
             .write_to_png(&mut file)
             .expect("Failed to write PNG");
+        drop(file);
+        let size = std::fs::metadata(&out_path).expect("PNG missing").len();
+        assert!(size > 0, "rendered PNG is empty");
+        let _ = std::fs::remove_dir_all(&out_dir);
     }
 }
