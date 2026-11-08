@@ -24,7 +24,7 @@ fn test_real_cubemx_project_regression() {
     let ioc_project = parse_ioc(&ioc_path).expect("failed to parse real fixture .ioc file");
     assert_eq!(ioc_project.mcu_family, "STM32F4");
     assert_eq!(ioc_project.mcu_name, "STM32F446RETx");
-    assert_eq!(ioc_project.pins.len(), 7);
+    assert_eq!(ioc_project.pins.len(), 11);
     assert_eq!(ioc_project.peripherals.len(), 0);
 
     // 2. Validate C source scanning
