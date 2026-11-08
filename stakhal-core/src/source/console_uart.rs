@@ -42,10 +42,9 @@ fn collect_c_source_files(main_c_path: &Path) -> Vec<PathBuf> {
         if let Ok(entries) = fs::read_dir(&dir) {
             for entry in entries.flatten() {
                 let p = entry.path();
-                if p.is_file() && p.extension().map_or(false, |ext| ext == "c") {
-                    if !files.contains(&p) {
-                        files.push(p);
-                    }
+                if p.is_file() && p.extension().is_some_and(|ext| ext == "c") && !files.contains(&p)
+                {
+                    files.push(p);
                 }
             }
         }
@@ -133,7 +132,7 @@ fn find_uart_in_retarget_function(content: &str) -> Option<String> {
 }
 
 /// Finds the index where the body `{` of a function begins
-fn find_function_body<'a>(content: &'a str, fn_name: &str) -> Option<usize> {
+fn find_function_body(content: &str, fn_name: &str) -> Option<usize> {
     let mut search_from = 0;
     while let Some(pos) = content[search_from..].find(fn_name) {
         let abs_pos = search_from + pos;
@@ -198,7 +197,11 @@ fn extract_matching_braces(s: &str) -> Option<&str> {
 
 /// Extracts the handle identifier from `HAL_UART_Transmit(&<ident>, ...)`
 fn extract_hal_uart_transmit_handle(text: &str) -> Option<String> {
-    let patterns = ["HAL_UART_Transmit", "HAL_UART_Transmit_IT", "HAL_UART_Transmit_DMA"];
+    let patterns = [
+        "HAL_UART_Transmit",
+        "HAL_UART_Transmit_IT",
+        "HAL_UART_Transmit_DMA",
+    ];
 
     for pat in &patterns {
         let mut search_from = 0;
@@ -318,10 +321,14 @@ fn parse_command_table_entries(content: &str) -> Vec<String> {
                             .chars()
                             .take_while(|c| c.is_alphanumeric() || *c == '_')
                             .collect();
-                        if !ident.is_empty() && !cmd_str.is_empty() && cmd_str.len() <= 16 {
-                            if cmd_str.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-') {
-                                commands.push(cmd_str.to_string());
-                            }
+                        if !ident.is_empty()
+                            && !cmd_str.is_empty()
+                            && cmd_str.len() <= 16
+                            && cmd_str
+                                .chars()
+                                .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+                        {
+                            commands.push(cmd_str.to_string());
                         }
                     }
                 }
@@ -343,7 +350,8 @@ mod tests {
     fn test_detect_console_uart_aa_ns_stm_port() {
         let fixture_main_c = Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("tests/fixtures/aa_ns_stm_port/Core/Src/main.c");
-        let info = detect_console_uart(&fixture_main_c).expect("should detect console uart in aa_ns_stm_port");
+        let info = detect_console_uart(&fixture_main_c)
+            .expect("should detect console uart in aa_ns_stm_port");
         assert_eq!(info.uart_instance, "huart2");
         assert_eq!(info.baud_rate, 115200);
     }
@@ -352,7 +360,8 @@ mod tests {
     fn test_detect_console_uart_docking_firmware_v2() {
         let fixture_main_c = Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("tests/fixtures/docking_firmware_v2/Core/Src/main.c");
-        let info = detect_console_uart(&fixture_main_c).expect("should detect console uart in docking_firmware_v2");
+        let info = detect_console_uart(&fixture_main_c)
+            .expect("should detect console uart in docking_firmware_v2");
         assert_eq!(info.uart_instance, "huart2");
         assert_eq!(info.baud_rate, 115200);
     }
@@ -362,7 +371,9 @@ mod tests {
         let fixture_main_c = Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("tests/fixtures/aa_ns_stm_port/Core/Src/main.c");
         let commands = extract_project_command_names(&fixture_main_c);
-        let expected = ["CAL", "GO", "RET", "RST", "OPEN", "CLOSE", "STOP", "ON", "OFF"];
+        let expected = [
+            "CAL", "GO", "RET", "RST", "OPEN", "CLOSE", "STOP", "ON", "OFF",
+        ];
         for exp in &expected {
             assert!(
                 commands.iter().any(|c| c == exp),

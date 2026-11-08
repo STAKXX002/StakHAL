@@ -1,8 +1,8 @@
+use gtk4::{gio, prelude::*};
+use libadwaita as adw;
 use std::cell::RefCell;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
-use gtk4::{gio, prelude::*};
-use libadwaita as adw;
 
 use stakhal_core::ioc::discovery::discover_project_files;
 use stakhal_core::ir::schema::load_project;
@@ -45,7 +45,9 @@ pub fn try_discover_folder(dir: &Path, state: &Rc<RefCell<AppState>>, widgets: &
         }
     }
 
-    widgets.lbl_discovered_dir.set_text(&dir.display().to_string());
+    widgets
+        .lbl_discovered_dir
+        .set_text(&dir.display().to_string());
     widgets.btn_build.set_sensitive(has_build_sys);
     widgets.btn_build_flash.set_sensitive(has_build_sys);
 
@@ -60,7 +62,9 @@ pub fn try_discover_folder(dir: &Path, state: &Rc<RefCell<AppState>>, widgets: &
             widgets.btn_load.set_sensitive(true);
         }
         Err(err) => {
-            widgets.toast_overlay.add_toast(adw::Toast::new(&format!("Discovery Error: {}", err)));
+            widgets
+                .toast_overlay
+                .add_toast(adw::Toast::new(&format!("Discovery Error: {}", err)));
             widgets.lbl_ioc_path.set_text("IOC Path: N/A");
             widgets.lbl_main_c_path.set_text("Main C Path: N/A");
             widgets.btn_load.set_sensitive(false);
@@ -75,10 +79,16 @@ pub fn do_load_project(state: &Rc<RefCell<AppState>>, widgets: &Rc<AppWidgets>) 
         let st = state.borrow();
         let proj = st.project.borrow();
 
-        match (&proj.discovered_ioc, &proj.discovered_main_c, &proj.project_dir) {
+        match (
+            &proj.discovered_ioc,
+            &proj.discovered_main_c,
+            &proj.project_dir,
+        ) {
             (Some(i), Some(m), Some(d)) => (i.clone(), m.clone(), d.clone()),
             _ => {
-                widgets.toast_overlay.add_toast(adw::Toast::new("[ERROR] Project files not selected"));
+                widgets
+                    .toast_overlay
+                    .add_toast(adw::Toast::new("[ERROR] Project files not selected"));
                 return;
             }
         }
@@ -91,7 +101,8 @@ pub fn do_load_project(state: &Rc<RefCell<AppState>>, widgets: &Rc<AppWidgets>) 
     {
         let st = state.borrow();
         let mut bt = st.build_trace.borrow_mut();
-        bt.has_makefile = dir_path.join("Makefile").is_file() || dir_path.join("makefile").is_file();
+        bt.has_makefile =
+            dir_path.join("Makefile").is_file() || dir_path.join("makefile").is_file();
         bt.has_build_system = has_build_sys;
         bt.detected_build_system = build_sys;
     }
@@ -100,11 +111,19 @@ pub fn do_load_project(state: &Rc<RefCell<AppState>>, widgets: &Rc<AppWidgets>) 
 
     match load_project(&ioc_path, &main_c_path) {
         Ok(project) => {
-            widgets.lbl_project_name.set_text(&format!("NAME: {}", project.meta.name));
-            widgets.lbl_mcu_family.set_text(&format!("FAMILY: {}", project.meta.mcu_family));
-            widgets.lbl_mcu_name.set_text(&format!("MCU: {}", project.meta.mcu_name));
+            widgets
+                .lbl_project_name
+                .set_text(&format!("NAME: {}", project.meta.name));
+            widgets
+                .lbl_mcu_family
+                .set_text(&format!("FAMILY: {}", project.meta.mcu_family));
+            widgets
+                .lbl_mcu_name
+                .set_text(&format!("MCU: {}", project.meta.mcu_name));
 
-            widgets.lbl_periph_header.set_text(&format!("[ PERIPHERALS ({}) ]", project.peripherals.len()));
+            widgets
+                .lbl_periph_header
+                .set_text(&format!("[ PERIPHERALS ({}) ]", project.peripherals.len()));
 
             widgets.lbl_board_header.set_text(&format!("[ NUCLEO-F446RE PINOUT GLANCE ({} PINS) ]", project.pins.len()));
             crate::ui::board_glance::update_board_glance_legend(&widgets.flow_board_legend, Some(&project));
@@ -204,9 +223,13 @@ pub fn do_load_project(state: &Rc<RefCell<AppState>>, widgets: &Rc<AppWidgets>) 
                 }
                 let mod_str_refs: Vec<&str> = mod_names.iter().map(|s| s.as_str()).collect();
                 let mod_string_list = gtk4::StringList::new(&mod_str_refs);
-                widgets.combo_pinout_module.set_model(Some(&mod_string_list));
+                widgets
+                    .combo_pinout_module
+                    .set_model(Some(&mod_string_list));
                 widgets.combo_pinout_module.set_selected(0);
-                widgets.combo_pinout_module.set_sensitive(project_modules.len() > 1);
+                widgets
+                    .combo_pinout_module
+                    .set_sensitive(project_modules.len() > 1);
 
                 state.borrow().with_canvas_state_mut(|c| {
                     c.selected_pinout_module = None;
@@ -217,7 +240,9 @@ pub fn do_load_project(state: &Rc<RefCell<AppState>>, widgets: &Rc<AppWidgets>) 
                     .btn_nucleo_pinout
                     .set_tooltip_text(Some("Nucleo Pinout visualizer is F446RE-only for now"));
                 let mod_string_list = gtk4::StringList::new(&["All Modules"]);
-                widgets.combo_pinout_module.set_model(Some(&mod_string_list));
+                widgets
+                    .combo_pinout_module
+                    .set_model(Some(&mod_string_list));
                 widgets.combo_pinout_module.set_selected(0);
                 widgets.combo_pinout_module.set_sensitive(false);
                 state.borrow().with_canvas_state_mut(|c| {
@@ -250,20 +275,28 @@ pub fn do_load_project(state: &Rc<RefCell<AppState>>, widgets: &Rc<AppWidgets>) 
             }
             update_quick_send_buttons(&main_c_path, state, widgets);
 
-            widgets.toast_overlay.add_toast(adw::Toast::new("[OK] Project loaded successfully"));
+            widgets
+                .toast_overlay
+                .add_toast(adw::Toast::new("[OK] Project loaded successfully"));
         }
 
         Err(err) => {
             widgets.btn_nucleo_pinout.set_sensitive(false);
-            widgets.btn_nucleo_pinout.set_tooltip_text(Some("Nucleo Pinout visualizer is F446RE-only for now"));
+            widgets
+                .btn_nucleo_pinout
+                .set_tooltip_text(Some("Nucleo Pinout visualizer is F446RE-only for now"));
             let mod_string_list = gtk4::StringList::new(&["All Modules"]);
-            widgets.combo_pinout_module.set_model(Some(&mod_string_list));
+            widgets
+                .combo_pinout_module
+                .set_model(Some(&mod_string_list));
             widgets.combo_pinout_module.set_selected(0);
             widgets.combo_pinout_module.set_sensitive(false);
             state.borrow().with_canvas_state_mut(|c| {
                 c.selected_pinout_module = None;
             });
-            widgets.toast_overlay.add_toast(adw::Toast::new(&format!("[ERROR] Load Error: {}", err)));
+            widgets
+                .toast_overlay
+                .add_toast(adw::Toast::new(&format!("[ERROR] Load Error: {}", err)));
         }
     }
 

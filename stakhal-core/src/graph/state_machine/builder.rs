@@ -28,7 +28,10 @@ pub fn infer_cluster_name(state: &str, initial_name: &str) -> &'static str {
 /// Excludes high-fan-in FAULT edges (handled as badges) and wildcard/self transitions.
 pub fn build_state_machine_graph(
     sm: &AppStateMachine,
-) -> (StableDiGraph<StateNode, TransitionEdge>, HashMap<String, NodeIndex>) {
+) -> (
+    StableDiGraph<StateNode, TransitionEdge>,
+    HashMap<String, NodeIndex>,
+) {
     let initial_name = sm.var.initial_value.as_deref().unwrap_or("IDLE");
     let mut graph = StableDiGraph::new();
     let mut node_map = HashMap::new();

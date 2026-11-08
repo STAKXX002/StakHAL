@@ -1,9 +1,9 @@
+use crate::state::create_icon_button;
+use crate::ui::tokens::motion;
 use gtk4::glib;
 use gtk4::prelude::*;
 use libadwaita as adw;
 use libadwaita::prelude::*;
-use crate::state::create_icon_button;
-use crate::ui::tokens::motion;
 
 pub struct MainPanelWidgets {
     pub overview_box: gtk4::Box,
@@ -53,13 +53,21 @@ pub fn build_main_panel() -> MainPanelWidgets {
     let lbl_ioc_path = gtk4::Label::builder()
         .label("IOC Path: N/A")
         .halign(gtk4::Align::Start)
-        .css_classes(vec!["dim-label".to_string(), "caption".to_string(), "data-mono".to_string()])
+        .css_classes(vec![
+            "dim-label".to_string(),
+            "caption".to_string(),
+            "data-mono".to_string(),
+        ])
         .build();
 
     let lbl_main_c_path = gtk4::Label::builder()
         .label("Main C Path: N/A")
         .halign(gtk4::Align::Start)
-        .css_classes(vec!["dim-label".to_string(), "caption".to_string(), "data-mono".to_string()])
+        .css_classes(vec![
+            "dim-label".to_string(),
+            "caption".to_string(),
+            "data-mono".to_string(),
+        ])
         .build();
 
     let btn_load = create_icon_button("Load Project", "system-run-symbolic", true);
@@ -75,7 +83,10 @@ pub fn build_main_panel() -> MainPanelWidgets {
 
     let btn_build_flash = gtk4::Button::builder()
         .label("Build & Flash")
-        .css_classes(vec!["stakhal-btn".to_string(), "suggested-action".to_string()])
+        .css_classes(vec![
+            "stakhal-btn".to_string(),
+            "suggested-action".to_string(),
+        ])
         .sensitive(false)
         .tooltip_text("Build project and flash to STM32 target via ST-Link")
         .build();
@@ -167,7 +178,11 @@ pub fn build_main_panel() -> MainPanelWidgets {
     let lbl_build_traceability = gtk4::Label::builder()
         .label("BUILD: Unknown")
         .halign(gtk4::Align::Start)
-        .css_classes(vec!["caption".to_string(), "data-mono".to_string(), "dim-label".to_string()])
+        .css_classes(vec![
+            "caption".to_string(),
+            "data-mono".to_string(),
+            "dim-label".to_string(),
+        ])
         .tooltip_text("Firmware build traceability status")
         .build();
 
@@ -262,7 +277,12 @@ pub fn build_main_panel() -> MainPanelWidgets {
     let lbl_build_status = gtk4::Label::builder()
         .label("IDLE")
         .valign(gtk4::Align::Center)
-        .css_classes(vec!["card".to_string(), "caption".to_string(), "data-mono".to_string(), "status-idle".to_string()])
+        .css_classes(vec![
+            "card".to_string(),
+            "caption".to_string(),
+            "data-mono".to_string(),
+            "status-idle".to_string(),
+        ])
         .build();
 
     let btn_clear_log = gtk4::Button::builder()
@@ -387,9 +407,13 @@ pub fn create_peripheral_row(name: &str, mode: Option<&str>, param_count: usize)
         .build();
 
     let badge = gtk4::Label::builder()
-        .label(&format!("{} params", param_count))
+        .label(format!("{} params", param_count))
         .valign(gtk4::Align::Center)
-        .css_classes(vec!["dim-label".to_string(), "caption".to_string(), "data-mono".to_string()])
+        .css_classes(vec![
+            "dim-label".to_string(),
+            "caption".to_string(),
+            "data-mono".to_string(),
+        ])
         .build();
 
     row.add_suffix(&badge);
@@ -404,7 +428,10 @@ pub fn create_region_row(
     line_end: usize,
     is_implicit: bool,
 ) -> adw::ActionRow {
-    let details = format!("L{}-L{} (bytes {}..{})", line_start, line_end, byte_start, byte_end);
+    let details = format!(
+        "L{}-L{} (bytes {}..{})",
+        line_start, line_end, byte_start, byte_end
+    );
     let row = adw::ActionRow::builder()
         .title(tag)
         .subtitle(&details)
@@ -415,7 +442,11 @@ pub fn create_region_row(
         let badge = gtk4::Label::builder()
             .label("implicit")
             .valign(gtk4::Align::Center)
-            .css_classes(vec!["implicit-badge".to_string(), "caption".to_string(), "data-mono".to_string()])
+            .css_classes(vec![
+                "implicit-badge".to_string(),
+                "caption".to_string(),
+                "data-mono".to_string(),
+            ])
             .build();
         row.add_suffix(&badge);
     }
@@ -521,4 +552,3 @@ mod tests {
         }
     }
 }
-

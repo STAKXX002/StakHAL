@@ -1,6 +1,6 @@
-use serde::{Deserialize, Serialize};
 use crate::graph::hal_rules::HAL_IRQ_MAPPINGS;
 use crate::ioc::IocProject;
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum EdgeType {
@@ -92,8 +92,8 @@ pub fn build_call_graph(ioc: &IocProject) -> Vec<GraphEdge> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::collections::HashMap;
     use crate::ioc::PeripheralConfig;
+    use std::collections::HashMap;
 
     fn make_test_ioc(nvic_value: Option<&str>) -> IocProject {
         let mut raw = HashMap::new();

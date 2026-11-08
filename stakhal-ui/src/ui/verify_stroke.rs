@@ -1,10 +1,10 @@
-use std::cell::RefCell;
-use std::rc::Rc;
+use crate::state::AppState;
+use crate::ui::tokens;
 use gtk4::cairo;
 use gtk4::glib;
 use gtk4::prelude::*;
-use crate::state::AppState;
-use crate::ui::tokens;
+use std::cell::RefCell;
+use std::rc::Rc;
 
 pub const VERIFY_STROKE_SIZE: i32 = 16;
 pub const COLOR_SUCCESS_RGB: (f64, f64, f64) = (0.204, 0.827, 0.600); // #34D399 (state_ready)
@@ -29,25 +29,29 @@ pub fn draw_verify_stroke_path(cr: &cairo::Context, progress: f64) {
     let total_len = len1 + len2;
     let target_d = eased * total_len;
 
-    cr.set_source_rgb(COLOR_SUCCESS_RGB.0, COLOR_SUCCESS_RGB.1, COLOR_SUCCESS_RGB.2);
+    cr.set_source_rgb(
+        COLOR_SUCCESS_RGB.0,
+        COLOR_SUCCESS_RGB.1,
+        COLOR_SUCCESS_RGB.2,
+    );
     cr.set_line_width(2.0);
     cr.set_line_cap(cairo::LineCap::Round);
     cr.set_line_join(cairo::LineJoin::Round);
 
-    let _ = cr.move_to(p1.0, p1.1);
+    cr.move_to(p1.0, p1.1);
 
     if target_d <= len1 {
         let f = target_d / len1;
         let cur_x = p1.0 + (p2.0 - p1.0) * f;
         let cur_y = p1.1 + (p2.1 - p1.1) * f;
-        let _ = cr.line_to(cur_x, cur_y);
+        cr.line_to(cur_x, cur_y);
     } else {
-        let _ = cr.line_to(p2.0, p2.1);
+        cr.line_to(p2.0, p2.1);
         let rem = target_d - len1;
         let f = (rem / len2).clamp(0.0, 1.0);
         let cur_x = p2.0 + (p3.0 - p2.0) * f;
         let cur_y = p2.1 + (p3.1 - p2.1) * f;
-        let _ = cr.line_to(cur_x, cur_y);
+        cr.line_to(cur_x, cur_y);
     }
 
     let _ = cr.stroke();
@@ -142,11 +146,7 @@ mod tests {
         let cr = cairo::Context::new(&surface).unwrap();
 
         let anim_enabled = false;
-        let progress = if !anim_enabled {
-            1.0
-        } else {
-            0.0
-        };
+        let progress = if !anim_enabled { 1.0 } else { 0.0 };
         assert_eq!(progress, 1.0);
         draw_verify_stroke_path(&cr, progress);
         surface.flush();

@@ -97,7 +97,9 @@ sudo apt install -y \
 > **Note on USB permissions**: If flashing without `sudo`, ensure your user has access to ST-Link USB devices by installing udev rules (included with `stlink-tools` or under `/etc/udev/rules.d/49-stlinkv*.rules`).
 
 ##### 3. Install Rust Toolchain
-Install the official Rust toolchain (MSRV: Rust 1.75+):
+Install the official Rust toolchain:
+- Verified toolchain: Rust 1.97.1 (stable channel). A minimum supported Rust version has not been established.
+
 ```bash
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 source "$HOME/.cargo/env"
@@ -157,6 +159,67 @@ cargo test --workspace
 ```bash
 cargo run --release -p stakhal-ui
 ```
+
+---
+
+## Target Platforms
+
+StakHAL provides target definitions to configure hardware parameters, build traceability header fields, and serial protocol prefixes for supported firmware repositories.
+
+### Supported Targets
+
+| Target Identifier | Platform Description | MCU Part | Clock | Axes | Serial Prefix | Header Template |
+|---|---|---|---|---|---|---|
+| `AA_NS_STM` | Legacy Active Alignment port | STM32F446RET6 | 180 MHz | 2 | `STAKHAL_BUILD:` | Minimal `STAKHAL_BUILD_HASH` |
+| `AA_NS_STM32` | 4-Axis Active Alignment platform | STM32F446RET6 | 180 MHz | 4 | `AA_BUILD:` | Extended target configuration macros |
+
+### Automatic Target Detection
+
+When a project directory is selected, StakHAL inspects the file tree to determine the appropriate target definition:
+
+1. `AA_NS_STM32` is identified when any of the following signatures are detected:
+   - Presence of `AA_STM.ioc` in the project root.
+   - Presence of `Core/Inc/aa_config.h`.
+   - `CMakeLists.txt` declaring project or executable name `AA_STM`.
+2. `AA_NS_STM` is selected when `aa_ns_stm_port.ioc` or `AA_NS_STM_V1` declarations are detected.
+3. Fallback defaults to `AA_NS_STM` for generic or unclassified STM32CubeMX projects.
+
+### Command-Line Target Selection
+
+Target selection can be queried or overridden directly from the command line:
+
+```bash
+# List all registered firmware targets
+cargo run --release -p stakhal-ui -- --list-targets
+
+# Launch StakHAL configured explicitly for AA_NS_STM32
+cargo run --release -p stakhal-ui -- --target AA_NS_STM32
+
+# Display CLI help text
+cargo run --release -p stakhal-ui -- --help
+```
+
+### Traceability Header Generation for AA_NS_STM32
+
+For the `AA_NS_STM32` target, StakHAL generates `Core/Inc/stakhal_build_info.h` with the following configuration fields:
+
+```c
+/* Generated automatically by StakHAL. Do not edit or commit. */
+#ifndef STAKHAL_BUILD_INFO_H
+#define STAKHAL_BUILD_INFO_H
+
+#define STAKHAL_TARGET_NAME "AA_NS_STM32"
+#define STAKHAL_BUILD_HASH "<git-hash>"
+#define AA_BUILD_HASH "<git-hash>"
+#define STAKHAL_MCU_FAMILY "STM32F4"
+#define STAKHAL_MCU_PART "STM32F446RET6"
+#define STAKHAL_SYSCLK_FREQ_HZ 180000000UL
+#define STAKHAL_NUM_AXES 4
+
+#endif /* STAKHAL_BUILD_INFO_H */
+```
+
+Both `STAKHAL_BUILD_HASH` and `AA_BUILD_HASH` macros are defined to ensure compatibility with both internal traceability tools and the `printf("AA_BUILD: %s\r\n", AA_BUILD_HASH);` boot banner in `AA_NS_STM32`.
 
 ---
 

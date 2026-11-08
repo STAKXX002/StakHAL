@@ -11,15 +11,15 @@ use crate::source::marker_scan::ScanError;
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct UserFunction {
     pub name: String,
-    pub byte_range: (usize, usize),   // full function definition span
-    pub line: usize,                   // 1-indexed, definition line
-    pub is_hal_callback: bool,         // true if this name matches a known weak-callback name from hal_rules.rs
+    pub byte_range: (usize, usize), // full function definition span
+    pub line: usize,                // 1-indexed, definition line
+    pub is_hal_callback: bool, // true if this name matches a known weak-callback name from hal_rules.rs
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct UserCallEdge {
-    pub from: String,   // calling function's name
-    pub to: String,     // called function's name
+    pub from: String, // calling function's name
+    pub to: String,   // called function's name
 }
 
 pub fn build_user_call_graph(
@@ -60,10 +60,8 @@ pub fn build_user_call_graph(
         ));
     }
 
-    let user_function_names: HashSet<String> = user_functions
-        .iter()
-        .map(|(_, f)| f.name.clone())
-        .collect();
+    let user_function_names: HashSet<String> =
+        user_functions.iter().map(|(_, f)| f.name.clone()).collect();
 
     let mut edge_set = HashSet::new();
     let mut edges = Vec::new();
@@ -118,13 +116,14 @@ fn extract_function_name(mut node: tree_sitter::Node, source: &str) -> Option<St
     loop {
         match node.kind() {
             "identifier" => return Some(source[node.byte_range()].to_string()),
-            "function_declarator" | "pointer_declarator" | "parenthesized_declarator" | "array_declarator" => {
+            "function_declarator"
+            | "pointer_declarator"
+            | "parenthesized_declarator"
+            | "array_declarator" => {
                 if let Some(child) = node.child_by_field_name("declarator") {
                     node = child;
-                } else if let Some(child) = node.child(0) {
-                    node = child;
                 } else {
-                    return None;
+                    node = node.child(0)?;
                 }
             }
             _ => {
@@ -172,18 +171,10 @@ fn extract_called_name(mut node: tree_sitter::Node, source: &str) -> Option<Stri
         match node.kind() {
             "identifier" => return Some(source[node.byte_range()].to_string()),
             "parenthesized_expression" => {
-                if let Some(child) = node.child(0) {
-                    node = child;
-                } else {
-                    return None;
-                }
+                node = node.child(0)?;
             }
             "field_expression" => {
-                if let Some(field) = node.child_by_field_name("field") {
-                    node = field;
-                } else {
-                    return None;
-                }
+                node = node.child_by_field_name("field")?;
             }
             _ => return None,
         }
@@ -235,7 +226,7 @@ void do_something(void) {
         let (fns, edges) = build_user_call_graph(&file_path).unwrap();
         assert_eq!(fns.len(), 1);
         assert_eq!(fns[0].name, "do_something");
-        assert_eq!(fns[0].is_hal_callback, false);
+        assert!(!fns[0].is_hal_callback);
 
         assert!(edges.is_empty());
     }
@@ -258,7 +249,10 @@ void normal_user_func(void) {
         let (fns, _) = build_user_call_graph(&file_path).unwrap();
         assert_eq!(fns.len(), 2);
 
-        let cb = fns.iter().find(|f| f.name == "HAL_TIM_PeriodElapsedCallback").unwrap();
+        let cb = fns
+            .iter()
+            .find(|f| f.name == "HAL_TIM_PeriodElapsedCallback")
+            .unwrap();
         assert!(cb.is_hal_callback);
 
         let normal = fns.iter().find(|f| f.name == "normal_user_func").unwrap();
@@ -277,9 +271,15 @@ void normal_user_func(void) {
             .find(|f| f.name == "HAL_TIM_PeriodElapsedCallback")
             .expect("HAL_TIM_PeriodElapsedCallback should be found in stm32_03_timers main.c");
 
-        assert!(cb.is_hal_callback, "HAL_TIM_PeriodElapsedCallback must be flagged as HAL callback");
+        assert!(
+            cb.is_hal_callback,
+            "HAL_TIM_PeriodElapsedCallback must be flagged as HAL callback"
+        );
 
-        let cb_outgoing_edges: Vec<&UserCallEdge> = edges.iter().filter(|e| e.from == "HAL_TIM_PeriodElapsedCallback").collect();
+        let cb_outgoing_edges: Vec<&UserCallEdge> = edges
+            .iter()
+            .filter(|e| e.from == "HAL_TIM_PeriodElapsedCallback")
+            .collect();
         assert!(
             cb_outgoing_edges.is_empty(),
             "HAL_TIM_PeriodElapsedCallback in stm32_03_timers only does inline increment, should have 0 outgoing UserCallEdges"

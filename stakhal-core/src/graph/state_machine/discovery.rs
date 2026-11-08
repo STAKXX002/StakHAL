@@ -4,13 +4,17 @@ use std::path::Path;
 
 use tree_sitter::{Node, Parser};
 
-use crate::source::marker_scan::ScanError;
 use super::labels::{clean_guard_text, node_text};
 use super::model::{EnumDefinition, StateMachineCandidate, TrackedVariable, VariableScope};
-use super::{collect_helper_functions, extract_target_ident, extract_variant_ident, HelperFunctionInfo};
+use super::{
+    collect_helper_functions, extract_target_ident, extract_variant_ident, HelperFunctionInfo,
+};
+use crate::source::marker_scan::ScanError;
 
 /// Discover all enum definitions and variables declared with that enum type in a C file.
-pub fn discover_state_machines_in_file(path: &Path) -> Result<Vec<StateMachineCandidate>, ScanError> {
+pub fn discover_state_machines_in_file(
+    path: &Path,
+) -> Result<Vec<StateMachineCandidate>, ScanError> {
     if !path.exists() {
         return Err(ScanError::FileNotFound(path.to_path_buf()));
     }
@@ -38,14 +42,19 @@ pub fn discover_state_machines_in_file(path: &Path) -> Result<Vec<StateMachineCa
         return Ok(Vec::new());
     }
 
-    let enum_map: HashMap<String, EnumDefinition> = enums
-        .into_iter()
-        .map(|e| (e.name.clone(), e))
-        .collect();
+    let enum_map: HashMap<String, EnumDefinition> =
+        enums.into_iter().map(|e| (e.name.clone(), e)).collect();
 
     // 2. Find variables declared with enum types
     let mut variables = Vec::new();
-    collect_variables(root, source_bytes, &path_str, None, &enum_map, &mut variables);
+    collect_variables(
+        root,
+        source_bytes,
+        &path_str,
+        None,
+        &enum_map,
+        &mut variables,
+    );
 
     // 3. Match each variable to its enum definition (qualifying only variables with guarded dispatch)
     let mut candidates = Vec::new();
@@ -53,7 +62,8 @@ pub fn discover_state_machines_in_file(path: &Path) -> Result<Vec<StateMachineCa
         if let Some(enum_def) = enum_map.get(&var.enum_type) {
             let known_variants: HashSet<String> = enum_def.variants.iter().cloned().collect();
             let helpers = collect_helper_functions(root, source_bytes, &var.name, &known_variants);
-            if has_guarded_dispatch_assigning_var(root, source_bytes, &var.name, enum_def, &helpers) {
+            if has_guarded_dispatch_assigning_var(root, source_bytes, &var.name, enum_def, &helpers)
+            {
                 let id = format!("{}_{}", var.enum_type, var.name);
                 let display_name = format!("{} ({})", var.enum_type, var.name);
                 candidates.push(StateMachineCandidate {
@@ -70,7 +80,9 @@ pub fn discover_state_machines_in_file(path: &Path) -> Result<Vec<StateMachineCa
 }
 
 /// Discover all enum definitions and variables across all C source files in the project (e.g. Core/Src/*.c or Src/*.c).
-pub fn discover_state_machines_in_project(main_c_path: &Path) -> Result<Vec<StateMachineCandidate>, ScanError> {
+pub fn discover_state_machines_in_project(
+    main_c_path: &Path,
+) -> Result<Vec<StateMachineCandidate>, ScanError> {
     if !main_c_path.exists() {
         return Err(ScanError::FileNotFound(main_c_path.to_path_buf()));
     }
@@ -81,7 +93,7 @@ pub fn discover_state_machines_in_project(main_c_path: &Path) -> Result<Vec<Stat
     if let Ok(entries) = fs::read_dir(src_dir) {
         for entry in entries.flatten() {
             let p = entry.path();
-            if p.is_file() && p.extension().map_or(false, |ext| ext == "c") {
+            if p.is_file() && p.extension().is_some_and(|ext| ext == "c") {
                 c_files.push(p);
             }
         }
@@ -111,7 +123,7 @@ pub fn discover_state_machines_in_project(main_c_path: &Path) -> Result<Vec<Stat
         if let Ok(entries) = fs::read_dir(&dir) {
             for entry in entries.flatten() {
                 let p = entry.path();
-                if p.is_file() && p.extension().map_or(false, |ext| ext == "h") {
+                if p.is_file() && p.extension().is_some_and(|ext| ext == "h") {
                     h_files.push(p);
                 }
             }
@@ -130,7 +142,12 @@ pub fn discover_state_machines_in_project(main_c_path: &Path) -> Result<Vec<Stat
         if let Ok(source) = fs::read_to_string(h_path) {
             if let Some(tree) = parser.parse(&source, None) {
                 let path_str = h_path.to_string_lossy().to_string();
-                collect_enum_definitions(tree.root_node(), source.as_bytes(), &path_str, &mut enums);
+                collect_enum_definitions(
+                    tree.root_node(),
+                    source.as_bytes(),
+                    &path_str,
+                    &mut enums,
+                );
             }
         }
     }
@@ -139,7 +156,12 @@ pub fn discover_state_machines_in_project(main_c_path: &Path) -> Result<Vec<Stat
         if let Ok(source) = fs::read_to_string(c_path) {
             if let Some(tree) = parser.parse(&source, None) {
                 let path_str = c_path.to_string_lossy().to_string();
-                collect_enum_definitions(tree.root_node(), source.as_bytes(), &path_str, &mut enums);
+                collect_enum_definitions(
+                    tree.root_node(),
+                    source.as_bytes(),
+                    &path_str,
+                    &mut enums,
+                );
             }
         }
     }
@@ -148,17 +170,22 @@ pub fn discover_state_machines_in_project(main_c_path: &Path) -> Result<Vec<Stat
         return Ok(Vec::new());
     }
 
-    let enum_map: HashMap<String, EnumDefinition> = enums
-        .into_iter()
-        .map(|e| (e.name.clone(), e))
-        .collect();
+    let enum_map: HashMap<String, EnumDefinition> =
+        enums.into_iter().map(|e| (e.name.clone(), e)).collect();
 
     let mut variables = Vec::new();
     for c_path in &c_files {
         if let Ok(source) = fs::read_to_string(c_path) {
             if let Some(tree) = parser.parse(&source, None) {
                 let path_str = c_path.to_string_lossy().to_string();
-                collect_variables(tree.root_node(), source.as_bytes(), &path_str, None, &enum_map, &mut variables);
+                collect_variables(
+                    tree.root_node(),
+                    source.as_bytes(),
+                    &path_str,
+                    None,
+                    &enum_map,
+                    &mut variables,
+                );
             }
         }
     }
@@ -167,7 +194,11 @@ pub fn discover_state_machines_in_project(main_c_path: &Path) -> Result<Vec<Stat
     let mut seen = HashSet::new();
     for var in variables {
         if let Some(enum_def) = enum_map.get(&var.enum_type) {
-            let key = (enum_def.name.clone(), var.name.clone(), var.file_path.clone());
+            let key = (
+                enum_def.name.clone(),
+                var.name.clone(),
+                var.file_path.clone(),
+            );
             if seen.insert(key) {
                 let known_variants: HashSet<String> = enum_def.variants.iter().cloned().collect();
                 let mut qualifies = false;
@@ -176,8 +207,11 @@ pub fn discover_state_machines_in_project(main_c_path: &Path) -> Result<Vec<Stat
                         if let Some(tree) = parser.parse(&source, None) {
                             let root = tree.root_node();
                             let s_bytes = source.as_bytes();
-                            let helpers = collect_helper_functions(root, s_bytes, &var.name, &known_variants);
-                            if has_guarded_dispatch_assigning_var(root, s_bytes, &var.name, enum_def, &helpers) {
+                            let helpers =
+                                collect_helper_functions(root, s_bytes, &var.name, &known_variants);
+                            if has_guarded_dispatch_assigning_var(
+                                root, s_bytes, &var.name, enum_def, &helpers,
+                            ) {
                                 qualifies = true;
                                 break;
                             }
@@ -240,7 +274,8 @@ pub(crate) fn check_guarded_dispatch_recursive(
         }
         "if_statement" => {
             if let Some(cond) = node.child_by_field_name("condition") {
-                if condition_compares_var_to_variants(cond, source_bytes, var_name, known_variants) {
+                if condition_compares_var_to_variants(cond, source_bytes, var_name, known_variants)
+                {
                     if let Some(consequence) = node.child_by_field_name("consequence") {
                         if block_assigns_var(consequence, source_bytes, var_name, helpers) {
                             return true;
@@ -259,7 +294,8 @@ pub(crate) fn check_guarded_dispatch_recursive(
 
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
-        if check_guarded_dispatch_recursive(child, source_bytes, var_name, known_variants, helpers) {
+        if check_guarded_dispatch_recursive(child, source_bytes, var_name, known_variants, helpers)
+        {
             return true;
         }
     }
@@ -306,16 +342,25 @@ pub(crate) fn condition_compares_var_to_variants(
         "parenthesized_expression" => {
             let mut cursor = node.walk();
             for child in node.children(&mut cursor) {
-                if child.kind() != "(" && child.kind() != ")" && child.kind() != "comment" {
-                    if condition_compares_var_to_variants(child, source_bytes, var_name, known_variants) {
-                        return true;
-                    }
+                if child.kind() != "("
+                    && child.kind() != ")"
+                    && child.kind() != "comment"
+                    && condition_compares_var_to_variants(
+                        child,
+                        source_bytes,
+                        var_name,
+                        known_variants,
+                    )
+                {
+                    return true;
                 }
             }
             false
         }
         "binary_expression" => {
-            let op = node.child_by_field_name("operator").map(|n| node_text(n, source_bytes));
+            let op = node
+                .child_by_field_name("operator")
+                .map(|n| node_text(n, source_bytes));
             let left = node.child_by_field_name("left");
             let right = node.child_by_field_name("right");
             if let (Some(op), Some(left), Some(right)) = (op, left, right) {
@@ -331,8 +376,17 @@ pub(crate) fn condition_compares_var_to_variants(
                         return true;
                     }
                 } else if op == "&&" || op == "||" {
-                    return condition_compares_var_to_variants(left, source_bytes, var_name, known_variants)
-                        || condition_compares_var_to_variants(right, source_bytes, var_name, known_variants);
+                    return condition_compares_var_to_variants(
+                        left,
+                        source_bytes,
+                        var_name,
+                        known_variants,
+                    ) || condition_compares_var_to_variants(
+                        right,
+                        source_bytes,
+                        var_name,
+                        known_variants,
+                    );
                 }
             }
             false
@@ -424,11 +478,19 @@ pub(crate) fn collect_variables(
     out: &mut Vec<TrackedVariable>,
 ) {
     if node.kind() == "function_definition" {
-        let fn_name = extract_function_name(node, source_bytes).unwrap_or_else(|| "anonymous".to_string());
+        let fn_name =
+            extract_function_name(node, source_bytes).unwrap_or_else(|| "anonymous".to_string());
         if let Some(body) = node.child_by_field_name("body") {
             let mut cursor = body.walk();
             for child in body.children(&mut cursor) {
-                collect_variables(child, source_bytes, file_path, Some(&fn_name), known_enums, out);
+                collect_variables(
+                    child,
+                    source_bytes,
+                    file_path,
+                    Some(&fn_name),
+                    known_enums,
+                    out,
+                );
             }
         }
         return;
@@ -473,7 +535,9 @@ pub(crate) fn extract_declaration_variables(
         if child.kind() == "init_declarator" {
             if let Some(declarator) = child.child_by_field_name("declarator") {
                 let name = extract_ident_name(declarator, source_bytes);
-                let initial_value = child.child_by_field_name("value").map(|v| node_text(v, source_bytes));
+                let initial_value = child
+                    .child_by_field_name("value")
+                    .map(|v| node_text(v, source_bytes));
                 if let Some(name) = name {
                     out.push(TrackedVariable {
                         name,
@@ -523,13 +587,14 @@ pub(crate) fn extract_ident_name(mut node: Node, source_bytes: &[u8]) -> Option<
     loop {
         match node.kind() {
             "identifier" => return Some(node_text(node, source_bytes)),
-            "function_declarator" | "pointer_declarator" | "parenthesized_declarator" | "array_declarator" => {
+            "function_declarator"
+            | "pointer_declarator"
+            | "parenthesized_declarator"
+            | "array_declarator" => {
                 if let Some(child) = node.child_by_field_name("declarator") {
                     node = child;
-                } else if let Some(child) = node.child(0) {
-                    node = child;
                 } else {
-                    return None;
+                    node = node.child(0)?;
                 }
             }
             _ => return None,
@@ -547,10 +612,8 @@ pub(crate) fn extract_function_name(node: Node, source_bytes: &[u8]) -> Option<S
 
 pub(crate) fn find_child_of_kind<'a>(node: Node<'a>, kind: &str) -> Option<Node<'a>> {
     let mut cursor = node.walk();
-    for child in node.children(&mut cursor) {
-        if child.kind() == kind {
-            return Some(child);
-        }
-    }
-    None
+    let result = node
+        .children(&mut cursor)
+        .find(|child| child.kind() == kind);
+    result
 }

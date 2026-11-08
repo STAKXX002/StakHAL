@@ -43,7 +43,11 @@ pub fn compute_state_machine_layout(sm: &AppStateMachine) -> StateMachineLayout 
     // High fan-in threshold for badge-only collapsing (e.g. 12 transitions to FAULT)
     let mut high_fan_in_nodes = HashSet::new();
     for st in &sm.states {
-        let total_in = sm.transitions.iter().filter(|t| t.to == *st && t.from != *st).count();
+        let total_in = sm
+            .transitions
+            .iter()
+            .filter(|t| t.to == *st && t.from != *st)
+            .count();
         if total_in >= 4 || is_fault_state(st) {
             high_fan_in_nodes.insert(st.clone());
         }
@@ -81,14 +85,20 @@ pub fn compute_state_machine_layout(sm: &AppStateMachine) -> StateMachineLayout 
                     foreign_clusters.insert(other_cluster);
                 }
             }
-            if t.to == *st && t.from != *st && !is_fault_state(&t.from) && t.from != initial_name && t.from != "(any state)" {
+            if t.to == *st
+                && t.from != *st
+                && !is_fault_state(&t.from)
+                && t.from != initial_name
+                && t.from != "(any state)"
+            {
                 let other_cluster = infer_cluster_name(&t.from, initial_name);
                 if other_cluster != my_cluster {
                     foreign_clusters.insert(other_cluster);
                 }
             }
         }
-        let op_deg = op_in_degrees.get(st).copied().unwrap_or(0) + op_out_degrees.get(st).copied().unwrap_or(0);
+        let op_deg = op_in_degrees.get(st).copied().unwrap_or(0)
+            + op_out_degrees.get(st).copied().unwrap_or(0);
         if foreign_clusters.len() >= 2 && op_deg >= 4 {
             hub_nodes.insert(st.clone());
         }
@@ -105,7 +115,11 @@ pub fn compute_state_machine_layout(sm: &AppStateMachine) -> StateMachineLayout 
             .unwrap_or_else(|| initial_name.to_string())
     };
 
-    let mut exit_hubs: Vec<String> = hub_nodes.iter().filter(|h| **h != entry_hub).cloned().collect();
+    let mut exit_hubs: Vec<String> = hub_nodes
+        .iter()
+        .filter(|h| **h != entry_hub)
+        .cloned()
+        .collect();
     exit_hubs.sort();
 
     // 2. Partition non-hub, non-fault states into logical flow lanes
@@ -162,7 +176,8 @@ pub fn compute_state_machine_layout(sm: &AppStateMachine) -> StateMachineLayout 
 
         // Intra-lane edges only
         for t in &sm.transitions {
-            if lane_state_set.contains(&t.from) && lane_state_set.contains(&t.to) && t.from != t.to {
+            if lane_state_set.contains(&t.from) && lane_state_set.contains(&t.to) && t.from != t.to
+            {
                 lane_graph.add_edge(
                     lane_map[&t.from],
                     lane_map[&t.to],
@@ -247,7 +262,10 @@ pub fn compute_state_machine_layout(sm: &AppStateMachine) -> StateMachineLayout 
     {
         let in_count = total_in_degrees.get(&entry_hub).copied().unwrap_or(0);
         let out_count = total_out_degrees.get(&entry_hub).copied().unwrap_or(0);
-        let collapsed_badges = collapsed_out_map.get(&entry_hub).cloned().unwrap_or_default();
+        let collapsed_badges = collapsed_out_map
+            .get(&entry_hub)
+            .cloned()
+            .unwrap_or_default();
         nodes_layout.insert(
             entry_hub.clone(),
             NodeLayout {
@@ -300,9 +318,15 @@ pub fn compute_state_machine_layout(sm: &AppStateMachine) -> StateMachineLayout 
     // 4d. Position FAULT node(s) pinned centered at bottom
     let fault_y = max_total_op_y + 80.0;
     let center_x = (left_margin + max_total_op_x) * 0.5;
-    let fault_states: Vec<String> = sm.states.iter().filter(|s| is_fault_state(s)).cloned().collect();
+    let fault_states: Vec<String> = sm
+        .states
+        .iter()
+        .filter(|s| is_fault_state(s))
+        .cloned()
+        .collect();
     let fault_count = fault_states.len().max(1);
-    let total_fault_w = fault_count as f64 * node_width + fault_count.saturating_sub(1) as f64 * 40.0;
+    let total_fault_w =
+        fault_count as f64 * node_width + fault_count.saturating_sub(1) as f64 * 40.0;
     let fault_start_x = center_x - total_fault_w * 0.5;
 
     for (col_idx, node_id) in fault_states.iter().enumerate() {
@@ -419,11 +443,23 @@ pub fn compute_state_machine_layout(sm: &AppStateMachine) -> StateMachineLayout 
                     (end, vec![start, end])
                 } else if to.x <= lane_start_x + 10.0 {
                     let end = (to.x, to.y + to.height * 0.5);
-                    (end, vec![start, (corridor_x, start.1), (corridor_x, end.1), end])
+                    (
+                        end,
+                        vec![start, (corridor_x, start.1), (corridor_x, end.1), end],
+                    )
                 } else {
                     let channel_y = to.y - 25.0;
                     let end = (to.x + to.width * 0.5, to.y);
-                    (end, vec![start, (corridor_x, start.1), (corridor_x, channel_y), (to.x + to.width * 0.5, channel_y), end])
+                    (
+                        end,
+                        vec![
+                            start,
+                            (corridor_x, start.1),
+                            (corridor_x, channel_y),
+                            (to.x + to.width * 0.5, channel_y),
+                            end,
+                        ],
+                    )
                 };
                 (start, end, control1, control2, label_pos, waypoints)
             } else if t.to == entry_hub {
@@ -432,7 +468,8 @@ pub fn compute_state_machine_layout(sm: &AppStateMachine) -> StateMachineLayout 
                     // Coming from upper lane (e.g. CAL_BACKOFF -> IDLE, CLOSING -> IDLE)
                     let start = (from.x + from.width * 0.5, from.y);
                     let end = (to.x + to.width * 0.6, to.y);
-                    let arc_y = (top_margin - 30.0 - (overhead_track_idx as f64) * 16.0).min(from.y - 25.0);
+                    let arc_y =
+                        (top_margin - 30.0 - (overhead_track_idx as f64) * 16.0).min(from.y - 25.0);
                     overhead_track_idx += 1;
                     let control1 = (from.x + from.width * 0.5, arc_y);
                     let control2 = (to.x + to.width * 0.6, arc_y);
@@ -465,7 +502,9 @@ pub fn compute_state_machine_layout(sm: &AppStateMachine) -> StateMachineLayout 
                 let control1 = (start.0 + dx * 0.4, start.1);
                 let control2 = (end.0 - dx * 0.4, end.1);
                 let label_pos = ((start.0 + end.0) * 0.5, (start.1 + end.1) * 0.5 - 14.0);
-                let corridor_x = (from.x + from.width + 30.0 + (exit_corridor_track_idx as f64) * 20.0).max((from.x + from.width + to.x) * 0.5);
+                let corridor_x =
+                    (from.x + from.width + 30.0 + (exit_corridor_track_idx as f64) * 20.0)
+                        .max((from.x + from.width + to.x) * 0.5);
                 exit_corridor_track_idx += 1;
                 let waypoints = if (start.1 - end.1).abs() < 2.0 {
                     vec![start, end]
@@ -477,7 +516,8 @@ pub fn compute_state_machine_layout(sm: &AppStateMachine) -> StateMachineLayout 
                 // Outgoing repeat/loopback from Exit Hub (RETURNED -> GOING, OPENING, CLOSING)
                 let start = (from.x + from.width * 0.5, from.y);
                 let end = (to.x + to.width * 0.5, to.y);
-                let arc_y = (top_margin - 30.0 - (overhead_track_idx as f64) * 16.0).min(from.y.min(to.y) - 25.0);
+                let arc_y = (top_margin - 30.0 - (overhead_track_idx as f64) * 16.0)
+                    .min(from.y.min(to.y) - 25.0);
                 overhead_track_idx += 1;
                 let control1 = (start.0, arc_y);
                 let control2 = (end.0, arc_y);
@@ -538,7 +578,8 @@ pub fn compute_state_machine_layout(sm: &AppStateMachine) -> StateMachineLayout 
                     // Upper lane to lower lane
                     let start = (from.x + from.width * 0.5, from.y + from.height);
                     let end = (to.x + to.width * 0.5, to.y);
-                    let base_channel_y = from.y + node_height + (to.y - (from.y + node_height)) * 0.5;
+                    let base_channel_y =
+                        from.y + node_height + (to.y - (from.y + node_height)) * 0.5;
                     let channel_y = base_channel_y + track_offset;
                     let control1 = (start.0, channel_y);
                     let control2 = (end.0, channel_y);
@@ -590,12 +631,15 @@ pub fn compute_state_machine_layout(sm: &AppStateMachine) -> StateMachineLayout 
     // 6. Post-layout label collision avoidance pass
     let mut node_obstacles: HashMap<String, BoundingBox> = HashMap::new();
     for (id, node) in &nodes_layout {
-        node_obstacles.insert(id.clone(), BoundingBox {
-            x0: node.x - 4.0,
-            y0: node.y - 4.0,
-            x1: node.x + node.width + 4.0,
-            y1: node.y + node.height + 4.0,
-        });
+        node_obstacles.insert(
+            id.clone(),
+            BoundingBox {
+                x0: node.x - 4.0,
+                y0: node.y - 4.0,
+                x1: node.x + node.width + 4.0,
+                y1: node.y + node.height + 4.0,
+            },
+        );
     }
 
     let mut lane_obstacles: Vec<BoundingBox> = Vec::new();
@@ -626,7 +670,9 @@ pub fn compute_state_machine_layout(sm: &AppStateMachine) -> StateMachineLayout 
 
         let is_intra_adjacent = {
             if let (Some(f), Some(t)) = (nodes_layout.get(&edge.from), nodes_layout.get(&edge.to)) {
-                (f.y - t.y).abs() < 5.0 && f.x + f.width <= t.x + 15.0 && t.x <= f.x + rank_step_x + 15.0
+                (f.y - t.y).abs() < 5.0
+                    && f.x + f.width <= t.x + 15.0
+                    && t.x <= f.x + rank_step_x + 15.0
             } else {
                 false
             }
@@ -664,7 +710,9 @@ pub fn compute_state_machine_layout(sm: &AppStateMachine) -> StateMachineLayout 
             let mut candidate_offsets = Vec::new();
 
             for dy in [0.0, 24.0, -24.0, 48.0, -48.0] {
-                for dx in [0.0, 50.0, -50.0, 100.0, -100.0, 160.0, -160.0, 230.0, -230.0, 310.0, -310.0] {
+                for dx in [
+                    0.0, 50.0, -50.0, 100.0, -100.0, 160.0, -160.0, 230.0, -230.0, 310.0, -310.0,
+                ] {
                     if dx == 0.0 && dy == 0.0 {
                         continue;
                     }
@@ -673,7 +721,9 @@ pub fn compute_state_machine_layout(sm: &AppStateMachine) -> StateMachineLayout 
             }
 
             for dy in [70.0, -70.0, 100.0, -100.0, 140.0, -140.0] {
-                for dx in [0.0, 60.0, -60.0, 120.0, -120.0, 180.0, -180.0, 260.0, -260.0] {
+                for dx in [
+                    0.0, 60.0, -60.0, 120.0, -120.0, 180.0, -180.0, 260.0, -260.0,
+                ] {
                     candidate_offsets.push((dx, dy));
                 }
             }
@@ -758,7 +808,10 @@ pub fn compute_state_machine_layout(sm: &AppStateMachine) -> StateMachineLayout 
     // Strict validation: Ensure zero coordinate collisions among distinct nodes
     let mut occupied_positions: HashMap<(i64, i64), String> = HashMap::new();
     for (id, node) in &nodes_layout {
-        let key = ((node.x * 10.0).round() as i64, (node.y * 10.0).round() as i64);
+        let key = (
+            (node.x * 10.0).round() as i64,
+            (node.y * 10.0).round() as i64,
+        );
         if let Some(existing) = occupied_positions.get(&key) {
             panic!(
                 "Fatal layout collision: node '{}' and node '{}' share identical coordinates ({:.1}, {:.1})",

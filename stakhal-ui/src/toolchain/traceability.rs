@@ -37,7 +37,9 @@ pub fn get_git_build_hash(project_dir: &Path) -> Option<String> {
         return None;
     }
 
-    let hash = String::from_utf8_lossy(&rev_output.stdout).trim().to_string();
+    let hash = String::from_utf8_lossy(&rev_output.stdout)
+        .trim()
+        .to_string();
     if hash.is_empty() {
         return None;
     }
@@ -98,29 +100,39 @@ pub fn ensure_gitignore_ignores_build_info(project_dir: &Path) -> Result<bool, s
     if !new_content.ends_with('\n') && !new_content.is_empty() {
         new_content.push('\n');
     }
-    new_content.push_str("\n# StakHAL build traceability (generated)\nCore/Inc/stakhal_build_info.h\n");
+    new_content
+        .push_str("\n# StakHAL build traceability (generated)\nCore/Inc/stakhal_build_info.h\n");
     fs::write(&gitignore_path, new_content)?;
     Ok(true)
 }
 
-/// Generate the Core/Inc/stakhal_build_info.h header for the project.
-/// Overwrites the file if it already exists.
-/// Returns the build hash that was written into the header.
-pub fn generate_build_info_header(project_dir: &Path) -> Result<String, std::io::Error> {
+/// Resolve target definition for a given project directory.
+pub fn resolve_target_for_project(project_dir: &Path) -> stakhal_core::target::TargetDefinition {
+    if let Ok(target_str) = std::env::var("STAKHAL_TARGET") {
+        if let Some(target) = stakhal_core::target::TargetDefinition::from_name(&target_str) {
+            return target;
+        }
+    }
+
+    if let Some(target) = stakhal_core::target::detect_target_from_project_dir(project_dir) {
+        return target;
+    }
+
+    stakhal_core::target::TargetDefinition::legacy()
+}
+
+/// Generate header file for a specific target definition.
+pub fn generate_build_info_header_for_target(
+    project_dir: &Path,
+    target: &stakhal_core::target::TargetDefinition,
+) -> Result<String, std::io::Error> {
     let hash = get_git_build_hash(project_dir).unwrap_or_else(|| "unknown".to_string());
 
     let inc_dir = resolve_include_directory(project_dir);
     fs::create_dir_all(&inc_dir)?;
 
-    let header_path = inc_dir.join("stakhal_build_info.h");
-    let content = format!(
-        "/* Generated automatically by StakHAL. Do not edit or commit. */\n\
-         #ifndef STAKHAL_BUILD_INFO_H\n\
-         #define STAKHAL_BUILD_INFO_H\n\n\
-         #define STAKHAL_BUILD_HASH \"{}\"\n\n\
-         #endif /* STAKHAL_BUILD_INFO_H */\n",
-        hash
-    );
+    let header_path = inc_dir.join(&target.header_filename);
+    let content = target.render_header(&hash);
 
     fs::write(&header_path, content)?;
 
@@ -130,6 +142,14 @@ pub fn generate_build_info_header(project_dir: &Path) -> Result<String, std::io:
     Ok(hash)
 }
 
+/// Generate the stakhal_build_info.h header for the project.
+/// Overwrites the file if it already exists.
+/// Returns the build hash that was written into the header.
+pub fn generate_build_info_header(project_dir: &Path) -> Result<String, std::io::Error> {
+    let target = resolve_target_for_project(project_dir);
+    generate_build_info_header_for_target(project_dir, &target)
+}
+
 /// Check if build traceability symbols are already present in main.c.
 pub fn is_traceability_enabled_in_source(main_c_path: &Path) -> bool {
     if !main_c_path.is_file() {
@@ -137,7 +157,8 @@ pub fn is_traceability_enabled_in_source(main_c_path: &Path) -> bool {
     }
     match fs::read_to_string(main_c_path) {
         Ok(content) => {
-            content.contains("stakhal_build_info.h") && content.contains("STAKHAL_BUILD_HASH")
+            (content.contains("stakhal_build_info.h") && content.contains("STAKHAL_BUILD_HASH"))
+                || (content.contains("aa_build_info.h") && content.contains("AA_BUILD_HASH"))
         }
         Err(_) => false,
     }
@@ -179,7 +200,10 @@ fn detect_region_indentation(content: &str) -> &'static str {
 }
 
 /// Insert build traceability #include and boot banner printf into main.c.
-pub fn insert_traceability_into_source(main_c_path: &Path, project_dir: &Path) -> Result<(), String> {
+pub fn insert_traceability_into_source(
+    main_c_path: &Path,
+    project_dir: &Path,
+) -> Result<(), String> {
     if !main_c_path.is_file() {
         return Err(format!("Source file not found: {}", main_c_path.display()));
     }
@@ -190,8 +214,14 @@ pub fn insert_traceability_into_source(main_c_path: &Path, project_dir: &Path) -
     }
 
     // Verify required USER CODE regions exist before making any edits
-    let initial_regions = stakhal_core::source::marker_scan::scan_file(main_c_path)
-        .map_err(|e| format!("Failed to parse USER CODE markers in {}: {}", main_c_path.display(), e))?;
+    let initial_regions =
+        stakhal_core::source::marker_scan::scan_file(main_c_path).map_err(|e| {
+            format!(
+                "Failed to parse USER CODE markers in {}: {}",
+                main_c_path.display(),
+                e
+            )
+        })?;
 
     let has_includes = initial_regions.iter().any(|r| r.tag == "Includes");
     let has_post_init = initial_regions.iter().any(|r| r.tag == "2");
@@ -215,9 +245,7 @@ pub fn insert_traceability_into_source(main_c_path: &Path, project_dir: &Path) -
     let inc_content = &content[inc_region.byte_range.0..inc_region.byte_range.1];
     if !inc_content.contains("stakhal_build_info.h") {
         let mut new_inc = inc_content.to_string();
-        if new_inc.is_empty() {
-            new_inc.push('\n');
-        } else if !new_inc.ends_with('\n') {
+        if new_inc.is_empty() || !new_inc.ends_with('\n') {
             new_inc.push('\n');
         }
         new_inc.push_str("#include \"stakhal_build_info.h\"\n");
@@ -227,8 +255,13 @@ pub fn insert_traceability_into_source(main_c_path: &Path, project_dir: &Path) -
     }
 
     // Step 2: Re-scan file since byte ranges have shifted after the first write
-    let fresh_regions = stakhal_core::source::marker_scan::scan_file(main_c_path)
-        .map_err(|e| format!("Failed to re-scan markers in {}: {}", main_c_path.display(), e))?;
+    let fresh_regions = stakhal_core::source::marker_scan::scan_file(main_c_path).map_err(|e| {
+        format!(
+            "Failed to re-scan markers in {}: {}",
+            main_c_path.display(),
+            e
+        )
+    })?;
 
     let post_init_region = fresh_regions
         .iter()
@@ -238,7 +271,8 @@ pub fn insert_traceability_into_source(main_c_path: &Path, project_dir: &Path) -
     let fresh_content = fs::read_to_string(main_c_path)
         .map_err(|e| format!("Failed to re-read {}: {}", main_c_path.display(), e))?;
 
-    let post_init_content = &fresh_content[post_init_region.byte_range.0..post_init_region.byte_range.1];
+    let post_init_content =
+        &fresh_content[post_init_region.byte_range.0..post_init_region.byte_range.1];
     if !post_init_content.contains("STAKHAL_BUILD_HASH") {
         let indent = detect_region_indentation(post_init_content);
         let trailing_ws = post_init_content
@@ -249,9 +283,7 @@ pub fn insert_traceability_into_source(main_c_path: &Path, project_dir: &Path) -
 
         let trimmed_content = &post_init_content[..post_init_content.len() - trailing_ws.len()];
         let mut new_post_init = trimmed_content.to_string();
-        if new_post_init.is_empty() {
-            new_post_init.push('\n');
-        } else if !new_post_init.ends_with('\n') {
+        if new_post_init.is_empty() || !new_post_init.ends_with('\n') {
             new_post_init.push('\n');
         }
         new_post_init.push_str(&format!(
@@ -259,8 +291,12 @@ pub fn insert_traceability_into_source(main_c_path: &Path, project_dir: &Path) -
             indent, trailing_ws
         ));
 
-        stakhal_core::source::writeback::write_region(main_c_path, post_init_region, &new_post_init)
-            .map_err(|e| format!("Failed to write to USER CODE 2 region: {}", e))?;
+        stakhal_core::source::writeback::write_region(
+            main_c_path,
+            post_init_region,
+            &new_post_init,
+        )
+        .map_err(|e| format!("Failed to write to USER CODE 2 region: {}", e))?;
     }
 
     // Step 3: Ensure build info header and .gitignore entry exist
@@ -269,19 +305,21 @@ pub fn insert_traceability_into_source(main_c_path: &Path, project_dir: &Path) -
     Ok(())
 }
 
-/// Parse an incoming serial line for the STAKHAL_BUILD: banner.
+/// Parse an incoming serial line for the build banner (STAKHAL_BUILD: or AA_BUILD:).
 /// Returns Some((hash, is_dirty)) if matched.
 pub fn parse_build_banner_line(line: &str) -> Option<(String, bool)> {
-    let tag = "STAKHAL_BUILD:";
-    if let Some(idx) = line.find(tag) {
-        let after = &line[idx + tag.len()..];
-        let hash = after
-            .trim()
-            .trim_matches(|c: char| c == '\r' || c == '\n')
-            .to_string();
-        if !hash.is_empty() {
-            let is_dirty = hash.ends_with("-dirty");
-            return Some((hash, is_dirty));
+    let tags = ["STAKHAL_BUILD:", "AA_BUILD:"];
+    for tag in &tags {
+        if let Some(idx) = line.find(tag) {
+            let after = &line[idx + tag.len()..];
+            let hash = after
+                .trim()
+                .trim_matches(|c: char| c == '\r' || c == '\n')
+                .to_string();
+            if !hash.is_empty() {
+                let is_dirty = hash.ends_with("-dirty");
+                return Some((hash, is_dirty));
+            }
         }
     }
     None
@@ -291,7 +329,9 @@ pub fn parse_build_banner_line(line: &str) -> Option<(String, bool)> {
 /// Matches trimmed line content against known state machine node names.
 pub fn parse_state_transition_line(line: &str, known_nodes: &[String]) -> Option<String> {
     for subline in line.split('\n') {
-        let trimmed = subline.trim().trim_matches(|c: char| c == '\r' || c == '\n');
+        let trimmed = subline
+            .trim()
+            .trim_matches(|c: char| c == '\r' || c == '\n');
         if trimmed.is_empty() {
             continue;
         }
@@ -377,7 +417,8 @@ mod tests {
 
     #[test]
     fn test_non_git_directory_returns_unknown() {
-        let temp_dir = std::env::temp_dir().join(format!("stakhal_test_nongit_{}", std::process::id()));
+        let temp_dir =
+            std::env::temp_dir().join(format!("stakhal_test_nongit_{}", std::process::id()));
         let _ = fs::remove_dir_all(&temp_dir);
         fs::create_dir_all(&temp_dir).unwrap();
 
@@ -397,7 +438,8 @@ mod tests {
 
     #[test]
     fn test_git_repo_clean_and_dirty_hashes() {
-        let temp_dir = std::env::temp_dir().join(format!("stakhal_test_git_{}", std::process::id()));
+        let temp_dir =
+            std::env::temp_dir().join(format!("stakhal_test_git_{}", std::process::id()));
         let _ = fs::remove_dir_all(&temp_dir);
         fs::create_dir_all(&temp_dir).unwrap();
 
@@ -478,7 +520,8 @@ mod tests {
 
     #[test]
     fn test_gitignore_append() {
-        let temp_dir = std::env::temp_dir().join(format!("stakhal_test_gitignore_{}", std::process::id()));
+        let temp_dir =
+            std::env::temp_dir().join(format!("stakhal_test_gitignore_{}", std::process::id()));
         let _ = fs::remove_dir_all(&temp_dir);
         fs::create_dir_all(&temp_dir).unwrap();
 
@@ -500,7 +543,8 @@ mod tests {
 
     #[test]
     fn test_insert_traceability_into_source_lifecycle() {
-        let temp_dir = std::env::temp_dir().join(format!("stakhal_test_trace_src_{}", std::process::id()));
+        let temp_dir =
+            std::env::temp_dir().join(format!("stakhal_test_trace_src_{}", std::process::id()));
         let _ = fs::remove_dir_all(&temp_dir);
         fs::create_dir_all(temp_dir.join("Core/Src")).unwrap();
         fs::create_dir_all(temp_dir.join("Core/Inc")).unwrap();
@@ -557,8 +601,12 @@ int main(void)
         assert_eq!(modified_c, modified_again);
 
         // Verify counts of inserted lines
-        let inc_count = modified_again.matches("#include \"stakhal_build_info.h\"").count();
-        let print_count = modified_again.matches("printf(\"STAKHAL_BUILD: %s\\r\\n\", STAKHAL_BUILD_HASH);").count();
+        let inc_count = modified_again
+            .matches("#include \"stakhal_build_info.h\"")
+            .count();
+        let print_count = modified_again
+            .matches("printf(\"STAKHAL_BUILD: %s\\r\\n\", STAKHAL_BUILD_HASH);")
+            .count();
         assert_eq!(inc_count, 1);
         assert_eq!(print_count, 1);
 
@@ -567,7 +615,8 @@ int main(void)
 
     #[test]
     fn test_insert_traceability_missing_regions() {
-        let temp_dir = std::env::temp_dir().join(format!("stakhal_test_missing_reg_{}", std::process::id()));
+        let temp_dir =
+            std::env::temp_dir().join(format!("stakhal_test_missing_reg_{}", std::process::id()));
         let _ = fs::remove_dir_all(&temp_dir);
         fs::create_dir_all(temp_dir.join("Core/Src")).unwrap();
 
@@ -602,6 +651,14 @@ printf("BOOT\r\n");
         assert_eq!(
             parse_build_banner_line("STAKHAL_BUILD: a41f5f7\r\n"),
             Some(("a41f5f7".to_string(), false))
+        );
+        assert_eq!(
+            parse_build_banner_line("AA_BUILD: 2bb23940\r\n"),
+            Some(("2bb23940".to_string(), false))
+        );
+        assert_eq!(
+            parse_build_banner_line("AA_BUILD: 2bb23940-dirty\r\n"),
+            Some(("2bb23940-dirty".to_string(), true))
         );
         assert_eq!(
             parse_build_banner_line("STAKHAL_BUILD: a41f5f7-dirty\r\n"),
@@ -673,7 +730,8 @@ printf("BOOT\r\n");
 
     #[test]
     fn test_compare_build_hash_to_head() {
-        let temp_dir = std::env::temp_dir().join(format!("stakhal_test_cmp_{}", std::process::id()));
+        let temp_dir =
+            std::env::temp_dir().join(format!("stakhal_test_cmp_{}", std::process::id()));
         let _ = fs::remove_dir_all(&temp_dir);
         fs::create_dir_all(&temp_dir).unwrap();
 
@@ -694,32 +752,111 @@ printf("BOOT\r\n");
         );
 
         // Init git repo
-        Command::new("git").arg("-C").arg(&temp_dir).arg("init").output().unwrap();
-        Command::new("git").arg("-C").arg(&temp_dir).arg("config").arg("user.name").arg("Test").output().unwrap();
-        Command::new("git").arg("-C").arg(&temp_dir).arg("config").arg("user.email").arg("t@example.com").output().unwrap();
+        Command::new("git")
+            .arg("-C")
+            .arg(&temp_dir)
+            .arg("init")
+            .output()
+            .unwrap();
+        Command::new("git")
+            .arg("-C")
+            .arg(&temp_dir)
+            .arg("config")
+            .arg("user.name")
+            .arg("Test")
+            .output()
+            .unwrap();
+        Command::new("git")
+            .arg("-C")
+            .arg(&temp_dir)
+            .arg("config")
+            .arg("user.email")
+            .arg("t@example.com")
+            .output()
+            .unwrap();
 
         // Commit 1
         let f1 = temp_dir.join("f1.txt");
         fs::write(&f1, "1").unwrap();
-        Command::new("git").arg("-C").arg(&temp_dir).arg("add").arg("f1.txt").output().unwrap();
-        Command::new("git").arg("-C").arg(&temp_dir).arg("commit").arg("-m").arg("c1").output().unwrap();
-        let c1_out = Command::new("git").arg("-C").arg(&temp_dir).arg("rev-parse").arg("--short").arg("HEAD").output().unwrap();
+        Command::new("git")
+            .arg("-C")
+            .arg(&temp_dir)
+            .arg("add")
+            .arg("f1.txt")
+            .output()
+            .unwrap();
+        Command::new("git")
+            .arg("-C")
+            .arg(&temp_dir)
+            .arg("commit")
+            .arg("-m")
+            .arg("c1")
+            .output()
+            .unwrap();
+        let c1_out = Command::new("git")
+            .arg("-C")
+            .arg(&temp_dir)
+            .arg("rev-parse")
+            .arg("--short")
+            .arg("HEAD")
+            .output()
+            .unwrap();
         let c1 = String::from_utf8_lossy(&c1_out.stdout).trim().to_string();
 
         // Commit 2
         let f2 = temp_dir.join("f2.txt");
         fs::write(&f2, "2").unwrap();
-        Command::new("git").arg("-C").arg(&temp_dir).arg("add").arg("f2.txt").output().unwrap();
-        Command::new("git").arg("-C").arg(&temp_dir).arg("commit").arg("-m").arg("c2").output().unwrap();
-        let c2_out = Command::new("git").arg("-C").arg(&temp_dir).arg("rev-parse").arg("--short").arg("HEAD").output().unwrap();
+        Command::new("git")
+            .arg("-C")
+            .arg(&temp_dir)
+            .arg("add")
+            .arg("f2.txt")
+            .output()
+            .unwrap();
+        Command::new("git")
+            .arg("-C")
+            .arg(&temp_dir)
+            .arg("commit")
+            .arg("-m")
+            .arg("c2")
+            .output()
+            .unwrap();
+        let c2_out = Command::new("git")
+            .arg("-C")
+            .arg(&temp_dir)
+            .arg("rev-parse")
+            .arg("--short")
+            .arg("HEAD")
+            .output()
+            .unwrap();
         let c2 = String::from_utf8_lossy(&c2_out.stdout).trim().to_string();
 
         // Commit 3 (HEAD)
         let f3 = temp_dir.join("f3.txt");
         fs::write(&f3, "3").unwrap();
-        Command::new("git").arg("-C").arg(&temp_dir).arg("add").arg("f3.txt").output().unwrap();
-        Command::new("git").arg("-C").arg(&temp_dir).arg("commit").arg("-m").arg("c3").output().unwrap();
-        let c3_out = Command::new("git").arg("-C").arg(&temp_dir).arg("rev-parse").arg("--short").arg("HEAD").output().unwrap();
+        Command::new("git")
+            .arg("-C")
+            .arg(&temp_dir)
+            .arg("add")
+            .arg("f3.txt")
+            .output()
+            .unwrap();
+        Command::new("git")
+            .arg("-C")
+            .arg(&temp_dir)
+            .arg("commit")
+            .arg("-m")
+            .arg("c3")
+            .output()
+            .unwrap();
+        let c3_out = Command::new("git")
+            .arg("-C")
+            .arg(&temp_dir)
+            .arg("rev-parse")
+            .arg("--short")
+            .arg("HEAD")
+            .output()
+            .unwrap();
         let c3 = String::from_utf8_lossy(&c3_out.stdout).trim().to_string();
 
         // Compare HEAD (c3) -> 0 commits behind
@@ -731,25 +868,35 @@ printf("BOOT\r\n");
         // Compare c2 -> 1 commit behind
         assert_eq!(
             compare_build_hash_to_head(&temp_dir, &c2),
-            TraceabilityStatus::BehindWorkingTree { hash: c2.clone(), count: 1 }
+            TraceabilityStatus::BehindWorkingTree {
+                hash: c2.clone(),
+                count: 1
+            }
         );
 
         // Compare c1 -> 2 commits behind
         assert_eq!(
             compare_build_hash_to_head(&temp_dir, &c1),
-            TraceabilityStatus::BehindWorkingTree { hash: c1.clone(), count: 2 }
+            TraceabilityStatus::BehindWorkingTree {
+                hash: c1.clone(),
+                count: 2
+            }
         );
 
         // Dirty hash
         assert_eq!(
             compare_build_hash_to_head(&temp_dir, &format!("{}-dirty", c3)),
-            TraceabilityStatus::Dirty { base_hash: c3.clone() }
+            TraceabilityStatus::Dirty {
+                base_hash: c3.clone()
+            }
         );
 
         // Non-existent hash
         assert_eq!(
             compare_build_hash_to_head(&temp_dir, "0000000"),
-            TraceabilityStatus::Diverged { hash: "0000000".to_string() }
+            TraceabilityStatus::Diverged {
+                hash: "0000000".to_string()
+            }
         );
 
         let _ = fs::remove_dir_all(&temp_dir);

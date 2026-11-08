@@ -63,7 +63,8 @@ pub mod color {
 
 pub mod font {
     pub const SANS_FAMILY: &str = "'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif";
-    pub const MONO_FAMILY: &str = "'JetBrains Mono', 'DejaVu Sans Mono', 'Liberation Mono', monospace";
+    pub const MONO_FAMILY: &str =
+        "'JetBrains Mono', 'DejaVu Sans Mono', 'Liberation Mono', monospace";
 
     pub const CAIRO_SANS: &str = "IBM Plex Sans";
     pub const CAIRO_MONO: &str = "JetBrains Mono";
@@ -166,7 +167,10 @@ pub mod motion {
             // Ease-out deceleration: at midpoint (t=0.5), progress should be well ahead of linear (1 - 0.5^3 = 0.875)
             let mid = ease_out_cubic(0.5);
             assert!((mid - 0.875).abs() < 1e-6);
-            assert!(mid > 0.5, "Ease-out must advance faster early and decelerate later");
+            assert!(
+                mid > 0.5,
+                "Ease-out must advance faster early and decelerate later"
+            );
 
             // Monotonicity and strict bounds (no overshoot / no bounce)
             let mut prev = 0.0;
@@ -174,7 +178,10 @@ pub mod motion {
                 let t = step as f64 / 100.0;
                 let val = ease_out_cubic(t);
                 assert!(val >= prev, "Curve must be monotonically non-decreasing");
-                assert!(val >= 0.0 && val <= 1.0, "Curve must strictly stay within [0.0, 1.0], no overshoot");
+                assert!(
+                    (0.0..=1.0).contains(&val),
+                    "Curve must strictly stay within [0.0, 1.0], no overshoot"
+                );
                 prev = val;
             }
         }
@@ -194,4 +201,3 @@ pub mod motion {
         }
     }
 }
-

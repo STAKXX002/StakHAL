@@ -18,10 +18,10 @@
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HalIrqMapping {
-    pub irq_handler_name: &'static str,          // e.g. "USART2_IRQHandler"
-    pub hal_dispatch_fn: &'static str,            // e.g. "HAL_UART_IRQHandler"
+    pub irq_handler_name: &'static str, // e.g. "USART2_IRQHandler"
+    pub hal_dispatch_fn: &'static str,  // e.g. "HAL_UART_IRQHandler"
     pub weak_callbacks: &'static [&'static str], // e.g. ["HAL_UART_RxCpltCallback", "HAL_UART_TxCpltCallback"]
-    pub peripheral_prefix: &'static str,          // e.g. "USART" - matches ioc::parser prefix
+    pub peripheral_prefix: &'static str,         // e.g. "USART" - matches ioc::parser prefix
 }
 
 pub static HAL_IRQ_MAPPINGS: &[HalIrqMapping] = &[
@@ -489,7 +489,9 @@ mod tests {
     fn test_mappings_for_prefix_tim() {
         let tim_mappings = mappings_for_peripheral_prefix("TIM");
         assert!(!tim_mappings.is_empty());
-        assert!(tim_mappings.iter().any(|m| m.irq_handler_name == "TIM2_IRQHandler"));
+        assert!(tim_mappings
+            .iter()
+            .any(|m| m.irq_handler_name == "TIM2_IRQHandler"));
     }
 
     #[test]
@@ -518,4 +520,3 @@ mod tests {
         assert_ne!(exti9_5.irq_handler_name, exti15_10.irq_handler_name);
     }
 }
-

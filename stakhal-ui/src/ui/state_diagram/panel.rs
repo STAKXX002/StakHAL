@@ -1,5 +1,5 @@
-use gtk4::prelude::*;
 use crate::state::create_icon_button;
+use gtk4::prelude::*;
 
 pub struct StateDiagramPanelWidgets {
     pub diagram_panel_box: gtk4::Box,

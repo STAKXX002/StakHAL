@@ -1,7 +1,7 @@
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
-use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct IocProject {
@@ -14,8 +14,8 @@ pub struct IocProject {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct PinConfig {
-    pub pin: String,    // e.g. "PA2"
-    pub signal: String, // e.g. "USART2_TX"
+    pub pin: String,           // e.g. "PA2"
+    pub signal: String,        // e.g. "USART2_TX"
     pub label: Option<String>, // e.g. "LD2" or "TMS"
     #[serde(default)]
     pub modules: Vec<String>,
@@ -152,9 +152,7 @@ pub fn parse_ioc_str(source: &str) -> Result<IocProject, IocParseError> {
         .or_else(|| raw.get("Mcu.Name"))
         .cloned()
         .filter(|s| !s.is_empty())
-        .ok_or_else(|| {
-            IocParseError::MissingRequiredKey("Mcu.UserName or Mcu.Name".to_string())
-        })?;
+        .ok_or_else(|| IocParseError::MissingRequiredKey("Mcu.UserName or Mcu.Name".to_string()))?;
 
     let peripherals = peripherals_map.into_values().collect();
 
@@ -212,7 +210,10 @@ USART2.VirtualMode=VM_ASYNC
         );
 
         assert_eq!(
-            project.raw.get("ProjectManager.CustomerFirmwarePackage").unwrap(),
+            project
+                .raw
+                .get("ProjectManager.CustomerFirmwarePackage")
+                .unwrap(),
             "STM32Cube_FW_F4_V1.27.1"
         );
         assert_eq!(project.raw.get("PA2.Signal").unwrap(), "USART2_TX");
@@ -228,7 +229,9 @@ This is a malformed line with no equals sign
 PA2.Signal=USART2_TX
 "#;
         let res = parse_ioc_str(fixture);
-        assert!(matches!(res, Err(IocParseError::MalformedLine(4, ref line)) if line.contains("This is a malformed line")));
+        assert!(
+            matches!(res, Err(IocParseError::MalformedLine(4, ref line)) if line.contains("This is a malformed line"))
+        );
     }
 
     #[test]
