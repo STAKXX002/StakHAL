@@ -45,12 +45,13 @@ const PERIPHERAL_PREFIXES: &[&str] = &[
     "RNG", "I2S", "SAI", "FMC", "SDMMC", "SDIO",
 ];
 
-fn is_pin_signal(key: &str) -> Option<&str> {
+fn is_pin_signal(key: &str) -> Option<(&str, &str)> {
     let (pin_part, attr) = key.split_once('.')?;
     if attr != "Signal" {
         return None;
     }
-    let bytes = pin_part.as_bytes();
+    let base_pin = pin_part.split('-').next()?;
+    let bytes = base_pin.as_bytes();
     if bytes.len() < 3 || bytes[0] != b'P' {
         return None;
     }
@@ -60,7 +61,7 @@ fn is_pin_signal(key: &str) -> Option<&str> {
     if !bytes[2..].iter().all(|b| b.is_ascii_digit()) {
         return None;
     }
-    Some(pin_part)
+    Some((base_pin, pin_part))
 }
 
 fn get_peripheral_and_param(key: &str) -> Option<(&str, &str)> {
@@ -86,7 +87,7 @@ pub fn parse_ioc(path: &Path) -> Result<IocProject, IocParseError> {
 
 pub fn parse_ioc_str(source: &str) -> Result<IocProject, IocParseError> {
     let mut raw = HashMap::new();
-    let mut pins = Vec::new();
+    let mut raw_pins = Vec::new();
     let mut peripherals_map: HashMap<String, PeripheralConfig> = HashMap::new();
 
     for (line_idx, line) in source.lines().enumerate() {
@@ -106,13 +107,16 @@ pub fn parse_ioc_str(source: &str) -> Result<IocProject, IocParseError> {
 
         raw.insert(key.clone(), value.clone());
 
-        if let Some(pin_name) = is_pin_signal(&key) {
-            pins.push(PinConfig {
-                pin: pin_name.to_string(),
-                signal: value.clone(),
-                label: None,
-                modules: Vec::new(),
-            });
+        if let Some((base_pin, full_name)) = is_pin_signal(&key) {
+            raw_pins.push((
+                PinConfig {
+                    pin: base_pin.to_string(),
+                    signal: value.clone(),
+                    label: None,
+                    modules: Vec::new(),
+                },
+                full_name.to_string(),
+            ));
         } else if let Some((periph_name, param_name)) = get_peripheral_and_param(&key) {
             let entry = peripherals_map
                 .entry(periph_name.to_string())
@@ -131,14 +135,17 @@ pub fn parse_ioc_str(source: &str) -> Result<IocProject, IocParseError> {
         }
     }
 
-    for pin in &mut pins {
-        let label_key = format!("{}.GPIO_Label", pin.pin);
-        if let Some(lbl) = raw.get(&label_key) {
+    let mut pins = Vec::with_capacity(raw_pins.len());
+    for (mut pin, full_name) in raw_pins {
+        let label_key = format!("{}.GPIO_Label", full_name);
+        let fallback_key = format!("{}.GPIO_Label", pin.pin);
+        if let Some(lbl) = raw.get(&label_key).or_else(|| raw.get(&fallback_key)) {
             let trimmed_lbl = lbl.trim();
             if !trimmed_lbl.is_empty() {
                 pin.label = Some(trimmed_lbl.to_string());
             }
         }
+        pins.push(pin);
     }
 
     let mcu_family = raw
@@ -249,5 +256,44 @@ PB3.Signal=GPIO_Output
 
         let pb3 = project.pins.iter().find(|p| p.pin == "PB3").unwrap();
         assert_eq!(pb3.label, None);
+    }
+
+    #[test]
+    fn test_parse_pin_with_function_suffix() {
+        let fixture = r#"
+Mcu.Family=STM32F4
+Mcu.UserName=STM32F446RETx
+PA0-WKUP.Signal=GPIO_Output
+PA0-WKUP.GPIO_Label=A1_STEP
+PH0-OSC_IN.Signal=RCC_OSC_IN
+PA5.Signal=GPIO_Output
+PA5.GPIO_Label=LD2
+"#;
+        let project = parse_ioc_str(fixture).unwrap();
+        assert_eq!(project.pins.len(), 3);
+
+        let pa0 = project
+            .pins
+            .iter()
+            .find(|p| p.pin == "PA0")
+            .expect("PA0 not found");
+        assert_eq!(pa0.label.as_deref(), Some("A1_STEP"));
+        assert_eq!(pa0.signal, "GPIO_Output");
+
+        let ph0 = project
+            .pins
+            .iter()
+            .find(|p| p.pin == "PH0")
+            .expect("PH0 not found");
+        assert_eq!(ph0.label, None);
+        assert_eq!(ph0.signal, "RCC_OSC_IN");
+
+        let pa5 = project
+            .pins
+            .iter()
+            .find(|p| p.pin == "PA5")
+            .expect("PA5 not found");
+        assert_eq!(pa5.label.as_deref(), Some("LD2"));
+        assert_eq!(pa5.signal, "GPIO_Output");
     }
 }
