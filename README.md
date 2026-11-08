@@ -98,8 +98,7 @@ sudo apt install -y \
 
 ##### 3. Install Rust Toolchain
 Install the official Rust toolchain:
-- Minimum Supported Rust Version (MSRV): Rust 1.75.0 (Rust 2021 edition)
-- Verified toolchains: Rust 1.75.0 through 1.97.1+ (stable channel)
+- Verified toolchain: Rust 1.97.1 (stable channel). A minimum supported Rust version has not been established.
 
 ```bash
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
