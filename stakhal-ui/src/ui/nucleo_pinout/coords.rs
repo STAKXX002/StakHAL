@@ -1,8 +1,8 @@
-/// Physical board dimensions and normalized pin coordinates for NUCLEO-F446RE (MB1136 rev C).
-///
-/// Dimensions directly verified from ST UM1724 User Manual, Section 6, Figure 5:
-/// "STM32 Nucleo board mechanical dimensions" (page 15).
-/// Board size: 70.00 mm x 82.50 mm.
+//! Physical board dimensions and normalized pin coordinates for NUCLEO-F446RE (MB1136 rev C).
+//!
+//! Dimensions directly verified from ST UM1724 User Manual, Section 6, Figure 5:
+//! "STM32 Nucleo board mechanical dimensions" (page 15).
+//! Board size: 70.00 mm x 82.50 mm.
 
 pub const BOARD_WIDTH_MM: f64 = 70.0;
 pub const BOARD_HEIGHT_MM: f64 = 82.5;
