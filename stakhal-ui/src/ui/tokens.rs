@@ -50,14 +50,7 @@ pub mod color {
     ];
 
     pub const MODULE_PALETTE_HEX: &[&str] = &[
-        "#4FD1C5",
-        "#F5A623",
-        "#34D399",
-        "#60A5FA",
-        "#C084FC",
-        "#F472B6",
-        "#A3E635",
-        "#FB923C",
+        "#4FD1C5", "#F5A623", "#34D399", "#60A5FA", "#C084FC", "#F472B6", "#A3E635", "#FB923C",
     ];
 }
 

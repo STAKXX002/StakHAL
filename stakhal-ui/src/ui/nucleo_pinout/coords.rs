@@ -37,8 +37,8 @@ pub const CN7_COORDS: &[PinCoord] = &[
     PinCoord::new(0.0827143, 0.569455), // Pin 14 (r= 6, inner)
     PinCoord::new(0.0464286, 0.600242), // Pin 15 (r= 7, outer)
     PinCoord::new(0.0827143, 0.600242), // Pin 16 (r= 7, inner)
-    PinCoord::new(0.0464286, 0.63103), // Pin 17 (r= 8, outer)
-    PinCoord::new(0.0827143, 0.63103), // Pin 18 (r= 8, inner)
+    PinCoord::new(0.0464286, 0.63103),  // Pin 17 (r= 8, outer)
+    PinCoord::new(0.0827143, 0.63103),  // Pin 18 (r= 8, inner)
     PinCoord::new(0.0464286, 0.661818), // Pin 19 (r= 9, outer)
     PinCoord::new(0.0827143, 0.661818), // Pin 20 (r= 9, inner)
     PinCoord::new(0.0464286, 0.692606), // Pin 21 (r=10, outer)
@@ -47,8 +47,8 @@ pub const CN7_COORDS: &[PinCoord] = &[
     PinCoord::new(0.0827143, 0.723394), // Pin 24 (r=11, inner)
     PinCoord::new(0.0464286, 0.754182), // Pin 25 (r=12, outer)
     PinCoord::new(0.0827143, 0.754182), // Pin 26 (r=12, inner)
-    PinCoord::new(0.0464286, 0.78497), // Pin 27 (r=13, outer)
-    PinCoord::new(0.0827143, 0.78497), // Pin 28 (r=13, inner)
+    PinCoord::new(0.0464286, 0.78497),  // Pin 27 (r=13, outer)
+    PinCoord::new(0.0827143, 0.78497),  // Pin 28 (r=13, inner)
     PinCoord::new(0.0464286, 0.815758), // Pin 29 (r=14, outer)
     PinCoord::new(0.0827143, 0.815758), // Pin 30 (r=14, inner)
     PinCoord::new(0.0464286, 0.846545), // Pin 31 (r=15, outer)
@@ -79,8 +79,8 @@ pub const CN10_COORDS: &[PinCoord] = &[
     PinCoord::new(0.953571, 0.569455), // Pin 14 (r= 6, outer)
     PinCoord::new(0.917286, 0.600242), // Pin 15 (r= 7, inner)
     PinCoord::new(0.953571, 0.600242), // Pin 16 (r= 7, outer)
-    PinCoord::new(0.917286, 0.63103), // Pin 17 (r= 8, inner)
-    PinCoord::new(0.953571, 0.63103), // Pin 18 (r= 8, outer)
+    PinCoord::new(0.917286, 0.63103),  // Pin 17 (r= 8, inner)
+    PinCoord::new(0.953571, 0.63103),  // Pin 18 (r= 8, outer)
     PinCoord::new(0.917286, 0.661818), // Pin 19 (r= 9, inner)
     PinCoord::new(0.953571, 0.661818), // Pin 20 (r= 9, outer)
     PinCoord::new(0.917286, 0.692606), // Pin 21 (r=10, inner)
@@ -89,8 +89,8 @@ pub const CN10_COORDS: &[PinCoord] = &[
     PinCoord::new(0.953571, 0.723394), // Pin 24 (r=11, outer)
     PinCoord::new(0.917286, 0.754182), // Pin 25 (r=12, inner)
     PinCoord::new(0.953571, 0.754182), // Pin 26 (r=12, outer)
-    PinCoord::new(0.917286, 0.78497), // Pin 27 (r=13, inner)
-    PinCoord::new(0.953571, 0.78497), // Pin 28 (r=13, outer)
+    PinCoord::new(0.917286, 0.78497),  // Pin 27 (r=13, inner)
+    PinCoord::new(0.953571, 0.78497),  // Pin 28 (r=13, outer)
     PinCoord::new(0.917286, 0.815758), // Pin 29 (r=14, inner)
     PinCoord::new(0.953571, 0.815758), // Pin 30 (r=14, outer)
     PinCoord::new(0.917286, 0.846545), // Pin 31 (r=15, inner)
@@ -109,7 +109,7 @@ pub const CN6_COORDS: &[PinCoord] = &[
     PinCoord::new(0.155286, 0.538667), // Pin 2
     PinCoord::new(0.155286, 0.569455), // Pin 3
     PinCoord::new(0.155286, 0.600242), // Pin 4
-    PinCoord::new(0.155286, 0.63103), // Pin 5
+    PinCoord::new(0.155286, 0.63103),  // Pin 5
     PinCoord::new(0.155286, 0.661818), // Pin 6
     PinCoord::new(0.155286, 0.692606), // Pin 7
     PinCoord::new(0.155286, 0.723394), // Pin 8
@@ -117,7 +117,7 @@ pub const CN6_COORDS: &[PinCoord] = &[
 
 /// Normalized (x, y) coordinates for CN8 (Left Arduino Analog In, pins 1..6).
 pub const CN8_COORDS: &[PinCoord] = &[
-    PinCoord::new(0.155286, 0.78497), // Pin 1
+    PinCoord::new(0.155286, 0.78497),  // Pin 1
     PinCoord::new(0.155286, 0.815758), // Pin 2
     PinCoord::new(0.155286, 0.846545), // Pin 3
     PinCoord::new(0.155286, 0.877333), // Pin 4
@@ -131,7 +131,7 @@ pub const CN5_COORDS: &[PinCoord] = &[
     PinCoord::new(0.844714, 0.643394), // Pin 2
     PinCoord::new(0.844714, 0.612606), // Pin 3
     PinCoord::new(0.844714, 0.581818), // Pin 4
-    PinCoord::new(0.844714, 0.55103), // Pin 5
+    PinCoord::new(0.844714, 0.55103),  // Pin 5
     PinCoord::new(0.844714, 0.520242), // Pin 6
     PinCoord::new(0.844714, 0.489455), // Pin 7
     PinCoord::new(0.844714, 0.458667), // Pin 8
@@ -146,11 +146,10 @@ pub const CN9_COORDS: &[PinCoord] = &[
     PinCoord::new(0.844714, 0.877333), // Pin 3
     PinCoord::new(0.844714, 0.846545), // Pin 4
     PinCoord::new(0.844714, 0.815758), // Pin 5
-    PinCoord::new(0.844714, 0.78497), // Pin 6
+    PinCoord::new(0.844714, 0.78497),  // Pin 6
     PinCoord::new(0.844714, 0.754182), // Pin 7
     PinCoord::new(0.844714, 0.723394), // Pin 8
 ];
-
 
 pub fn get_pin_coord(connector: &str, pin_num: u8) -> Option<PinCoord> {
     if pin_num == 0 {

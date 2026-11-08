@@ -1,9 +1,9 @@
-use std::rc::Rc;
-use gtk4::cairo;
-use gtk4::prelude::*;
 use crate::state::AppState;
 use crate::ui::nucleo_pinout::coords;
 use crate::ui::tokens;
+use gtk4::cairo;
+use gtk4::prelude::*;
+use std::rc::Rc;
 
 thread_local! {
     static BOARD_SURFACE: std::cell::OnceCell<cairo::ImageSurface> = const { std::cell::OnceCell::new() };
@@ -26,10 +26,7 @@ pub fn with_board_surface<R>(f: impl FnOnce(&cairo::ImageSurface) -> R) -> R {
 /// successive slots from `MODULE_PALETTE`. If a module is not found,
 /// falls back to a stable FNV-1a hash modulo palette length.
 /// Pins without any module return `tokens::color::TEXT_MUTED`.
-pub fn get_module_color(
-    module: Option<&str>,
-    project_modules: &[String],
-) -> (f64, f64, f64) {
+pub fn get_module_color(module: Option<&str>, project_modules: &[String]) -> (f64, f64, f64) {
     let module = match module {
         Some(m) if !m.is_empty() => m,
         _ => return tokens::color::TEXT_MUTED,
@@ -53,12 +50,14 @@ pub fn get_module_color(
 }
 
 /// Convert module color tuple to hex string
-pub fn get_module_color_hex(
-    module: Option<&str>,
-    project_modules: &[String],
-) -> String {
+pub fn get_module_color_hex(module: Option<&str>, project_modules: &[String]) -> String {
     let (r, g, b) = get_module_color(module, project_modules);
-    format!("#{:02x}{:02x}{:02x}", (r * 255.0) as u8, (g * 255.0) as u8, (b * 255.0) as u8)
+    format!(
+        "#{:02x}{:02x}{:02x}",
+        (r * 255.0) as u8,
+        (g * 255.0) as u8,
+        (b * 255.0) as u8
+    )
 }
 
 /// Draws the bird's-eye view of the board with module-colored dots for active pins.
@@ -73,12 +72,7 @@ pub fn draw_board_glance_canvas(
     draw_board_glance(cr, width, height, &state_borrow);
 }
 
-pub fn draw_board_glance(
-    cr: &cairo::Context,
-    width: f64,
-    height: f64,
-    state: &AppState,
-) {
+pub fn draw_board_glance(cr: &cairo::Context, width: f64, height: f64, state: &AppState) {
     // 1. Canvas background
     cr.set_source_rgb(
         tokens::color::BG_VOID.0,
@@ -125,9 +119,17 @@ pub fn draw_board_glance(
             Some(p) => p,
             None => {
                 // Dimmed placeholder text when no project loaded
-                cr.select_font_face(tokens::font::CAIRO_MONO, cairo::FontSlant::Normal, cairo::FontWeight::Normal);
+                cr.select_font_face(
+                    tokens::font::CAIRO_MONO,
+                    cairo::FontSlant::Normal,
+                    cairo::FontWeight::Normal,
+                );
                 cr.set_font_size(11.0);
-                cr.set_source_rgb(tokens::color::TEXT_MUTED.0, tokens::color::TEXT_MUTED.1, tokens::color::TEXT_MUTED.2);
+                cr.set_source_rgb(
+                    tokens::color::TEXT_MUTED.0,
+                    tokens::color::TEXT_MUTED.1,
+                    tokens::color::TEXT_MUTED.2,
+                );
                 let msg = "[ No project loaded ]";
                 if let Ok(ext) = cr.text_extents(msg) {
                     let _ = cr.move_to((width - ext.width()) / 2.0, height - 12.0);
@@ -242,7 +244,8 @@ pub fn find_hovered_pin(
                         let px = board_x + coord.norm_x * board_w;
                         let py = board_y + coord.norm_y * board_h;
                         let d2 = (x - px) * (x - px) + (y - py) * (y - py);
-                        if d2 <= hit_radius_sq && closest.as_ref().map(|c| d2 < c.0).unwrap_or(true) {
+                        if d2 <= hit_radius_sq && closest.as_ref().map(|c| d2 < c.0).unwrap_or(true)
+                        {
                             closest = Some((
                                 d2,
                                 HoveredGlancePin {
@@ -259,7 +262,8 @@ pub fn find_hovered_pin(
                         let px = board_x + coord.norm_x * board_w;
                         let py = board_y + coord.norm_y * board_h;
                         let d2 = (x - px) * (x - px) + (y - py) * (y - py);
-                        if d2 <= hit_radius_sq && closest.as_ref().map(|c| d2 < c.0).unwrap_or(true) {
+                        if d2 <= hit_radius_sq && closest.as_ref().map(|c| d2 < c.0).unwrap_or(true)
+                        {
                             closest = Some((
                                 d2,
                                 HoveredGlancePin {
@@ -371,11 +375,11 @@ fn create_legend_chip(label_text: &str, color_hex: &str) -> gtk4::Box {
         .focusable(false)
         .build();
 
-    let dot = gtk4::Label::builder()
-        .label("●")
-        .use_markup(true)
-        .build();
-    dot.set_markup(&format!("<span foreground=\"{}\" font_desc=\"11\">●</span>", color_hex));
+    let dot = gtk4::Label::builder().label("●").use_markup(true).build();
+    dot.set_markup(&format!(
+        "<span foreground=\"{}\" font_desc=\"11\">●</span>",
+        color_hex
+    ));
 
     let lbl = gtk4::Label::builder()
         .label(label_text)
@@ -547,6 +551,8 @@ mod tests {
 
         let out_path = "/home/stakxx002/.gemini/antigravity-ide/brain/e21edbbd-844e-44ef-9dfa-1af3c8e3a19b/dashboard_board_glance_verification.png";
         let mut file = std::fs::File::create(out_path).expect("Failed to create output PNG");
-        surface.write_to_png(&mut file).expect("Failed to write PNG");
+        surface
+            .write_to_png(&mut file)
+            .expect("Failed to write PNG");
     }
 }

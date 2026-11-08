@@ -252,14 +252,20 @@ printf("BOOT\r\n");
     project.modules.sort();
     project.modules.dedup();
 
-    stakhal_ui::ui::board_glance::update_board_glance_legend(&widgets.flow_board_legend, Some(&project));
+    stakhal_ui::ui::board_glance::update_board_glance_legend(
+        &widgets.flow_board_legend,
+        Some(&project),
+    );
     let mut legend_count = 0;
     let mut child = widgets.flow_board_legend.first_child();
     while let Some(c) = child {
         legend_count += 1;
         child = c.next_sibling();
     }
-    assert!(legend_count >= 6, "Board glance legend FlowBox must cleanly populate all 6 categories");
+    assert!(
+        legend_count >= 6,
+        "Board glance legend FlowBox must cleanly populate all 6 categories"
+    );
 
     let _ = std::fs::remove_dir_all(&temp_dir);
 }
