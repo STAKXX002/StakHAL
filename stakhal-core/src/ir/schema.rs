@@ -137,7 +137,7 @@ mod tests {
         assert_eq!(project.meta.name, "stakhal_blink_f446re");
         assert_eq!(project.meta.mcu_family, "STM32F4");
         assert_eq!(project.meta.mcu_name, "STM32F446RETx");
-        assert_eq!(project.pins.len(), 7);
+        assert_eq!(project.pins.len(), 11);
         assert_eq!(project.peripherals.len(), 0);
         assert!(project.loop_body.is_some());
         assert!(project.pv_declarations.is_empty());
