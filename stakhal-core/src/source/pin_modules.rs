@@ -224,6 +224,96 @@ fn get_declarator_name(mut node: tree_sitter::Node, source_bytes: &[u8]) -> Stri
     }
 }
 
+fn is_gpio_port(s: &str) -> bool {
+    let b = s.as_bytes();
+    b.len() == 5 && &b[0..4] == b"GPIO" && matches!(b[4], b'A'..=b'K')
+}
+
+fn is_gpio_pin(s: &str) -> bool {
+    if let Some(num) = s.strip_prefix("GPIO_PIN_") {
+        !num.is_empty() && num.chars().all(|c| c.is_ascii_digit())
+    } else {
+        false
+    }
+}
+
+fn collect_pin_identifiers(node: tree_sitter::Node, source_bytes: &[u8], pins: &mut Vec<String>) {
+    if node.kind() == "identifier" {
+        if let Ok(text) = node.utf8_text(source_bytes) {
+            let trimmed = text.trim();
+            if is_gpio_pin(trimmed) {
+                pins.push(trimmed.to_string());
+            }
+        }
+    }
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        collect_pin_identifiers(child, source_bytes, pins);
+    }
+}
+
+fn get_gpio_port_name(node: tree_sitter::Node, source_bytes: &[u8]) -> Option<String> {
+    let target = if node.kind() == "parenthesized_expression" {
+        node.named_child(0)?
+    } else {
+        node
+    };
+    if target.kind() == "identifier" {
+        if let Ok(text) = target.utf8_text(source_bytes) {
+            let trimmed = text.trim();
+            if is_gpio_port(trimmed) {
+                return Some(trimmed.to_string());
+            }
+        }
+    }
+    None
+}
+
+fn walk_for_gpio_pairs(
+    node: tree_sitter::Node,
+    source_bytes: &[u8],
+    pairs: &mut HashSet<(String, String)>,
+) {
+    if node.kind() == "initializer_list" || node.kind() == "argument_list" {
+        let mut cursor = node.walk();
+        let named_children: Vec<tree_sitter::Node> = node.named_children(&mut cursor).collect();
+        if named_children.len() >= 2 {
+            for i in 0..named_children.len() - 1 {
+                let child = named_children[i];
+                if let Some(port) = get_gpio_port_name(child, source_bytes) {
+                    let next_child = named_children[i + 1];
+                    let mut pin_idents = Vec::new();
+                    collect_pin_identifiers(next_child, source_bytes, &mut pin_idents);
+                    for pin in pin_idents {
+                        pairs.insert((port.clone(), pin));
+                    }
+                }
+            }
+        }
+    }
+
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        walk_for_gpio_pairs(child, source_bytes, pairs);
+    }
+}
+
+/// Extract adjacent (port, pin) pairs from AST initializer_list and argument_list nodes.
+pub fn extract_ast_gpio_pairs(source: &str) -> HashSet<(String, String)> {
+    let mut pairs = HashSet::new();
+    let mut parser = Parser::new();
+    if parser.set_language(&tree_sitter_c::language()).is_err() {
+        return pairs;
+    }
+    let tree = match parser.parse(source, None) {
+        Some(t) => t,
+        None => return pairs,
+    };
+    let source_bytes = source.as_bytes();
+    walk_for_gpio_pairs(tree.root_node(), source_bytes, &mut pairs);
+    pairs
+}
+
 /// Scan candidate C files in project to map each pin to its owning module(s).
 /// Returns updated PinConfig list and sorted list of discovered modules.
 pub fn scan_pin_modules(pins: &[PinConfig], main_c_path: &Path) -> (Vec<PinConfig>, Vec<String>) {
@@ -248,6 +338,7 @@ pub fn scan_pin_modules(pins: &[PinConfig], main_c_path: &Path) -> (Vec<PinConfi
         };
 
         let idents = extract_ast_identifiers(&source, is_main);
+        let gpio_pairs = extract_ast_gpio_pairs(&source);
 
         for pattern in &patterns {
             let mut matched = false;
@@ -308,10 +399,13 @@ pub fn scan_pin_modules(pins: &[PinConfig], main_c_path: &Path) -> (Vec<PinConfi
                 }
             }
 
-            // 4. Raw port and pin (if no user label, e.g. GPIOA and GPIO_PIN_5)
-            if !matched && pattern.label_macros.is_empty() {
+            // 4. Raw (port, pin) pair match from adjacent AST nodes (e.g. {GPIOA, GPIO_PIN_0} or WritePin(GPIOA, GPIO_PIN_5, ...)).
+            // Applies to all pins, labeled or not.
+            // Known limitation: pins configured through GPIO_InitStruct.Pin plus
+            // HAL_GPIO_Init(GPIOx, ...) are not paired.
+            if !matched {
                 if let (Some(port), Some(pin)) = (&pattern.raw_port, &pattern.raw_pin) {
-                    if idents.contains(port) && idents.contains(pin) {
+                    if gpio_pairs.contains(&(port.clone(), pin.clone())) {
                         matched = true;
                     }
                 }
@@ -403,5 +497,167 @@ mod tests {
         assert!(patterns[0]
             .label_macros
             .contains(&"SHARED_FLAG_Pin".to_string()));
+    }
+
+    #[test]
+    fn test_gpio_pairs_table_initializer() {
+        let dir = tempfile::tempdir().unwrap();
+        let main_c = dir.path().join("main.c");
+        fs::write(&main_c, "int main(void) { return 0; }").unwrap();
+
+        let axis_c = dir.path().join("axis.c");
+        fs::write(
+            &axis_c,
+            r#"
+            static const struct { void *p1; int pin1; void *p2; int pin2; } table[] = {
+                { GPIOA, GPIO_PIN_0, GPIOB, GPIO_PIN_5 }
+            };
+            "#,
+        )
+        .unwrap();
+
+        let pins = vec![
+            PinConfig {
+                pin: "PA0".to_string(),
+                signal: "GPIO_Output".to_string(),
+                label: None,
+                modules: vec![],
+            },
+            PinConfig {
+                pin: "PA5".to_string(),
+                signal: "GPIO_Output".to_string(),
+                label: None,
+                modules: vec![],
+            },
+            PinConfig {
+                pin: "PB0".to_string(),
+                signal: "GPIO_Input".to_string(),
+                label: None,
+                modules: vec![],
+            },
+            PinConfig {
+                pin: "PB5".to_string(),
+                signal: "GPIO_Output".to_string(),
+                label: None,
+                modules: vec![],
+            },
+        ];
+
+        let (scanned, _) = scan_pin_modules(&pins, &main_c);
+        let find_mod = |p_name: &str| -> Vec<String> {
+            scanned
+                .iter()
+                .find(|p| p.pin == p_name)
+                .unwrap()
+                .modules
+                .clone()
+        };
+
+        assert_eq!(find_mod("PA0"), vec!["axis"]);
+        assert_eq!(find_mod("PB5"), vec!["axis"]);
+        assert!(find_mod("PA5").is_empty());
+        assert!(find_mod("PB0").is_empty());
+    }
+
+    #[test]
+    fn test_gpio_pairs_labeled_pin_matched() {
+        let dir = tempfile::tempdir().unwrap();
+        let main_c = dir.path().join("main.c");
+        fs::write(&main_c, "int main(void) { return 0; }").unwrap();
+
+        let axis_c = dir.path().join("axis.c");
+        fs::write(
+            &axis_c,
+            r#"
+            static const struct { void *p; int pin; } table[] = {
+                { GPIOA, GPIO_PIN_0 },
+            };
+            "#,
+        )
+        .unwrap();
+
+        let pins = vec![PinConfig {
+            pin: "PA0".to_string(),
+            signal: "GPIO_Output".to_string(),
+            label: Some("A1_STEP".to_string()),
+            modules: vec![],
+        }];
+
+        let (scanned, _) = scan_pin_modules(&pins, &main_c);
+        assert_eq!(scanned[0].modules, vec!["axis"]);
+    }
+
+    #[test]
+    fn test_gpio_pairs_write_pin() {
+        let dir = tempfile::tempdir().unwrap();
+        let main_c = dir.path().join("main.c");
+        fs::write(&main_c, "int main(void) { return 0; }").unwrap();
+
+        let led_c = dir.path().join("led.c");
+        fs::write(
+            &led_c,
+            r#"
+            void toggle_led(void) {
+                HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_SET);
+            }
+            "#,
+        )
+        .unwrap();
+
+        let pins = vec![PinConfig {
+            pin: "PA5".to_string(),
+            signal: "GPIO_Output".to_string(),
+            label: None,
+            modules: vec![],
+        }];
+
+        let (scanned, _) = scan_pin_modules(&pins, &main_c);
+        assert_eq!(scanned[0].modules, vec!["led"]);
+    }
+
+    #[test]
+    fn test_gpio_pairs_ored_pins() {
+        let dir = tempfile::tempdir().unwrap();
+        let main_c = dir.path().join("main.c");
+        fs::write(&main_c, "int main(void) { return 0; }").unwrap();
+
+        let bus_c = dir.path().join("bus.c");
+        fs::write(
+            &bus_c,
+            r#"
+            void init_bus(void) {
+                set_pins(GPIOA, GPIO_PIN_1 | GPIO_PIN_2);
+            }
+            "#,
+        )
+        .unwrap();
+
+        let pins = vec![
+            PinConfig {
+                pin: "PA1".to_string(),
+                signal: "GPIO_Output".to_string(),
+                label: None,
+                modules: vec![],
+            },
+            PinConfig {
+                pin: "PA2".to_string(),
+                signal: "GPIO_Output".to_string(),
+                label: None,
+                modules: vec![],
+            },
+        ];
+
+        let (scanned, _) = scan_pin_modules(&pins, &main_c);
+        let find_mod = |p_name: &str| -> Vec<String> {
+            scanned
+                .iter()
+                .find(|p| p.pin == p_name)
+                .unwrap()
+                .modules
+                .clone()
+        };
+
+        assert_eq!(find_mod("PA1"), vec!["bus"]);
+        assert_eq!(find_mod("PA2"), vec!["bus"]);
     }
 }
