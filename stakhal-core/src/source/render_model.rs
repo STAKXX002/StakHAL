@@ -16,7 +16,7 @@ pub enum LineTier {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RenderedLine {
     pub line_number: usize, // 1-indexed
-    pub text: String,        // the line's raw text, no trailing newline
+    pub text: String,       // the line's raw text, no trailing newline
     pub tier: LineTier,
 }
 
@@ -78,8 +78,8 @@ pub fn build_source_render_model_from_str(
         let line_start = start;
         let line_end = end_with_newline;
 
-        let is_decl = !(line_end <= declaration_byte_range.0
-            || line_start >= declaration_byte_range.1);
+        let is_decl =
+            !(line_end <= declaration_byte_range.0 || line_start >= declaration_byte_range.1);
 
         let is_usage = !is_decl
             && usage_byte_ranges
@@ -129,12 +129,8 @@ mod tests {
         let usage_idx = source.find("counter = 1;").unwrap();
         let usage_range = (usage_idx, usage_idx + "counter".len());
 
-        let model = build_source_render_model_from_str(
-            source,
-            &regions,
-            decl_range,
-            &[usage_range],
-        );
+        let model =
+            build_source_render_model_from_str(source, &regions, decl_range, &[usage_range]);
 
         // Line 4: "int unused = 0;" -> Generated (outside user region)
         let line4 = model.iter().find(|l| l.line_number == 4).unwrap();
@@ -157,12 +153,12 @@ mod tests {
         assert_eq!(line2.tier, LineTier::Normal);
     }
 
-
     #[test]
     fn test_crlf_fixture_line_splitting() {
         let dir = tempdir().unwrap();
         let file_path = dir.path().join("main.c");
-        let content = "/* USER CODE BEGIN PV */\r\nint val = 42;\r\n/* USER CODE END PV */\r\n\r\nval++;\r\n";
+        let content =
+            "/* USER CODE BEGIN PV */\r\nint val = 42;\r\n/* USER CODE END PV */\r\n\r\nval++;\r\n";
         fs::write(&file_path, content).unwrap();
 
         let path = Path::new("main.c");
@@ -174,7 +170,8 @@ mod tests {
         let usage_start = content.find("val++").unwrap();
         let usage_range = (usage_start, usage_start + "val".len());
 
-        let model = build_source_render_model(&file_path, &regions, decl_range, &[usage_range]).unwrap();
+        let model =
+            build_source_render_model(&file_path, &regions, decl_range, &[usage_range]).unwrap();
 
         assert_eq!(model.len(), 5);
 

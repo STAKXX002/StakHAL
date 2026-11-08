@@ -1,6 +1,6 @@
+use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
-use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct AppConfig {
@@ -9,7 +9,12 @@ pub struct AppConfig {
 
 pub fn get_config_file_path() -> Option<PathBuf> {
     let home = std::env::var_os("HOME")?;
-    Some(PathBuf::from(home).join(".config").join("stakhal").join("last_project.json"))
+    Some(
+        PathBuf::from(home)
+            .join(".config")
+            .join("stakhal")
+            .join("last_project.json"),
+    )
 }
 
 pub fn load_app_config() -> AppConfig {

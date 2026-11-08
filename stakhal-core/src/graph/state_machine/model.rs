@@ -1,5 +1,5 @@
-use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct StateNode {
@@ -78,7 +78,10 @@ impl AppTransition {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum TransitionType {
     Direct,
-    IndirectHelper { helper_name: String, argument: Option<String> },
+    IndirectHelper {
+        helper_name: String,
+        argument: Option<String>,
+    },
     EventTriggered,
 }
 

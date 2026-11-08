@@ -1,5 +1,5 @@
-use std::process::Command;
 use super::runner::is_executable_on_path;
+use std::process::Command;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StlinkProbe {
@@ -168,7 +168,10 @@ dev-type: STM32H74x_H75x
         assert_eq!(p.version.as_deref(), Some("V3J8"));
         assert_eq!(p.dev_type.as_deref(), Some("STM32H74x_H75x"));
         assert_eq!(p.chip_id.as_deref(), Some("0x450"));
-        assert_eq!(p.display_label(), "STM32H74x_H75x [V3J8] (SN: 003800333433510937363934)");
+        assert_eq!(
+            p.display_label(),
+            "STM32H74x_H75x [V3J8] (SN: 003800333433510937363934)"
+        );
     }
 
     #[test]
@@ -192,7 +195,10 @@ Found 2 stlink programmers
         let probes = parse_st_info_probe(text);
         assert_eq!(probes.len(), 2);
         assert_eq!(probes[0].serial, "563f67066772565631130667");
-        assert_eq!(probes[0].dev_type.as_deref(), Some("F1 High-density device"));
+        assert_eq!(
+            probes[0].dev_type.as_deref(),
+            Some("F1 High-density device")
+        );
         assert_eq!(probes[1].serial, "493f6d066670485136151067");
         assert_eq!(probes[1].dev_type.as_deref(), Some("F4 device"));
     }

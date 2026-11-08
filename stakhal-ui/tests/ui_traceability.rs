@@ -1,11 +1,11 @@
-use std::cell::RefCell;
-use std::rc::Rc;
 use gtk4::gdk;
 use gtk4::prelude::*;
 use libadwaita as adw;
 use stakhal_ui::state::{AppState, AppWidgets};
 use stakhal_ui::toolchain;
 use stakhal_ui::update_traceability_ui;
+use std::cell::RefCell;
+use std::rc::Rc;
 
 #[test]
 fn test_traceability_ui_state_and_button_sensitivity() {
@@ -19,7 +19,8 @@ fn test_traceability_ui_state_and_button_sensitivity() {
     }
     let _ = adw::init();
 
-    let temp_dir = std::env::temp_dir().join(format!("stakhal_test_ui_trace_{}", std::process::id()));
+    let temp_dir =
+        std::env::temp_dir().join(format!("stakhal_test_ui_trace_{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&temp_dir);
     std::fs::create_dir_all(temp_dir.join("Core/Src")).unwrap();
     std::fs::create_dir_all(temp_dir.join("Core/Inc")).unwrap();
@@ -160,12 +161,29 @@ printf("BOOT\r\n");
     );
     assert!(widgets.lbl_build_traceability.has_css_class("status-ready"));
     assert!(state.borrow().build_trace.borrow().traceability_was_matched);
-    assert!(state.borrow().build_trace.borrow().traceability_verify_start.is_some());
-    let initial_anim_start = state.borrow().build_trace.borrow().traceability_verify_start.unwrap();
+    assert!(state
+        .borrow()
+        .build_trace
+        .borrow()
+        .traceability_verify_start
+        .is_some());
+    let initial_anim_start = state
+        .borrow()
+        .build_trace
+        .borrow()
+        .traceability_verify_start
+        .unwrap();
 
     // Redraw while still matched: verify animation does NOT replay
     update_traceability_ui(&state, &widgets);
-    assert_eq!(state.borrow().build_trace.borrow().traceability_verify_start, Some(initial_anim_start));
+    assert_eq!(
+        state
+            .borrow()
+            .build_trace
+            .borrow()
+            .traceability_verify_start,
+        Some(initial_anim_start)
+    );
 
     // Test dirty hash status chip
     state.borrow().build_trace.borrow_mut().captured_build_hash = Some(format!("{}-dirty", head));
@@ -174,14 +192,24 @@ printf("BOOT\r\n");
         widgets.lbl_build_traceability.text(),
         format!("BUILD: {}-dirty", head)
     );
-    assert!(widgets.lbl_build_traceability.has_css_class("status-active"));
+    assert!(widgets
+        .lbl_build_traceability
+        .has_css_class("status-active"));
     assert!(!state.borrow().build_trace.borrow().traceability_was_matched);
-    assert!(state.borrow().build_trace.borrow().traceability_verify_start.is_none());
+    assert!(state
+        .borrow()
+        .build_trace
+        .borrow()
+        .traceability_verify_start
+        .is_none());
 
     // Test diverged hash status chip
     state.borrow().build_trace.borrow_mut().captured_build_hash = Some("deadbeef".to_string());
     update_traceability_ui(&state, &widgets);
-    assert_eq!(widgets.lbl_build_traceability.text(), "BUILD: deadbeef (Diverged)");
+    assert_eq!(
+        widgets.lbl_build_traceability.text(),
+        "BUILD: deadbeef (Diverged)"
+    );
     assert!(widgets.lbl_build_traceability.has_css_class("status-error"));
 
     // Reset captured hash

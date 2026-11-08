@@ -1,19 +1,19 @@
+use gtk4::prelude::*;
+use gtk4::{gdk, gio, glib};
+use libadwaita as adw;
 use std::cell::RefCell;
 use std::rc::Rc;
-use gtk4::{gdk, gio, glib};
-use gtk4::prelude::*;
-use libadwaita as adw;
 pub mod config;
 pub mod state;
 pub mod toolchain;
 pub mod ui;
+use crate::ui::serial_monitor::{build_serial_monitor_panel, SerialMonitorWidgets};
 pub use ui::setup_build_flash::{execute_build_pipeline, update_traceability_ui};
 pub use ui::setup_project::{do_load_project, try_discover_folder};
 pub use ui::setup_serial::{
     auto_reconnect_serial_after_flash, refresh_serial_ports, send_serial_command,
     update_quick_send_buttons,
 };
-use crate::ui::serial_monitor::{build_serial_monitor_panel, SerialMonitorWidgets};
 
 pub(crate) fn append_log_text(view: &gtk4::TextView, text: &str) {
     let buffer = view.buffer();
@@ -62,8 +62,13 @@ pub fn update_build_status(lbl: &gtk4::Label, text: &str, kind: StatusKind) {
     }
 }
 
-pub fn navigate_stack(stack: &gtk4::Stack, child_name: &str, transition: gtk4::StackTransitionType) {
-    let duration = ui::tokens::motion::effective_duration_ms(ui::tokens::motion::DURATION_SHORT_MS) as u32;
+pub fn navigate_stack(
+    stack: &gtk4::Stack,
+    child_name: &str,
+    transition: gtk4::StackTransitionType,
+) {
+    let duration =
+        ui::tokens::motion::effective_duration_ms(ui::tokens::motion::DURATION_SHORT_MS) as u32;
     stack.set_transition_type(gtk4::StackTransitionType::Crossfade);
     stack.set_transition_duration(duration);
 
@@ -80,12 +85,12 @@ pub fn navigate_stack(stack: &gtk4::Stack, child_name: &str, transition: gtk4::S
         return;
     }
 
-    let is_forward = match transition {
+    let is_forward = !matches!(
+        transition,
         gtk4::StackTransitionType::SlideRight
-        | gtk4::StackTransitionType::OverRight
-        | gtk4::StackTransitionType::UnderRight => false,
-        _ => true,
-    };
+            | gtk4::StackTransitionType::OverRight
+            | gtk4::StackTransitionType::UnderRight
+    );
 
     if let Some(child) = stack.child_by_name(child_name) {
         let initial_offset = 10;
@@ -98,7 +103,8 @@ pub fn navigate_stack(stack: &gtk4::Stack, child_name: &str, transition: gtk4::S
         }
 
         let start_time = std::time::Instant::now();
-        let total_duration = std::time::Duration::from_millis(ui::tokens::motion::DURATION_SHORT_MS);
+        let total_duration =
+            std::time::Duration::from_millis(ui::tokens::motion::DURATION_SHORT_MS);
 
         child.add_tick_callback(move |widget, _| {
             let elapsed = start_time.elapsed();
@@ -141,7 +147,6 @@ use ui::nucleo_pinout::{build_nucleo_pinout_panel, NucleoPinoutPanelWidgets};
 use ui::state_diagram::{build_state_diagram_panel, StateDiagramPanelWidgets};
 
 use ui::main_panel::{build_main_panel, MainPanelWidgets};
-
 
 pub const APP_ID: &str = "com.stakhal.ui";
 
@@ -372,7 +377,6 @@ dropdown button {
 }
 "#);
 
-
     if let Some(display) = gdk::Display::default() {
         gtk4::style_context_add_provider_for_display(
             &display,
@@ -528,16 +532,8 @@ dropdown button {
         box_quick_commands: box_quick_commands.clone(),
     });
 
-    ui::verify_stroke::setup_verify_stroke_area(
-        &area_traceability_verify,
-        Rc::clone(&state),
-        true,
-    );
-    ui::verify_stroke::setup_verify_stroke_area(
-        &area_flash_verify,
-        Rc::clone(&state),
-        false,
-    );
+    ui::verify_stroke::setup_verify_stroke_area(&area_traceability_verify, Rc::clone(&state), true);
+    ui::verify_stroke::setup_verify_stroke_area(&area_flash_verify, Rc::clone(&state), false);
 
     // Connect Diagram and Navigation
     ui::setup_diagram::setup_diagram_and_navigation(
@@ -563,24 +559,17 @@ dropdown button {
     ui::setup_project::check_last_project(&state, &widgets);
 }
 
-
-
-
-
-
 pub(crate) fn clear_box_children(bx: &gtk4::Box) {
     while let Some(child) = bx.first_child() {
         bx.remove(&child);
     }
 }
 
-
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::path::{Path, PathBuf};
     use stakhal_core::ir::schema::load_project;
+    use std::path::{Path, PathBuf};
 
     #[test]
     fn test_serial_monitor_baud_auto_detection() {
@@ -602,7 +591,8 @@ mod tests {
         assert!(!bt_cell.borrow().is_captured_hash_dirty);
 
         let test_line = "STAKHAL_BUILD: a41f5f7-dirty\r\n";
-        if let Some((hash, is_dirty)) = toolchain::traceability::parse_build_banner_line(test_line) {
+        if let Some((hash, is_dirty)) = toolchain::traceability::parse_build_banner_line(test_line)
+        {
             let mut bt = bt_cell.borrow_mut();
             bt.captured_build_hash = Some(hash);
             bt.is_captured_hash_dirty = is_dirty;
@@ -616,7 +606,8 @@ mod tests {
 
         // Test clean hash
         let clean_line = "STAKHAL_BUILD: a41f5f7\r\n";
-        if let Some((hash, is_dirty)) = toolchain::traceability::parse_build_banner_line(clean_line) {
+        if let Some((hash, is_dirty)) = toolchain::traceability::parse_build_banner_line(clean_line)
+        {
             let mut bt = bt_cell.borrow_mut();
             bt.captured_build_hash = Some(hash);
             bt.is_captured_hash_dirty = is_dirty;
@@ -758,16 +749,15 @@ mod tests {
         );
         assert!(!state.borrow().serial.borrow().is_serial_connected);
         assert_eq!(
-            state.borrow().serial.borrow().selected_serial_port.as_deref(),
+            state
+                .borrow()
+                .serial
+                .borrow()
+                .selected_serial_port
+                .as_deref(),
             Some("/dev/ttyACM0")
         );
     }
-
-
-
-
-
-
 
     #[test]
     fn test_f446_project_loading_enables_pinout_btn() {
@@ -776,7 +766,8 @@ mod tests {
         let ioc_path = fixture_dir.join("stakhal_blink_f446re.ioc");
         let main_c_path = fixture_dir.join("Core/Src/main.c");
 
-        let project = load_project(&ioc_path, &main_c_path).expect("Failed to load f446 fixture project");
+        let project =
+            load_project(&ioc_path, &main_c_path).expect("Failed to load f446 fixture project");
         assert!(project.meta.mcu_name.to_uppercase().contains("F446"));
 
         let loc = stakhal_core::nucleo_pinout::lookup_pin("PA5");
@@ -793,8 +784,13 @@ mod tests {
         let ioc_path = fixture_dir.join("aa_ns_stm_port.ioc");
         let main_c_path = fixture_dir.join("Core/Src/main.c");
 
-        let project = load_project(&ioc_path, &main_c_path).expect("Failed to load aa_ns_stm_port project");
-        assert_eq!(project.state_machines.len(), 2, "Expected exactly 2 state machines");
+        let project =
+            load_project(&ioc_path, &main_c_path).expect("Failed to load aa_ns_stm_port project");
+        assert_eq!(
+            project.state_machines.len(),
+            2,
+            "Expected exactly 2 state machines"
+        );
 
         // Verify machine 0: AlignState (state)
         let sm0 = &project.state_machines[0];
@@ -818,7 +814,8 @@ mod tests {
     #[test]
     fn test_render_snapshots() {
         // 1. State diagram rendering test
-        let surface_sm = gtk4::cairo::ImageSurface::create(gtk4::cairo::Format::ARgb32, 1400, 900).expect("surface create");
+        let surface_sm = gtk4::cairo::ImageSurface::create(gtk4::cairo::Format::ARgb32, 1400, 900)
+            .expect("surface create");
         let cr_sm = gtk4::cairo::Context::new(&surface_sm).expect("cr create");
         let state_sm = Rc::new(RefCell::new(AppState::default()));
         let fixture_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -835,7 +832,8 @@ mod tests {
         }
 
         // 2. Nucleo pinout rendering test
-        let surface_pin = gtk4::cairo::ImageSurface::create(gtk4::cairo::Format::ARgb32, 1400, 850).expect("surface create");
+        let surface_pin = gtk4::cairo::ImageSurface::create(gtk4::cairo::Format::ARgb32, 1400, 850)
+            .expect("surface create");
         let cr_pin = gtk4::cairo::Context::new(&surface_pin).expect("cr create");
         let state_pin = Rc::new(RefCell::new(AppState::default()));
         let f446_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -860,12 +858,17 @@ mod tests {
         if let Ok(project) = load_project(&aa_ioc, &aa_main) {
             let artifact_dir = std::env::var_os("CARGO_TARGET_DIR")
                 .map(std::path::PathBuf::from)
-                .unwrap_or_else(|| std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../target"))
+                .unwrap_or_else(|| {
+                    std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../target")
+                })
                 .join("test-artifacts");
-            std::fs::create_dir_all(&artifact_dir).expect("failed to create test-artifacts directory");
+            std::fs::create_dir_all(&artifact_dir)
+                .expect("failed to create test-artifacts directory");
 
             // All modules
-            let surf_all = gtk4::cairo::ImageSurface::create(gtk4::cairo::Format::ARgb32, 1400, 850).expect("surface");
+            let surf_all =
+                gtk4::cairo::ImageSurface::create(gtk4::cairo::Format::ARgb32, 1400, 850)
+                    .expect("surface");
             let cr_all = gtk4::cairo::Context::new(&surf_all).expect("cr");
             let st_all = Rc::new(RefCell::new(AppState::default()));
             st_all.borrow().with_canvas_state_mut(|c| {
@@ -874,11 +877,16 @@ mod tests {
             st_all.borrow().project.borrow_mut().loaded_project = Some(project.clone());
             ui::nucleo_pinout::draw::draw_nucleo_pinout(&cr_all, 1400.0, 850.0, &st_all);
             surf_all.flush();
-            let mut f = std::fs::File::create(artifact_dir.join("pinout_all_modules.png")).expect("create pinout_all_modules.png");
-            surf_all.write_to_png(&mut f).expect("write pinout_all_modules.png");
+            let mut f = std::fs::File::create(artifact_dir.join("pinout_all_modules.png"))
+                .expect("create pinout_all_modules.png");
+            surf_all
+                .write_to_png(&mut f)
+                .expect("write pinout_all_modules.png");
 
             // Hatch module
-            let surf_hatch = gtk4::cairo::ImageSurface::create(gtk4::cairo::Format::ARgb32, 1400, 850).expect("surface");
+            let surf_hatch =
+                gtk4::cairo::ImageSurface::create(gtk4::cairo::Format::ARgb32, 1400, 850)
+                    .expect("surface");
             let cr_hatch = gtk4::cairo::Context::new(&surf_hatch).expect("cr");
             let st_hatch = Rc::new(RefCell::new(AppState::default()));
             st_hatch.borrow().with_canvas_state_mut(|c| {
@@ -889,17 +897,28 @@ mod tests {
             st_hatch.borrow().project.borrow_mut().loaded_project = Some(project.clone());
             ui::nucleo_pinout::draw::draw_nucleo_pinout(&cr_hatch, 1400.0, 850.0, &st_hatch);
             surf_hatch.flush();
-            let mut f = std::fs::File::create(artifact_dir.join("pinout_module_hatch.png")).expect("create pinout_module_hatch.png");
-            surf_hatch.write_to_png(&mut f).expect("write pinout_module_hatch.png");
+            let mut f = std::fs::File::create(artifact_dir.join("pinout_module_hatch.png"))
+                .expect("create pinout_module_hatch.png");
+            surf_hatch
+                .write_to_png(&mut f)
+                .expect("write pinout_module_hatch.png");
 
             // 4. State diagram orthogonal snapshots: docking_firmware_v2
-            if let Ok(dock_proj) = load_project(&Path::new(env!("CARGO_MANIFEST_DIR")).join("../stakhal-core/tests/fixtures/docking_firmware_v2/docking_firmware_v2.ioc"), &Path::new(env!("CARGO_MANIFEST_DIR")).join("../stakhal-core/tests/fixtures/docking_firmware_v2/Core/Src/main.c")) {
+            if let Ok(dock_proj) = load_project(
+                &Path::new(env!("CARGO_MANIFEST_DIR")).join(
+                    "../stakhal-core/tests/fixtures/docking_firmware_v2/docking_firmware_v2.ioc",
+                ),
+                &Path::new(env!("CARGO_MANIFEST_DIR"))
+                    .join("../stakhal-core/tests/fixtures/docking_firmware_v2/Core/Src/main.c"),
+            ) {
                 let sm = dock_proj.state_machines[0].clone();
                 let layout = stakhal_core::graph::compute_state_machine_layout(&sm);
                 let w = (layout.width as i32).max(1400);
                 let h = (layout.height as i32).max(900);
 
-                let surf_dock = gtk4::cairo::ImageSurface::create(gtk4::cairo::Format::ARgb32, w, h).expect("surf");
+                let surf_dock =
+                    gtk4::cairo::ImageSurface::create(gtk4::cairo::Format::ARgb32, w, h)
+                        .expect("surf");
                 let cr_dock = gtk4::cairo::Context::new(&surf_dock).expect("cr");
                 let st_dock = Rc::new(RefCell::new(AppState::default()));
                 st_dock.borrow().with_canvas_state_mut(|c| {
@@ -913,11 +932,16 @@ mod tests {
                 st_dock.borrow().project.borrow_mut().loaded_project = Some(dock_proj.clone());
                 ui::state_diagram::draw::draw_state_diagram(&cr_dock, w as f64, h as f64, &st_dock);
                 surf_dock.flush();
-                let mut f = std::fs::File::create(artifact_dir.join("orthogonal_docking_v2.png")).expect("create orthogonal_docking_v2.png");
-                surf_dock.write_to_png(&mut f).expect("write orthogonal_docking_v2.png");
+                let mut f = std::fs::File::create(artifact_dir.join("orthogonal_docking_v2.png"))
+                    .expect("create orthogonal_docking_v2.png");
+                surf_dock
+                    .write_to_png(&mut f)
+                    .expect("write orthogonal_docking_v2.png");
 
                 // Docking with GOING selected
-                let surf_dock_sel = gtk4::cairo::ImageSurface::create(gtk4::cairo::Format::ARgb32, w, h).expect("surf");
+                let surf_dock_sel =
+                    gtk4::cairo::ImageSurface::create(gtk4::cairo::Format::ARgb32, w, h)
+                        .expect("surf");
                 let cr_dock_sel = gtk4::cairo::Context::new(&surf_dock_sel).expect("cr");
                 let st_dock_sel = Rc::new(RefCell::new(AppState::default()));
                 st_dock_sel.borrow().with_canvas_state_mut(|c| {
@@ -929,20 +953,36 @@ mod tests {
                     c.selected_state_node = Some("GOING".to_string());
                 });
                 st_dock_sel.borrow().project.borrow_mut().loaded_project = Some(dock_proj);
-                ui::state_diagram::draw::draw_state_diagram(&cr_dock_sel, w as f64, h as f64, &st_dock_sel);
+                ui::state_diagram::draw::draw_state_diagram(
+                    &cr_dock_sel,
+                    w as f64,
+                    h as f64,
+                    &st_dock_sel,
+                );
                 surf_dock_sel.flush();
-                let mut f = std::fs::File::create(artifact_dir.join("orthogonal_docking_v2_selected.png")).expect("create orthogonal_docking_v2_selected.png");
-                surf_dock_sel.write_to_png(&mut f).expect("write orthogonal_docking_v2_selected.png");
+                let mut f =
+                    std::fs::File::create(artifact_dir.join("orthogonal_docking_v2_selected.png"))
+                        .expect("create orthogonal_docking_v2_selected.png");
+                surf_dock_sel
+                    .write_to_png(&mut f)
+                    .expect("write orthogonal_docking_v2_selected.png");
             }
 
             // 5. State diagram orthogonal snapshots: aa_ns_stm_port (AlignState)
             {
-                let sm_align = project.state_machines.iter().find(|s| s.enum_def.name.contains("Align")).unwrap_or(&project.state_machines[0]).clone();
+                let sm_align = project
+                    .state_machines
+                    .iter()
+                    .find(|s| s.enum_def.name.contains("Align"))
+                    .unwrap_or(&project.state_machines[0])
+                    .clone();
                 let layout_align = stakhal_core::graph::compute_state_machine_layout(&sm_align);
                 let w = (layout_align.width as i32).max(1400);
                 let h = (layout_align.height as i32).max(900);
 
-                let surf_align = gtk4::cairo::ImageSurface::create(gtk4::cairo::Format::ARgb32, w, h).expect("surf");
+                let surf_align =
+                    gtk4::cairo::ImageSurface::create(gtk4::cairo::Format::ARgb32, w, h)
+                        .expect("surf");
                 let cr_align = gtk4::cairo::Context::new(&surf_align).expect("cr");
                 let st_align = Rc::new(RefCell::new(AppState::default()));
                 st_align.borrow().with_canvas_state_mut(|c| {
@@ -954,13 +994,20 @@ mod tests {
                     c.selected_state_node = None;
                 });
                 st_align.borrow().project.borrow_mut().loaded_project = Some(project.clone());
-                ui::state_diagram::draw::draw_state_diagram(&cr_align, w as f64, h as f64, &st_align);
+                ui::state_diagram::draw::draw_state_diagram(
+                    &cr_align, w as f64, h as f64, &st_align,
+                );
                 surf_align.flush();
-                let mut f = std::fs::File::create(artifact_dir.join("orthogonal_aa_ns_align.png")).expect("create orthogonal_aa_ns_align.png");
-                surf_align.write_to_png(&mut f).expect("write orthogonal_aa_ns_align.png");
+                let mut f = std::fs::File::create(artifact_dir.join("orthogonal_aa_ns_align.png"))
+                    .expect("create orthogonal_aa_ns_align.png");
+                surf_align
+                    .write_to_png(&mut f)
+                    .expect("write orthogonal_aa_ns_align.png");
 
                 // AlignState with RETURNING selected (shows RETURNING -> RECOVERY cross-lane edge)
-                let surf_align_ret = gtk4::cairo::ImageSurface::create(gtk4::cairo::Format::ARgb32, w, h).expect("surf");
+                let surf_align_ret =
+                    gtk4::cairo::ImageSurface::create(gtk4::cairo::Format::ARgb32, w, h)
+                        .expect("surf");
                 let cr_align_ret = gtk4::cairo::Context::new(&surf_align_ret).expect("cr");
                 let st_align_ret = Rc::new(RefCell::new(AppState::default()));
                 st_align_ret.borrow().with_canvas_state_mut(|c| {
@@ -972,10 +1019,19 @@ mod tests {
                     c.selected_state_node = Some("RETURNING".to_string());
                 });
                 st_align_ret.borrow().project.borrow_mut().loaded_project = Some(project);
-                ui::state_diagram::draw::draw_state_diagram(&cr_align_ret, w as f64, h as f64, &st_align_ret);
+                ui::state_diagram::draw::draw_state_diagram(
+                    &cr_align_ret,
+                    w as f64,
+                    h as f64,
+                    &st_align_ret,
+                );
                 surf_align_ret.flush();
-                let mut f = std::fs::File::create(artifact_dir.join("orthogonal_aa_ns_align_selected.png")).expect("create orthogonal_aa_ns_align_selected.png");
-                surf_align_ret.write_to_png(&mut f).expect("write orthogonal_aa_ns_align_selected.png");
+                let mut f =
+                    std::fs::File::create(artifact_dir.join("orthogonal_aa_ns_align_selected.png"))
+                        .expect("create orthogonal_aa_ns_align_selected.png");
+                surf_align_ret
+                    .write_to_png(&mut f)
+                    .expect("write orthogonal_aa_ns_align_selected.png");
             }
 
             // Verify all 6 snapshot artifacts were written and are non-empty
@@ -988,7 +1044,11 @@ mod tests {
                 "orthogonal_aa_ns_align_selected.png",
             ] {
                 let p = artifact_dir.join(name);
-                assert!(p.exists(), "Expected render snapshot {} to exist", p.display());
+                assert!(
+                    p.exists(),
+                    "Expected render snapshot {} to exist",
+                    p.display()
+                );
                 assert!(
                     std::fs::metadata(&p).map(|m| m.len() > 0).unwrap_or(false),
                     "Expected render snapshot {} to be non-empty",
@@ -1018,14 +1078,20 @@ mod tests {
         let expected_duration =
             ui::tokens::motion::effective_duration_ms(ui::tokens::motion::DURATION_SHORT_MS) as u32;
         assert_eq!(stack.transition_duration(), expected_duration);
-        assert_eq!(stack.transition_type(), gtk4::StackTransitionType::Crossfade);
+        assert_eq!(
+            stack.transition_type(),
+            gtk4::StackTransitionType::Crossfade
+        );
         assert_eq!(label_b.margin_start(), 10);
         assert_eq!(label_b.margin_end(), 0);
 
         // 2. Backward navigation
         navigate_stack(&stack, "a", gtk4::StackTransitionType::SlideRight);
         assert_eq!(stack.transition_duration(), expected_duration);
-        assert_eq!(stack.transition_type(), gtk4::StackTransitionType::Crossfade);
+        assert_eq!(
+            stack.transition_type(),
+            gtk4::StackTransitionType::Crossfade
+        );
         // Previous child margins reset to 0, and incoming child has margin_end = 10
         assert_eq!(label_b.margin_start(), 0);
         assert_eq!(label_b.margin_end(), 0);
@@ -1064,102 +1130,127 @@ mod tests {
         }
     }
 
-        #[test]
-        fn test_live_state_highlighting_matching() {
-            let ioc_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-                .join("../stakhal-core/tests/fixtures/docking_firmware_v2/docking_firmware_v2.ioc");
-            let main_c_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-                .join("../stakhal-core/tests/fixtures/docking_firmware_v2/Core/Src/main.c");
-            let project = load_project(&ioc_path, &main_c_path).unwrap();
-            assert!(!project.state_machines.is_empty());
-            let sm = &project.state_machines[0];
-            let known_nodes = &sm.states;
+    #[test]
+    fn test_live_state_highlighting_matching() {
+        let ioc_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../stakhal-core/tests/fixtures/docking_firmware_v2/docking_firmware_v2.ioc");
+        let main_c_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../stakhal-core/tests/fixtures/docking_firmware_v2/Core/Src/main.c");
+        let project = load_project(&ioc_path, &main_c_path).unwrap();
+        assert!(!project.state_machines.is_empty());
+        let sm = &project.state_machines[0];
+        let known_nodes = &sm.states;
 
-            // 1. Verify exact state lines match
-            assert_eq!(
-                crate::toolchain::traceability::parse_state_transition_line("HOLD\r\n", known_nodes),
-                Some("HOLD".to_string())
-            );
-            assert_eq!(
-                crate::toolchain::traceability::parse_state_transition_line("RETURNED\r\n", known_nodes),
-                Some("RETURNED".to_string())
-            );
+        // 1. Verify exact state lines match
+        assert_eq!(
+            crate::toolchain::traceability::parse_state_transition_line("HOLD\r\n", known_nodes),
+            Some("HOLD".to_string())
+        );
+        assert_eq!(
+            crate::toolchain::traceability::parse_state_transition_line(
+                "RETURNED\r\n",
+                known_nodes
+            ),
+            Some("RETURNED".to_string())
+        );
 
-            // 2. Verify unrelated printfs do not match
-            assert_eq!(
-                crate::toolchain::traceability::parse_state_transition_line("FAULT: motor jam\r\n", known_nodes),
-                None
-            );
-            assert_eq!(
-                crate::toolchain::traceability::parse_state_transition_line("Z1 HIT\r\n", known_nodes),
-                None
-            );
+        // 2. Verify unrelated printfs do not match
+        assert_eq!(
+            crate::toolchain::traceability::parse_state_transition_line(
+                "FAULT: motor jam\r\n",
+                known_nodes
+            ),
+            None
+        );
+        assert_eq!(
+            crate::toolchain::traceability::parse_state_transition_line("Z1 HIT\r\n", known_nodes),
+            None
+        );
 
-            // 3. Test AppState updates: silent tracking vs live highlight & pulse animation
-            let st = AppState::default();
-            st.project.borrow_mut().loaded_project = Some(project.clone());
-            st.serial.borrow_mut().is_serial_connected = true;
+        // 3. Test AppState updates: silent tracking vs live highlight & pulse animation
+        let st = AppState::default();
+        st.project.borrow_mut().loaded_project = Some(project.clone());
+        st.serial.borrow_mut().is_serial_connected = true;
 
-            // Stream in a matching state line
-            let line = "HOLD\r\n";
-            if let Some(matched) = crate::toolchain::traceability::parse_state_transition_line(line, known_nodes) {
-                st.with_canvas_state_mut(|c| {
-                    let prev_node = c.live_state_node.clone();
-                    c.live_state_node = Some(matched.clone());
-                    c.selected_state_node = Some(matched);
-                    if let Some(prev) = prev_node {
-                        if prev != "HOLD" {
-                            c.edge_pulse_animation = Some((prev, "HOLD".to_string(), std::time::Instant::now()));
-                        }
+        // Stream in a matching state line
+        let line = "HOLD\r\n";
+        if let Some(matched) =
+            crate::toolchain::traceability::parse_state_transition_line(line, known_nodes)
+        {
+            st.with_canvas_state_mut(|c| {
+                let prev_node = c.live_state_node.clone();
+                c.live_state_node = Some(matched.clone());
+                c.selected_state_node = Some(matched);
+                if let Some(prev) = prev_node {
+                    if prev != "HOLD" {
+                        c.edge_pulse_animation =
+                            Some((prev, "HOLD".to_string(), std::time::Instant::now()));
                     }
-                });
-            }
-            assert_eq!(st.with_canvas_state(|c| c.live_state_node.clone()).as_deref(), Some("HOLD"));
-            assert_eq!(st.with_canvas_state(|c| c.selected_state_node.clone()).as_deref(), Some("HOLD"));
-            assert!(st.with_canvas_state(|c| c.edge_pulse_animation.is_none()));
-
-            // Next state line: transition from HOLD -> RETURNED (prev != matched)
-            let line2 = "RETURNED\r\n";
-            if let Some(matched) = crate::toolchain::traceability::parse_state_transition_line(line2, known_nodes) {
-                st.with_canvas_state_mut(|c| {
-                    let prev_node = c.live_state_node.clone();
-                    c.live_state_node = Some(matched.clone());
-                    c.selected_state_node = Some(matched.clone());
-                    if let Some(prev) = prev_node {
-                        if prev != matched {
-                            c.edge_pulse_animation = Some((prev, matched, std::time::Instant::now()));
-                        }
-                    }
-                });
-            }
-            assert_eq!(st.with_canvas_state(|c| c.live_state_node.clone()).as_deref(), Some("RETURNED"));
-            assert_eq!(st.with_canvas_state(|c| c.selected_state_node.clone()).as_deref(), Some("RETURNED"));
-            let pulse = st.with_canvas_state(|c| c.edge_pulse_animation.clone());
-            assert!(pulse.is_some());
-            let (p_from, p_to, _) = pulse.unwrap();
-            assert_eq!(p_from, "HOLD");
-            assert_eq!(p_to, "RETURNED");
-
-            // Same state line again: no transition pulse
-            let line3 = "RETURNED\r\n";
-            if let Some(matched) = crate::toolchain::traceability::parse_state_transition_line(line3, known_nodes) {
-                st.with_canvas_state_mut(|c| {
-                    let prev_node = c.live_state_node.clone();
-                    c.live_state_node = Some(matched.clone());
-                    c.selected_state_node = Some(matched.clone());
-                    if let Some(prev) = prev_node {
-                        if prev != matched {
-                            c.edge_pulse_animation = Some((prev, matched, std::time::Instant::now()));
-                        } else {
-                            c.edge_pulse_animation = None;
-                        }
-                    }
-                });
-            }
-            assert!(st.with_canvas_state(|c| c.edge_pulse_animation.is_none()));
+                }
+            });
         }
+        assert_eq!(
+            st.with_canvas_state(|c| c.live_state_node.clone())
+                .as_deref(),
+            Some("HOLD")
+        );
+        assert_eq!(
+            st.with_canvas_state(|c| c.selected_state_node.clone())
+                .as_deref(),
+            Some("HOLD")
+        );
+        assert!(st.with_canvas_state(|c| c.edge_pulse_animation.is_none()));
+
+        // Next state line: transition from HOLD -> RETURNED (prev != matched)
+        let line2 = "RETURNED\r\n";
+        if let Some(matched) =
+            crate::toolchain::traceability::parse_state_transition_line(line2, known_nodes)
+        {
+            st.with_canvas_state_mut(|c| {
+                let prev_node = c.live_state_node.clone();
+                c.live_state_node = Some(matched.clone());
+                c.selected_state_node = Some(matched.clone());
+                if let Some(prev) = prev_node {
+                    if prev != matched {
+                        c.edge_pulse_animation = Some((prev, matched, std::time::Instant::now()));
+                    }
+                }
+            });
+        }
+        assert_eq!(
+            st.with_canvas_state(|c| c.live_state_node.clone())
+                .as_deref(),
+            Some("RETURNED")
+        );
+        assert_eq!(
+            st.with_canvas_state(|c| c.selected_state_node.clone())
+                .as_deref(),
+            Some("RETURNED")
+        );
+        let pulse = st.with_canvas_state(|c| c.edge_pulse_animation.clone());
+        assert!(pulse.is_some());
+        let (p_from, p_to, _) = pulse.unwrap();
+        assert_eq!(p_from, "HOLD");
+        assert_eq!(p_to, "RETURNED");
+
+        // Same state line again: no transition pulse
+        let line3 = "RETURNED\r\n";
+        if let Some(matched) =
+            crate::toolchain::traceability::parse_state_transition_line(line3, known_nodes)
+        {
+            st.with_canvas_state_mut(|c| {
+                let prev_node = c.live_state_node.clone();
+                c.live_state_node = Some(matched.clone());
+                c.selected_state_node = Some(matched.clone());
+                if let Some(prev) = prev_node {
+                    if prev != matched {
+                        c.edge_pulse_animation = Some((prev, matched, std::time::Instant::now()));
+                    } else {
+                        c.edge_pulse_animation = None;
+                    }
+                }
+            });
+        }
+        assert!(st.with_canvas_state(|c| c.edge_pulse_animation.is_none()));
     }
-
-
-
-
+}

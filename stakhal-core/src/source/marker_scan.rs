@@ -1,6 +1,6 @@
+use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
-use serde::{Deserialize, Serialize};
 use tree_sitter::Parser;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -42,10 +42,8 @@ enum MarkerType {
 fn parse_comment_marker(text: &str) -> Option<MarkerType> {
     let inner = if let Some(stripped) = text.strip_prefix("/*") {
         stripped.strip_suffix("*/").unwrap_or(stripped)
-    } else if let Some(stripped) = text.strip_prefix("//") {
-        stripped
     } else {
-        return None;
+        text.strip_prefix("//")?
     };
 
     let trimmed = inner.trim();
@@ -189,7 +187,6 @@ pub fn is_byte_in_user_region(byte_offset: usize, regions: &[UserRegion]) -> boo
         .iter()
         .any(|r| byte_offset >= r.byte_range.0 && byte_offset < r.byte_range.1)
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -429,4 +426,3 @@ while (1) {
         assert!(!is_byte_in_user_region(100, &regions)); // end byte -> false
     }
 }
-

@@ -8,14 +8,14 @@ use crate::source::marker_scan::{scan_file, ScanError};
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PvDeclaration {
     pub name: String,
-    pub type_str: String,              // e.g. "uint32_t", "float", "TIM_HandleTypeDef"
+    pub type_str: String, // e.g. "uint32_t", "float", "TIM_HandleTypeDef"
     pub initial_value: Option<String>, // e.g. "0", "3.14f" - None if uninitialized
     pub is_pointer: bool,
     pub is_array: bool,
     pub array_dims: Option<String>, // raw text inside [], e.g. "64" - None if not an array
     pub raw_text: String, // the exact full declaration statement text, verbatim, as a fallback for display even if structured fields are imperfect
     pub byte_range: (usize, usize), // full declaration statement's span in the whole file (not region-relative) - needed later for write-back of a single declaration
-    pub line: usize, // 1-indexed line number where the declaration statement begins
+    pub line: usize,                // 1-indexed line number where the declaration statement begins
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -145,7 +145,6 @@ fn process_declaration_node(
         });
     }
 }
-
 
 fn is_declarator_node(kind: &str) -> bool {
     matches!(
@@ -279,8 +278,12 @@ fn parse_declarator(node: tree_sitter::Node, source_bytes: &[u8]) -> DeclaratorI
                 .to_string();
         }
         _ => {
-            info.name = find_first_identifier(node, source_bytes)
-                .unwrap_or_else(|| node.utf8_text(source_bytes).unwrap_or("").trim().to_string());
+            info.name = find_first_identifier(node, source_bytes).unwrap_or_else(|| {
+                node.utf8_text(source_bytes)
+                    .unwrap_or("")
+                    .trim()
+                    .to_string()
+            });
         }
     }
 
@@ -399,7 +402,6 @@ TIM_HandleTypeDef *htim2;
         assert!(!decl.is_array);
         assert_eq!(decl.line, 3);
     }
-
 
     #[test]
     fn test_pv_region_with_only_comments() {

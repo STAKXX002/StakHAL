@@ -19,7 +19,7 @@ pub fn discover_project_files(project_dir: &Path) -> Result<(PathBuf, PathBuf), 
 
     for entry in read_dir.flatten() {
         let path = entry.path();
-        if path.is_file() && path.extension().map_or(false, |ext| ext == "ioc") {
+        if path.is_file() && path.extension().is_some_and(|ext| ext == "ioc") {
             ioc_files.push(path);
         }
     }
@@ -29,7 +29,12 @@ pub fn discover_project_files(project_dir: &Path) -> Result<(PathBuf, PathBuf), 
     let ioc_path = match ioc_files.len() {
         0 => return Err(DiscoveryError::NoIocFound(project_dir.to_path_buf())),
         1 => ioc_files.remove(0),
-        _ => return Err(DiscoveryError::MultipleIocFound(project_dir.to_path_buf(), ioc_files)),
+        _ => {
+            return Err(DiscoveryError::MultipleIocFound(
+                project_dir.to_path_buf(),
+                ioc_files,
+            ))
+        }
     };
 
     let candidate1 = project_dir.join("Core").join("Src").join("main.c");
@@ -106,7 +111,10 @@ mod tests {
         let res = discover_project_files(dir.path());
         if let Err(DiscoveryError::NoMainCFound(candidates)) = res {
             assert_eq!(candidates.len(), 2);
-            assert_eq!(candidates[0], dir.path().join("Core").join("Src").join("main.c"));
+            assert_eq!(
+                candidates[0],
+                dir.path().join("Core").join("Src").join("main.c")
+            );
             assert_eq!(candidates[1], dir.path().join("Src").join("main.c"));
         } else {
             panic!("Expected NoMainCFound, got {:?}", res);

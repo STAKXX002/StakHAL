@@ -13,7 +13,6 @@ use stakhal_core::source::{
     scan_file, LineTier,
 };
 
-
 #[test]
 fn test_real_cubemx_project_regression() {
     let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
@@ -46,8 +45,8 @@ fn test_real_cubemx_project_regression() {
         .expect("find_loop_body_gap returned None on real CubeMX project");
     assert_eq!(loop_body_gap.tag, "__loop_body__");
 
-    let source_content =
-        fs::read_to_string(&main_c_path).expect("failed to read main.c content for slice assertion");
+    let source_content = fs::read_to_string(&main_c_path)
+        .expect("failed to read main.c content for slice assertion");
     let gap_content = &source_content[loop_body_gap.byte_range.0..loop_body_gap.byte_range.1];
 
     assert!(
@@ -86,8 +85,8 @@ fn test_stm32_03_timers_regression() {
         .expect("find_loop_body_gap returned None on 03_timers project");
     assert_eq!(loop_body_gap.tag, "__loop_body__");
 
-    let source_content =
-        fs::read_to_string(&main_c_path).expect("failed to read main.c content for slice assertion");
+    let source_content = fs::read_to_string(&main_c_path)
+        .expect("failed to read main.c content for slice assertion");
     let gap_content = &source_content[loop_body_gap.byte_range.0..loop_body_gap.byte_range.1];
 
     assert!(
@@ -169,7 +168,6 @@ fn test_stm32_03_timers_pv_extract_regression() {
 
 #[test]
 fn test_stm32_03_timers_usage_finder_regression() {
-
     let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
     let fixture_dir = manifest_dir.join("tests/fixtures/stm32_03_timers");
     let main_c_path = fixture_dir.join("Core/Src/main.c");
@@ -180,9 +178,15 @@ fn test_stm32_03_timers_usage_finder_regression() {
     let usages = find_variable_usages(&main_c_path, &isr_count.name, isr_count.byte_range)
         .expect("find_variable_usages failed");
 
-    assert!(!usages.is_empty(), "Expected at least one usage of isrCount");
+    assert!(
+        !usages.is_empty(),
+        "Expected at least one usage of isrCount"
+    );
 
-    let callback_usage = usages.iter().find(|u| u.line == 496).expect("Expected usage at line 496 in HAL_TIM_PeriodElapsedCallback");
+    let callback_usage = usages
+        .iter()
+        .find(|u| u.line == 496)
+        .expect("Expected usage at line 496 in HAL_TIM_PeriodElapsedCallback");
     assert_eq!(callback_usage.context_snippet, "isrCount++;");
 }
 
@@ -200,13 +204,9 @@ fn test_stm32_03_timers_render_model_regression() {
         .expect("find_variable_usages failed");
     let usage_ranges: Vec<(usize, usize)> = usages.iter().map(|u| u.byte_range).collect();
 
-    let model = build_source_render_model(
-        &main_c_path,
-        &regions,
-        isr_count.byte_range,
-        &usage_ranges,
-    )
-    .expect("build_source_render_model failed");
+    let model =
+        build_source_render_model(&main_c_path, &regions, isr_count.byte_range, &usage_ranges)
+            .expect("build_source_render_model failed");
 
     let decl_line = model.iter().find(|l| l.line_number == 52).unwrap();
     assert_eq!(decl_line.tier, LineTier::Declaration);

@@ -1,6 +1,6 @@
-use std::path::Path;
 use stakhal_core::graph::compute_state_machine_layout;
 use stakhal_core::ir::schema::load_project;
+use std::path::Path;
 
 #[test]
 fn generate_or_verify_snapshots() {
@@ -13,23 +13,38 @@ fn generate_or_verify_snapshots() {
     let df_ioc = df_root.join("docking_firmware.ioc");
     let df_main = df_root.join("Core/Src/main.c");
     let df_proj = load_project(&df_ioc, &df_main).expect("load docking_firmware");
-    let df_layouts: Vec<_> = df_proj.state_machines.iter().map(compute_state_machine_layout).collect();
+    let df_layouts: Vec<_> = df_proj
+        .state_machines
+        .iter()
+        .map(compute_state_machine_layout)
+        .collect();
 
     // 2. docking_firmware_v2
     let df2_root = manifest_dir.join("tests/fixtures/docking_firmware_v2");
     let df2_ioc = df2_root.join("docking_firmware_v2.ioc");
     let df2_main = df2_root.join("Core/Src/main.c");
     let df2_proj = load_project(&df2_ioc, &df2_main).expect("load docking_firmware_v2");
-    let df2_layouts: Vec<_> = df2_proj.state_machines.iter().map(compute_state_machine_layout).collect();
+    let df2_layouts: Vec<_> = df2_proj
+        .state_machines
+        .iter()
+        .map(compute_state_machine_layout)
+        .collect();
 
     // 3. aa_ns_stm_port
     let aa_root = manifest_dir.join("tests/fixtures/aa_ns_stm_port");
     let aa_ioc = aa_root.join("aa_ns_stm_port.ioc");
     let aa_main = aa_root.join("Core/Src/main.c");
     let aa_proj = load_project(&aa_ioc, &aa_main).expect("load aa_ns_stm_port");
-    let aa_layouts: Vec<_> = aa_proj.state_machines.iter().map(compute_state_machine_layout).collect();
+    let aa_layouts: Vec<_> = aa_proj
+        .state_machines
+        .iter()
+        .map(compute_state_machine_layout)
+        .collect();
 
-    fn normalize_sm(manifest_dir: &Path, sm: &stakhal_core::graph::AppStateMachine) -> stakhal_core::graph::AppStateMachine {
+    fn normalize_sm(
+        manifest_dir: &Path,
+        sm: &stakhal_core::graph::AppStateMachine,
+    ) -> stakhal_core::graph::AppStateMachine {
         let mut sm = sm.clone();
         let manifest_str = manifest_dir.to_string_lossy();
         if let Some(stripped) = sm.enum_def.file_path.strip_prefix(manifest_str.as_ref()) {
@@ -52,7 +67,8 @@ fn generate_or_verify_snapshots() {
             node.collapsed_out_badges.sort();
             nodes.insert(k.clone(), node);
         }
-        let round_pt = |(x, y): (f64, f64)| ((x * 1000.0).round() / 1000.0, (y * 1000.0).round() / 1000.0);
+        let round_pt =
+            |(x, y): (f64, f64)| ((x * 1000.0).round() / 1000.0, (y * 1000.0).round() / 1000.0);
         let mut edges = Vec::new();
         for e in &l.edges {
             let mut edge = e.clone();
@@ -93,11 +109,23 @@ fn generate_or_verify_snapshots() {
     }
 
     let data = SnapshotData {
-        df_sms: df_proj.state_machines.iter().map(|sm| normalize_sm(manifest_dir, sm)).collect(),
+        df_sms: df_proj
+            .state_machines
+            .iter()
+            .map(|sm| normalize_sm(manifest_dir, sm))
+            .collect(),
         df_layouts: df_layouts.iter().map(normalize_layout).collect(),
-        df2_sms: df2_proj.state_machines.iter().map(|sm| normalize_sm(manifest_dir, sm)).collect(),
+        df2_sms: df2_proj
+            .state_machines
+            .iter()
+            .map(|sm| normalize_sm(manifest_dir, sm))
+            .collect(),
         df2_layouts: df2_layouts.iter().map(normalize_layout).collect(),
-        aa_sms: aa_proj.state_machines.iter().map(|sm| normalize_sm(manifest_dir, sm)).collect(),
+        aa_sms: aa_proj
+            .state_machines
+            .iter()
+            .map(|sm| normalize_sm(manifest_dir, sm))
+            .collect(),
         aa_layouts: aa_layouts.iter().map(normalize_layout).collect(),
     };
 
@@ -108,14 +136,18 @@ fn generate_or_verify_snapshots() {
     if regenerate {
         std::fs::create_dir_all(&snapshot_dir).expect("failed to create snapshot dir");
         std::fs::write(&snapshot_file, &serialized).expect("failed to write snapshot file");
-        println!("Regenerated baseline snapshot at {}", snapshot_file.display());
+        println!(
+            "Regenerated baseline snapshot at {}",
+            snapshot_file.display()
+        );
     } else {
         assert!(
             snapshot_file.exists(),
             "Snapshot file does not exist at {}. In CI, the baseline snapshot must already be committed. For local regeneration, run with STAKHAL_REGENERATE_SNAPSHOTS=1.",
             snapshot_file.display()
         );
-        let expected_json = std::fs::read_to_string(&snapshot_file).expect("failed to read baseline snapshot");
+        let expected_json =
+            std::fs::read_to_string(&snapshot_file).expect("failed to read baseline snapshot");
         let expected_json = expected_json.replace("\r\n", "\n");
         assert_eq!(
             serialized,

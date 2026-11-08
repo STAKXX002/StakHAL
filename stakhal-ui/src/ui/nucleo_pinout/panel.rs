@@ -1,5 +1,5 @@
-use gtk4::prelude::*;
 use crate::state::create_icon_button;
+use gtk4::prelude::*;
 
 pub struct NucleoPinoutPanelWidgets {
     pub pinout_panel_box: gtk4::Box,
@@ -70,4 +70,3 @@ pub fn build_nucleo_pinout_panel() -> NucleoPinoutPanelWidgets {
         combo_pinout_module,
     }
 }
-

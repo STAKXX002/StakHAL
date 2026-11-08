@@ -14,4 +14,3 @@ serialport = "4.10"
 
 [dev-dependencies]
 cairo-rs = { version = "0.20", features = ["png"] }
-

@@ -24,7 +24,8 @@ pub fn find_variable_usages(
     variable_name: &str,
     declaration_byte_range: (usize, usize),
 ) -> Result<Vec<UsageSite>, ScanError> {
-    let mut batch_res = find_variable_usages_batch(path, &[(variable_name, declaration_byte_range)])?;
+    let mut batch_res =
+        find_variable_usages_batch(path, &[(variable_name, declaration_byte_range)])?;
     Ok(batch_res.pop().unwrap_or_default())
 }
 
@@ -60,7 +61,8 @@ pub fn find_variable_usages_batch_from_source(
 
     let lines: Vec<&str> = source.lines().collect();
 
-    let mut target_map: std::collections::HashMap<&str, Vec<usize>> = std::collections::HashMap::new();
+    let mut target_map: std::collections::HashMap<&str, Vec<usize>> =
+        std::collections::HashMap::new();
     for (idx, (name, _)) in targets.iter().enumerate() {
         target_map.entry(name.trim()).or_default().push(idx);
     }
@@ -123,7 +125,6 @@ fn walk_and_collect_usages_batch(
         walk_and_collect_usages_batch(child, targets, target_map, source_bytes, lines, results);
     }
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -237,4 +238,3 @@ void check(void) {
         assert_eq!(batch_usages[2].len(), 0);
     }
 }
-

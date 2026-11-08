@@ -15,5 +15,3 @@ pub use pv_extract::{extract_pv_declarations, PvDeclaration, PvExtractError};
 pub use render_model::{build_source_render_model, LineTier, RenderedLine};
 pub use usage_finder::{find_variable_usages, UsageSite};
 pub use writeback::{write_region, WritebackError};
-
-

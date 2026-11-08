@@ -1,7 +1,7 @@
-use std::collections::{HashMap, HashSet};
-use serde::{Deserialize, Serialize};
 use super::builder::{EdgeType, GraphEdge};
 use super::hal_rules::mapping_for_irq_handler;
+use serde::{Deserialize, Serialize};
+use std::collections::{HashMap, HashSet};
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct ChainHeaderLayout {
@@ -27,11 +27,13 @@ struct PeripheralLane {
     irq_chains: Vec<IrqChainInfo>,
 }
 
-
 fn infer_peripheral_name(handler_id: &str, known_init_periphs: &[String]) -> String {
     for p in known_init_periphs {
         if let Some(rest) = handler_id.strip_prefix(p) {
-            if rest.is_empty() || rest.starts_with('_') || !rest.chars().next().unwrap().is_ascii_digit() {
+            if rest.is_empty()
+                || rest.starts_with('_')
+                || !rest.chars().next().unwrap().is_ascii_digit()
+            {
                 return p.clone();
             }
         }
@@ -171,9 +173,7 @@ pub fn compute_graph_layout(
             }
         }
 
-        let max_node_w = lane_nodes_w
-            .into_iter()
-            .fold(160.0f64, |acc, x| acc.max(x));
+        let max_node_w = lane_nodes_w.into_iter().fold(160.0f64, |acc, x| acc.max(x));
 
         let lane_w = max_node_w;
         let lane_start_x = current_lane_x;
@@ -238,11 +238,12 @@ pub fn compute_graph_layout(
     }
 
     // 5. Position main centered above all lanes
-    let (first_x, last_x) = if let (Some(f), Some(l)) = (lane_x_bounds.first(), lane_x_bounds.last()) {
-        (f.0, l.1)
-    } else {
-        (40.0, 200.0)
-    };
+    let (first_x, last_x) =
+        if let (Some(f), Some(l)) = (lane_x_bounds.first(), lane_x_bounds.last()) {
+            (f.0, l.1)
+        } else {
+            (40.0, 200.0)
+        };
 
     let main_w = 110.0;
     let main_center_x = (first_x + last_x) / 2.0;
@@ -298,7 +299,10 @@ mod tests {
         let collapsed = HashSet::new();
         let (pos, headers) = compute_graph_layout(&edges, &collapsed);
         assert!(pos.is_empty(), "Position map should be empty for no edges");
-        assert!(headers.is_empty(), "Chain headers should be empty for no edges");
+        assert!(
+            headers.is_empty(),
+            "Chain headers should be empty for no edges"
+        );
     }
 
     #[test]
@@ -313,13 +317,19 @@ mod tests {
         let (pos, _headers) = compute_graph_layout(&edges, &collapsed);
 
         assert!(pos.contains_key("main"), "Layout must position 'main' node");
-        assert!(pos.contains_key("MX_GPIO_Init"), "Layout must position target init node");
+        assert!(
+            pos.contains_key("MX_GPIO_Init"),
+            "Layout must position target init node"
+        );
 
         let main_pos = pos.get("main").unwrap();
         assert_eq!(main_pos.1, 50.0, "Main node should be placed at y=50.0");
 
         let init_pos = pos.get("MX_GPIO_Init").unwrap();
-        assert!(init_pos.1 > main_pos.1, "Init node must be positioned below main node (depth 0)");
+        assert!(
+            init_pos.1 > main_pos.1,
+            "Init node must be positioned below main node (depth 0)"
+        );
     }
 
     #[test]
@@ -357,10 +367,22 @@ mod tests {
         let dispatch_y = pos.get("HAL_UART_IRQHandler").unwrap().1;
         let callback_y = pos.get("HAL_UART_RxCpltCallback").unwrap().1;
 
-        assert!(main_y < init_y, "main (y={main_y}) must be above Init (y={init_y})");
-        assert!(init_y < irq_y, "Init (y={init_y}) must be above IRQ Handler (y={irq_y})");
-        assert!(irq_y < dispatch_y, "IRQ Handler (y={irq_y}) must be above HAL Dispatch (y={dispatch_y})");
-        assert!(dispatch_y < callback_y, "HAL Dispatch (y={dispatch_y}) must be above Callback (y={callback_y})");
+        assert!(
+            main_y < init_y,
+            "main (y={main_y}) must be above Init (y={init_y})"
+        );
+        assert!(
+            init_y < irq_y,
+            "Init (y={init_y}) must be above IRQ Handler (y={irq_y})"
+        );
+        assert!(
+            irq_y < dispatch_y,
+            "IRQ Handler (y={irq_y}) must be above HAL Dispatch (y={dispatch_y})"
+        );
+        assert!(
+            dispatch_y < callback_y,
+            "HAL Dispatch (y={dispatch_y}) must be above Callback (y={callback_y})"
+        );
 
         // Assert all nodes in USART2 lane share the same center X alignment
         let init_x = pos.get("MX_USART2_Init").unwrap().0;
@@ -369,10 +391,17 @@ mod tests {
 
         let init_center = init_x + ("MX_USART2_Init".len() as f64 * 8.5 + 28.0).max(110.0) / 2.0;
         let irq_center = irq_x + ("USART2_IRQHandler".len() as f64 * 8.5 + 28.0).max(120.0) / 2.0;
-        let dispatch_center = dispatch_x + ("HAL_UART_IRQHandler".len() as f64 * 8.5 + 28.0).max(120.0) / 2.0;
+        let dispatch_center =
+            dispatch_x + ("HAL_UART_IRQHandler".len() as f64 * 8.5 + 28.0).max(120.0) / 2.0;
 
-        assert!((init_center - irq_center).abs() < 1.0, "Init and IRQ handler should be centered in the same lane");
-        assert!((irq_center - dispatch_center).abs() < 1.0, "IRQ handler and HAL dispatch should be centered in the same lane");
+        assert!(
+            (init_center - irq_center).abs() < 1.0,
+            "Init and IRQ handler should be centered in the same lane"
+        );
+        assert!(
+            (irq_center - dispatch_center).abs() < 1.0,
+            "IRQ handler and HAL dispatch should be centered in the same lane"
+        );
     }
 
     #[test]
@@ -394,5 +423,3 @@ mod tests {
         assert!(h >= 390, "Height should include max_y + padding");
     }
 }
-
-

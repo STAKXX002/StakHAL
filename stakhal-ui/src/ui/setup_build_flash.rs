@@ -1,10 +1,10 @@
-use std::cell::RefCell;
-use std::path::PathBuf;
-use std::rc::Rc;
 use gtk4::glib;
 use gtk4::prelude::*;
 use libadwaita as adw;
 use libadwaita::prelude::*;
+use std::cell::RefCell;
+use std::path::PathBuf;
+use std::rc::Rc;
 
 use crate::append_log_text;
 use crate::state::{AppState, AppWidgets};
@@ -192,26 +192,43 @@ pub fn execute_build_pipeline(
         Ok(hash) => {
             append_log_text(
                 &widgets.build_log_view,
-                &format!("[TRACE] Generated Core/Inc/stakhal_build_info.h (STAKHAL_BUILD_HASH: \"{}\")", hash),
+                &format!(
+                    "[TRACE] Generated Core/Inc/stakhal_build_info.h (STAKHAL_BUILD_HASH: \"{}\")",
+                    hash
+                ),
             );
         }
         Err(err) => {
             append_log_text(
                 &widgets.build_log_view,
-                &format!("[TRACE WARNING] Failed to generate build info header: {}", err),
+                &format!(
+                    "[TRACE WARNING] Failed to generate build info header: {}",
+                    err
+                ),
             );
         }
     }
 
-    append_log_text(&widgets.build_log_view, "============================================================");
-    append_log_text(&widgets.build_log_view, &format!("[BUILD] [{}] Running `{} {}` in {}", build_sys.display_name(), cmd, args.join(" "), exec_dir.display()));
-    append_log_text(&widgets.build_log_view, "============================================================");
-
-    let rx = toolchain::runner::spawn_streaming_process(
-        cmd.clone(),
-        args,
-        exec_dir,
+    append_log_text(
+        &widgets.build_log_view,
+        "============================================================",
     );
+    append_log_text(
+        &widgets.build_log_view,
+        &format!(
+            "[BUILD] [{}] Running `{} {}` in {}",
+            build_sys.display_name(),
+            cmd,
+            args.join(" "),
+            exec_dir.display()
+        ),
+    );
+    append_log_text(
+        &widgets.build_log_view,
+        "============================================================",
+    );
+
+    let rx = toolchain::runner::spawn_streaming_process(cmd.clone(), args, exec_dir);
 
     let state_timer = Rc::clone(state);
     let widgets_timer = Rc::clone(widgets);
@@ -237,17 +254,41 @@ pub fn execute_build_pipeline(
 
         if let Some((success, code)) = finished {
             if success {
-                append_log_text(&widgets_timer.build_log_view, &format!("\n[BUILD SUCCESS] `{}` finished successfully.", cmd));
-                let res = toolchain::builder::resolve_artifact_for_build_system(&dir_timer, &build_sys_timer);
+                append_log_text(
+                    &widgets_timer.build_log_view,
+                    &format!("\n[BUILD SUCCESS] `{}` finished successfully.", cmd),
+                );
+                let res = toolchain::builder::resolve_artifact_for_build_system(
+                    &dir_timer,
+                    &build_sys_timer,
+                );
                 match res {
                     toolchain::makefile::ArtifactResolution::Exact(bin_path) => {
-                        append_log_text(&widgets_timer.build_log_view, &format!("[ARTIFACT] Resolved output binary: {}", bin_path.display()));
+                        append_log_text(
+                            &widgets_timer.build_log_view,
+                            &format!("[ARTIFACT] Resolved output binary: {}", bin_path.display()),
+                        );
                         if flash_after_build {
-                            update_build_status(&widgets_timer.lbl_build_status, "PROBING...", StatusKind::Active);
-                            run_probe_detection_and_flash(bin_path, &state_timer, &widgets_timer, dir_timer.clone());
+                            update_build_status(
+                                &widgets_timer.lbl_build_status,
+                                "PROBING...",
+                                StatusKind::Active,
+                            );
+                            run_probe_detection_and_flash(
+                                bin_path,
+                                &state_timer,
+                                &widgets_timer,
+                                dir_timer.clone(),
+                            );
                         } else {
-                            update_build_status(&widgets_timer.lbl_build_status, "SUCCESS", StatusKind::Ready);
-                            widgets_timer.toast_overlay.add_toast(adw::Toast::new("[OK] Build succeeded"));
+                            update_build_status(
+                                &widgets_timer.lbl_build_status,
+                                "SUCCESS",
+                                StatusKind::Ready,
+                            );
+                            widgets_timer
+                                .toast_overlay
+                                .add_toast(adw::Toast::new("[OK] Build succeeded"));
                             let has_build_system = {
                                 let st = state_timer.borrow();
                                 let mut bt = st.build_trace.borrow_mut();
@@ -255,17 +296,32 @@ pub fn execute_build_pipeline(
                                 bt.has_build_system
                             };
                             widgets_timer.btn_build.set_sensitive(has_build_system);
-                            widgets_timer.btn_build_flash.set_sensitive(has_build_system);
+                            widgets_timer
+                                .btn_build_flash
+                                .set_sensitive(has_build_system);
                             update_traceability_ui(&state_timer, &widgets_timer);
                         }
                     }
                     toolchain::makefile::ArtifactResolution::MultipleCandidates(candidates) => {
-                        append_log_text(&widgets_timer.build_log_view, &format!("[ARTIFACT] Found {} candidate .bin files in build directory:", candidates.len()));
+                        append_log_text(
+                            &widgets_timer.build_log_view,
+                            &format!(
+                                "[ARTIFACT] Found {} candidate .bin files in build directory:",
+                                candidates.len()
+                            ),
+                        );
                         for c in &candidates {
-                            append_log_text(&widgets_timer.build_log_view, &format!("  - {}", c.display()));
+                            append_log_text(
+                                &widgets_timer.build_log_view,
+                                &format!("  - {}", c.display()),
+                            );
                         }
                         if flash_after_build {
-                            update_build_status(&widgets_timer.lbl_build_status, "SELECT ARTIFACT", StatusKind::Active);
+                            update_build_status(
+                                &widgets_timer.lbl_build_status,
+                                "SELECT ARTIFACT",
+                                StatusKind::Active,
+                            );
 
                             let dialog = adw::MessageDialog::builder()
                                 .heading("Multiple Build Artifacts Found")
@@ -285,14 +341,32 @@ pub fn execute_build_pipeline(
                                 if resp != "cancel" {
                                     if let Ok(idx) = resp.parse::<usize>() {
                                         if let Some(chosen) = cand_clone.get(idx) {
-                                            append_log_text(&widgets_dlg.build_log_view, &format!("[ARTIFACT] Selected candidate: {}", chosen.display()));
-                                            run_probe_detection_and_flash(chosen.clone(), &state_dlg, &widgets_dlg, dir_clone.clone());
+                                            append_log_text(
+                                                &widgets_dlg.build_log_view,
+                                                &format!(
+                                                    "[ARTIFACT] Selected candidate: {}",
+                                                    chosen.display()
+                                                ),
+                                            );
+                                            run_probe_detection_and_flash(
+                                                chosen.clone(),
+                                                &state_dlg,
+                                                &widgets_dlg,
+                                                dir_clone.clone(),
+                                            );
                                             return;
                                         }
                                     }
                                 }
-                                append_log_text(&widgets_dlg.build_log_view, "[ARTIFACT] Operation cancelled by user.");
-                                update_build_status(&widgets_dlg.lbl_build_status, "CANCELLED", StatusKind::Idle);
+                                append_log_text(
+                                    &widgets_dlg.build_log_view,
+                                    "[ARTIFACT] Operation cancelled by user.",
+                                );
+                                update_build_status(
+                                    &widgets_dlg.lbl_build_status,
+                                    "CANCELLED",
+                                    StatusKind::Idle,
+                                );
                                 let has_build_system = {
                                     let st = state_dlg.borrow();
                                     let mut bt = st.build_trace.borrow_mut();
@@ -305,8 +379,14 @@ pub fn execute_build_pipeline(
                             });
                             dialog.present();
                         } else {
-                            update_build_status(&widgets_timer.lbl_build_status, "SUCCESS", StatusKind::Ready);
-                            widgets_timer.toast_overlay.add_toast(adw::Toast::new("[OK] Build succeeded"));
+                            update_build_status(
+                                &widgets_timer.lbl_build_status,
+                                "SUCCESS",
+                                StatusKind::Ready,
+                            );
+                            widgets_timer
+                                .toast_overlay
+                                .add_toast(adw::Toast::new("[OK] Build succeeded"));
                             let has_build_system = {
                                 let st = state_timer.borrow();
                                 let mut bt = st.build_trace.borrow_mut();
@@ -314,13 +394,19 @@ pub fn execute_build_pipeline(
                                 bt.has_build_system
                             };
                             widgets_timer.btn_build.set_sensitive(has_build_system);
-                            widgets_timer.btn_build_flash.set_sensitive(has_build_system);
+                            widgets_timer
+                                .btn_build_flash
+                                .set_sensitive(has_build_system);
                             update_traceability_ui(&state_timer, &widgets_timer);
                         }
                     }
                     toolchain::makefile::ArtifactResolution::NoneFound(expected) => {
                         append_log_text(&widgets_timer.build_log_view, &format!("[ERROR] Build succeeded but target .bin was not found. Expected: {}", expected.display()));
-                        update_build_status(&widgets_timer.lbl_build_status, "ARTIFACT MISSING", StatusKind::Error);
+                        update_build_status(
+                            &widgets_timer.lbl_build_status,
+                            "ARTIFACT MISSING",
+                            StatusKind::Error,
+                        );
                         let has_build_system = {
                             let st = state_timer.borrow();
                             let mut bt = st.build_trace.borrow_mut();
@@ -328,15 +414,33 @@ pub fn execute_build_pipeline(
                             bt.has_build_system
                         };
                         widgets_timer.btn_build.set_sensitive(has_build_system);
-                        widgets_timer.btn_build_flash.set_sensitive(has_build_system);
+                        widgets_timer
+                            .btn_build_flash
+                            .set_sensitive(has_build_system);
                         update_traceability_ui(&state_timer, &widgets_timer);
                     }
                 }
             } else {
-                let code_str = code.map(|c| c.to_string()).unwrap_or_else(|| "unknown".to_string());
-                let action_type = if flash_after_build { "Flashing halted." } else { "Build failed." };
-                append_log_text(&widgets_timer.build_log_view, &format!("\n[BUILD FAILED] {} exited with error code {}. {}", cmd, code_str, action_type));
-                update_build_status(&widgets_timer.lbl_build_status, "BUILD FAILED", StatusKind::Error);
+                let code_str = code
+                    .map(|c| c.to_string())
+                    .unwrap_or_else(|| "unknown".to_string());
+                let action_type = if flash_after_build {
+                    "Flashing halted."
+                } else {
+                    "Build failed."
+                };
+                append_log_text(
+                    &widgets_timer.build_log_view,
+                    &format!(
+                        "\n[BUILD FAILED] {} exited with error code {}. {}",
+                        cmd, code_str, action_type
+                    ),
+                );
+                update_build_status(
+                    &widgets_timer.lbl_build_status,
+                    "BUILD FAILED",
+                    StatusKind::Error,
+                );
                 let has_build_system = {
                     let st = state_timer.borrow();
                     let mut bt = st.build_trace.borrow_mut();
@@ -344,7 +448,9 @@ pub fn execute_build_pipeline(
                     bt.has_build_system
                 };
                 widgets_timer.btn_build.set_sensitive(has_build_system);
-                widgets_timer.btn_build_flash.set_sensitive(has_build_system);
+                widgets_timer
+                    .btn_build_flash
+                    .set_sensitive(has_build_system);
                 update_traceability_ui(&state_timer, &widgets_timer);
             }
 
@@ -402,9 +508,7 @@ fn apply_traceability_status_to_label(
         toolchain::traceability::TraceabilityStatus::Diverged { hash } => {
             label.set_text(&format!("BUILD: {} (Diverged)", hash));
             label.add_css_class("status-error");
-            label.set_tooltip_text(Some(
-                "Board's build doesn't match this branch's history",
-            ));
+            label.set_tooltip_text(Some("Board's build doesn't match this branch's history"));
         }
     }
 }
@@ -423,9 +527,7 @@ pub fn update_traceability_ui(state: &Rc<RefCell<AppState>>, widgets: &Rc<AppWid
     };
 
     let status = match (&project_dir, &captured_hash) {
-        (Some(dir), Some(hash)) => {
-            toolchain::traceability::compare_build_hash_to_head(dir, hash)
-        }
+        (Some(dir), Some(hash)) => toolchain::traceability::compare_build_hash_to_head(dir, hash),
         _ => toolchain::traceability::TraceabilityStatus::Unknown,
     };
     apply_traceability_status_to_label(&widgets.lbl_build_traceability, &status);
@@ -455,7 +557,11 @@ pub fn update_traceability_ui(state: &Rc<RefCell<AppState>>, widgets: &Rc<AppWid
             let is_git = toolchain::traceability::is_git_repository(&dir);
             let is_enabled = toolchain::traceability::is_traceability_enabled_in_source(&main_c);
 
-            state.borrow().build_trace.borrow_mut().is_traceability_enabled = is_enabled;
+            state
+                .borrow()
+                .build_trace
+                .borrow_mut()
+                .is_traceability_enabled = is_enabled;
 
             if !is_git {
                 widgets.btn_enable_traceability.set_sensitive(false);
@@ -494,22 +600,50 @@ pub fn run_probe_detection_and_flash(
     widgets: &Rc<AppWidgets>,
     project_dir: PathBuf,
 ) {
-    append_log_text(&widgets.build_log_view, "\n============================================================");
-    append_log_text(&widgets.build_log_view, "[PROBE] Scanning for connected ST-Link programmers (`st-info --probe`)...");
-    append_log_text(&widgets.build_log_view, "============================================================");
+    append_log_text(
+        &widgets.build_log_view,
+        "\n============================================================",
+    );
+    append_log_text(
+        &widgets.build_log_view,
+        "[PROBE] Scanning for connected ST-Link programmers (`st-info --probe`)...",
+    );
+    append_log_text(
+        &widgets.build_log_view,
+        "============================================================",
+    );
 
     match toolchain::probe::detect_stlink_probes() {
         Ok(probes) => {
             if probes.len() == 1 {
                 let p = &probes[0];
-                append_log_text(&widgets.build_log_view, &format!("[PROBE] Detected single target: {}", p.display_label()));
-                run_flash_stage(artifact, Some(p.serial.clone()), state, widgets, project_dir);
+                append_log_text(
+                    &widgets.build_log_view,
+                    &format!("[PROBE] Detected single target: {}", p.display_label()),
+                );
+                run_flash_stage(
+                    artifact,
+                    Some(p.serial.clone()),
+                    state,
+                    widgets,
+                    project_dir,
+                );
             } else {
-                append_log_text(&widgets.build_log_view, &format!("[PROBE] Detected {} ST-Link programmers:", probes.len()));
+                append_log_text(
+                    &widgets.build_log_view,
+                    &format!("[PROBE] Detected {} ST-Link programmers:", probes.len()),
+                );
                 for p in &probes {
-                    append_log_text(&widgets.build_log_view, &format!("  - {}", p.display_label()));
+                    append_log_text(
+                        &widgets.build_log_view,
+                        &format!("  - {}", p.display_label()),
+                    );
                 }
-                update_build_status(&widgets.lbl_build_status, "SELECT PROBE", StatusKind::Active);
+                update_build_status(
+                    &widgets.lbl_build_status,
+                    "SELECT PROBE",
+                    StatusKind::Active,
+                );
 
                 let dialog = adw::MessageDialog::builder()
                     .heading("Multiple ST-Link Probes Detected")
@@ -532,14 +666,30 @@ pub fn run_probe_detection_and_flash(
                     if resp != "cancel" {
                         if let Ok(idx) = resp.parse::<usize>() {
                             if let Some(chosen) = probes_clone.get(idx) {
-                                append_log_text(&widgets_dlg.build_log_view, &format!("[PROBE] Selected target: {}", chosen.display_label()));
-                                run_flash_stage(artifact_clone.clone(), Some(chosen.serial.clone()), &state_dlg, &widgets_dlg, dir_clone.clone());
+                                append_log_text(
+                                    &widgets_dlg.build_log_view,
+                                    &format!("[PROBE] Selected target: {}", chosen.display_label()),
+                                );
+                                run_flash_stage(
+                                    artifact_clone.clone(),
+                                    Some(chosen.serial.clone()),
+                                    &state_dlg,
+                                    &widgets_dlg,
+                                    dir_clone.clone(),
+                                );
                                 return;
                             }
                         }
                     }
-                    append_log_text(&widgets_dlg.build_log_view, "[PROBE] Flashing cancelled by user.");
-                    update_build_status(&widgets_dlg.lbl_build_status, "CANCELLED", StatusKind::Idle);
+                    append_log_text(
+                        &widgets_dlg.build_log_view,
+                        "[PROBE] Flashing cancelled by user.",
+                    );
+                    update_build_status(
+                        &widgets_dlg.lbl_build_status,
+                        "CANCELLED",
+                        StatusKind::Idle,
+                    );
                     let has_build_system = {
                         let st = state_dlg.borrow();
                         let mut bt = st.build_trace.borrow_mut();
@@ -556,12 +706,18 @@ pub fn run_probe_detection_and_flash(
         Err(err) => {
             append_log_text(&widgets.build_log_view, &format!("[ERROR] {}", err));
             let (txt, kind) = match err {
-                toolchain::probe::ProbeError::ToolNotFound => ("ST-INFO MISSING", StatusKind::Error),
+                toolchain::probe::ProbeError::ToolNotFound => {
+                    ("ST-INFO MISSING", StatusKind::Error)
+                }
                 toolchain::probe::ProbeError::ZeroProbesFound => ("NO PROBE", StatusKind::Active),
-                toolchain::probe::ProbeError::ExecutionFailed(_) => ("PROBE ERROR", StatusKind::Error),
+                toolchain::probe::ProbeError::ExecutionFailed(_) => {
+                    ("PROBE ERROR", StatusKind::Error)
+                }
             };
             update_build_status(&widgets.lbl_build_status, txt, kind);
-            widgets.toast_overlay.add_toast(adw::Toast::new(&format!("[ERROR] {}", err)));
+            widgets
+                .toast_overlay
+                .add_toast(adw::Toast::new(&format!("[ERROR] {}", err)));
             let has_build_system = {
                 let st = state.borrow();
                 let mut bt = st.build_trace.borrow_mut();
@@ -584,8 +740,14 @@ pub fn run_flash_stage(
 ) {
     if !toolchain::runner::is_executable_on_path("st-flash") {
         append_log_text(&widgets.build_log_view, "[ERROR] `st-flash` executable not found on PATH. Please install stlink-tools (e.g. `sudo apt install stlink-tools`).");
-        update_build_status(&widgets.lbl_build_status, "ST-FLASH MISSING", StatusKind::Error);
-        widgets.toast_overlay.add_toast(adw::Toast::new("[ERROR] `st-flash` not found on PATH"));
+        update_build_status(
+            &widgets.lbl_build_status,
+            "ST-FLASH MISSING",
+            StatusKind::Error,
+        );
+        widgets
+            .toast_overlay
+            .add_toast(adw::Toast::new("[ERROR] `st-flash` not found on PATH"));
         let has_build_system = {
             let st = state.borrow();
             let mut bt = st.build_trace.borrow_mut();
@@ -614,7 +776,9 @@ pub fn run_flash_stage(
                 .ok();
         }
         widgets.btn_connect_serial.set_label("Connect");
-        widgets.btn_connect_serial.remove_css_class("destructive-action");
+        widgets
+            .btn_connect_serial
+            .remove_css_class("destructive-action");
         widgets.btn_connect_serial.add_css_class("suggested-action");
         update_build_status(&widgets.lbl_serial_status, "DISCONNECTED", StatusKind::Idle);
         widgets.combo_port.set_sensitive(true);
@@ -625,9 +789,18 @@ pub fn run_flash_stage(
     let (cmd, args) = toolchain::flasher::build_flash_command(probe_serial.as_deref(), &artifact);
 
     update_build_status(&widgets.lbl_build_status, "FLASHING...", StatusKind::Active);
-    append_log_text(&widgets.build_log_view, "\n============================================================");
-    append_log_text(&widgets.build_log_view, &format!("[FLASH] Running `{} {}`", cmd, args.join(" ")));
-    append_log_text(&widgets.build_log_view, "============================================================");
+    append_log_text(
+        &widgets.build_log_view,
+        "\n============================================================",
+    );
+    append_log_text(
+        &widgets.build_log_view,
+        &format!("[FLASH] Running `{} {}`", cmd, args.join(" ")),
+    );
+    append_log_text(
+        &widgets.build_log_view,
+        "============================================================",
+    );
 
     let rx = toolchain::runner::spawn_streaming_process(cmd, args, project_dir);
 
@@ -659,22 +832,34 @@ pub fn run_flash_stage(
                 bt.has_build_system
             };
             widgets_timer.btn_build.set_sensitive(has_build_system);
-            widgets_timer.btn_build_flash.set_sensitive(has_build_system);
+            widgets_timer
+                .btn_build_flash
+                .set_sensitive(has_build_system);
             update_traceability_ui(&state_timer, &widgets_timer);
 
             if success {
                 append_log_text(&widgets_timer.build_log_view, "\n[FLASH SUCCESS] Firmware written to 0x08000000 and target MCU reset successfully!");
-                update_build_status(&widgets_timer.lbl_build_status, "SUCCESS", StatusKind::Ready);
+                update_build_status(
+                    &widgets_timer.lbl_build_status,
+                    "SUCCESS",
+                    StatusKind::Ready,
+                );
                 {
                     let st = state_timer.borrow();
                     let mut bt = st.build_trace.borrow_mut();
                     bt.flash_verify_start = Some(std::time::Instant::now());
                 }
                 widgets_timer.area_flash_verify.queue_draw();
-                widgets_timer.toast_overlay.add_toast(adw::Toast::new("[OK] Build and Flash Succeeded!"));
+                widgets_timer
+                    .toast_overlay
+                    .add_toast(adw::Toast::new("[OK] Build and Flash Succeeded!"));
 
                 // Phase 5: Auto-switch to Serial Monitor tab and auto-reconnect
-                crate::navigate_stack(&widgets_timer.stack, "serial_monitor", gtk4::StackTransitionType::SlideLeft);
+                crate::navigate_stack(
+                    &widgets_timer.stack,
+                    "serial_monitor",
+                    gtk4::StackTransitionType::SlideLeft,
+                );
                 crate::auto_reconnect_serial_after_flash(&state_timer, &widgets_timer);
             } else {
                 {
@@ -683,10 +868,21 @@ pub fn run_flash_stage(
                     bt.flash_verify_start = None;
                 }
                 widgets_timer.area_flash_verify.queue_draw();
-                let code_str = code.map(|c| c.to_string()).unwrap_or_else(|| "unknown".to_string());
-                append_log_text(&widgets_timer.build_log_view, &format!("\n[FLASH FAILED] st-flash exited with code {}.", code_str));
-                update_build_status(&widgets_timer.lbl_build_status, "FLASH FAILED", StatusKind::Error);
-                widgets_timer.toast_overlay.add_toast(adw::Toast::new("[ERROR] Flash failed (see console output)"));
+                let code_str = code
+                    .map(|c| c.to_string())
+                    .unwrap_or_else(|| "unknown".to_string());
+                append_log_text(
+                    &widgets_timer.build_log_view,
+                    &format!("\n[FLASH FAILED] st-flash exited with code {}.", code_str),
+                );
+                update_build_status(
+                    &widgets_timer.lbl_build_status,
+                    "FLASH FAILED",
+                    StatusKind::Error,
+                );
+                widgets_timer
+                    .toast_overlay
+                    .add_toast(adw::Toast::new("[ERROR] Flash failed (see console output)"));
             }
 
             return glib::ControlFlow::Break;
