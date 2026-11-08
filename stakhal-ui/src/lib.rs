@@ -376,6 +376,25 @@ dropdown button {
     border-radius: 2px;
     font-family: 'IBM Plex Sans', sans-serif;
 }
+
+flowbox.board-glance-legend {
+    background: transparent;
+}
+
+flowbox.board-glance-legend flowboxchild {
+    background: transparent;
+    padding: 0px;
+    margin: 0px;
+    border: none;
+    outline: none;
+}
+
+flowbox.board-glance-legend flowboxchild:hover,
+flowbox.board-glance-legend flowboxchild:selected,
+flowbox.board-glance-legend flowboxchild:focus {
+    background: transparent;
+    outline: none;
+}
 "#);
 
     if let Some(display) = gdk::Display::default() {
@@ -404,9 +423,10 @@ dropdown button {
         lbl_build_traceability,
         area_traceability_verify,
         lbl_periph_header,
-        lbl_region_header,
+        lbl_board_header,
         list_peripherals,
-        list_user_regions,
+        flow_board_legend,
+        area_board_glance,
         build_log_view,
         lbl_build_status,
         area_flash_verify,
@@ -504,9 +524,10 @@ dropdown button {
         lbl_build_traceability,
         area_traceability_verify: area_traceability_verify.clone(),
         lbl_periph_header,
-        lbl_region_header,
+        lbl_board_header,
         list_peripherals,
-        list_user_regions,
+        flow_board_legend,
+        area_board_glance: area_board_glance.clone(),
         build_log_view: build_log_view.clone(),
         lbl_build_status: lbl_build_status.clone(),
         area_flash_verify: area_flash_verify.clone(),
@@ -535,6 +556,18 @@ dropdown button {
 
     ui::verify_stroke::setup_verify_stroke_area(&area_traceability_verify, Rc::clone(&state), true);
     ui::verify_stroke::setup_verify_stroke_area(&area_flash_verify, Rc::clone(&state), false);
+
+    // Connect Board Glance Drawing Area & Interactions
+    let state_board_glance = Rc::clone(&state);
+    area_board_glance.set_draw_func(move |_area, cr, w, h| {
+        let state_borrow = state_board_glance.borrow();
+        ui::board_glance::draw_board_glance(cr, w as f64, h as f64, &state_borrow);
+    });
+    ui::board_glance::setup_board_glance_interactions(
+        &area_board_glance,
+        &state,
+        &btn_nucleo_pinout,
+    );
 
     // Connect Diagram and Navigation
     ui::setup_diagram::setup_diagram_and_navigation(
