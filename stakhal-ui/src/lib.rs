@@ -3,6 +3,7 @@ use gtk4::{gdk, gio, glib};
 use libadwaita as adw;
 use std::cell::RefCell;
 use std::rc::Rc;
+pub mod cli;
 pub mod config;
 pub mod state;
 pub mod toolchain;

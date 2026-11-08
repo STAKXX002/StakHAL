@@ -106,24 +106,33 @@ pub fn ensure_gitignore_ignores_build_info(project_dir: &Path) -> Result<bool, s
     Ok(true)
 }
 
-/// Generate the Core/Inc/stakhal_build_info.h header for the project.
-/// Overwrites the file if it already exists.
-/// Returns the build hash that was written into the header.
-pub fn generate_build_info_header(project_dir: &Path) -> Result<String, std::io::Error> {
+/// Resolve target definition for a given project directory.
+pub fn resolve_target_for_project(project_dir: &Path) -> stakhal_core::target::TargetDefinition {
+    if let Ok(target_str) = std::env::var("STAKHAL_TARGET") {
+        if let Some(target) = stakhal_core::target::TargetDefinition::from_name(&target_str) {
+            return target;
+        }
+    }
+
+    if let Some(target) = stakhal_core::target::detect_target_from_project_dir(project_dir) {
+        return target;
+    }
+
+    stakhal_core::target::TargetDefinition::legacy()
+}
+
+/// Generate header file for a specific target definition.
+pub fn generate_build_info_header_for_target(
+    project_dir: &Path,
+    target: &stakhal_core::target::TargetDefinition,
+) -> Result<String, std::io::Error> {
     let hash = get_git_build_hash(project_dir).unwrap_or_else(|| "unknown".to_string());
 
     let inc_dir = resolve_include_directory(project_dir);
     fs::create_dir_all(&inc_dir)?;
 
-    let header_path = inc_dir.join("stakhal_build_info.h");
-    let content = format!(
-        "/* Generated automatically by StakHAL. Do not edit or commit. */\n\
-         #ifndef STAKHAL_BUILD_INFO_H\n\
-         #define STAKHAL_BUILD_INFO_H\n\n\
-         #define STAKHAL_BUILD_HASH \"{}\"\n\n\
-         #endif /* STAKHAL_BUILD_INFO_H */\n",
-        hash
-    );
+    let header_path = inc_dir.join(&target.header_filename);
+    let content = target.render_header(&hash);
 
     fs::write(&header_path, content)?;
 
@@ -133,6 +142,14 @@ pub fn generate_build_info_header(project_dir: &Path) -> Result<String, std::io:
     Ok(hash)
 }
 
+/// Generate the stakhal_build_info.h header for the project.
+/// Overwrites the file if it already exists.
+/// Returns the build hash that was written into the header.
+pub fn generate_build_info_header(project_dir: &Path) -> Result<String, std::io::Error> {
+    let target = resolve_target_for_project(project_dir);
+    generate_build_info_header_for_target(project_dir, &target)
+}
+
 /// Check if build traceability symbols are already present in main.c.
 pub fn is_traceability_enabled_in_source(main_c_path: &Path) -> bool {
     if !main_c_path.is_file() {
@@ -140,7 +157,8 @@ pub fn is_traceability_enabled_in_source(main_c_path: &Path) -> bool {
     }
     match fs::read_to_string(main_c_path) {
         Ok(content) => {
-            content.contains("stakhal_build_info.h") && content.contains("STAKHAL_BUILD_HASH")
+            (content.contains("stakhal_build_info.h") && content.contains("STAKHAL_BUILD_HASH"))
+                || (content.contains("aa_build_info.h") && content.contains("AA_BUILD_HASH"))
         }
         Err(_) => false,
     }
@@ -287,19 +305,21 @@ pub fn insert_traceability_into_source(
     Ok(())
 }
 
-/// Parse an incoming serial line for the STAKHAL_BUILD: banner.
+/// Parse an incoming serial line for the build banner (STAKHAL_BUILD: or AA_BUILD:).
 /// Returns Some((hash, is_dirty)) if matched.
 pub fn parse_build_banner_line(line: &str) -> Option<(String, bool)> {
-    let tag = "STAKHAL_BUILD:";
-    if let Some(idx) = line.find(tag) {
-        let after = &line[idx + tag.len()..];
-        let hash = after
-            .trim()
-            .trim_matches(|c: char| c == '\r' || c == '\n')
-            .to_string();
-        if !hash.is_empty() {
-            let is_dirty = hash.ends_with("-dirty");
-            return Some((hash, is_dirty));
+    let tags = ["STAKHAL_BUILD:", "AA_BUILD:"];
+    for tag in &tags {
+        if let Some(idx) = line.find(tag) {
+            let after = &line[idx + tag.len()..];
+            let hash = after
+                .trim()
+                .trim_matches(|c: char| c == '\r' || c == '\n')
+                .to_string();
+            if !hash.is_empty() {
+                let is_dirty = hash.ends_with("-dirty");
+                return Some((hash, is_dirty));
+            }
         }
     }
     None
@@ -631,6 +651,14 @@ printf("BOOT\r\n");
         assert_eq!(
             parse_build_banner_line("STAKHAL_BUILD: a41f5f7\r\n"),
             Some(("a41f5f7".to_string(), false))
+        );
+        assert_eq!(
+            parse_build_banner_line("AA_BUILD: 2bb23940\r\n"),
+            Some(("2bb23940".to_string(), false))
+        );
+        assert_eq!(
+            parse_build_banner_line("AA_BUILD: 2bb23940-dirty\r\n"),
+            Some(("2bb23940-dirty".to_string(), true))
         );
         assert_eq!(
             parse_build_banner_line("STAKHAL_BUILD: a41f5f7-dirty\r\n"),
