@@ -155,4 +155,24 @@ mod tests {
         let decoded: AppConfig = serde_json::from_str(&json).unwrap();
         assert_eq!(config, decoded);
     }
+
+    #[test]
+    fn test_app_config_serialization_does_not_contain_easter_egg_unlocked() {
+        let config = AppConfig {
+            project_dir: Some("/path/to/project".to_string()),
+            target: Some("AA_NS_STM32".to_string()),
+        };
+        let serialized = serde_json::to_string(&config).unwrap();
+        assert!(
+            !serialized.contains("easter_egg"),
+            "AppConfig serialization must not contain easter egg fields"
+        );
+        assert!(
+            !serialized.contains("unlocked"),
+            "AppConfig serialization must not contain unlock state"
+        );
+
+        let roundtrip: AppConfig = serde_json::from_str(&serialized).unwrap();
+        assert_eq!(config, roundtrip);
+    }
 }

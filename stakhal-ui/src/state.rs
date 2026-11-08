@@ -135,6 +135,7 @@ pub struct AppState {
     pub build_trace: Rc<RefCell<BuildTraceState>>,
     pub serial: Rc<RefCell<SerialState>>,
     pub canvas: Rc<RefCell<DiagramCanvasState>>,
+    pub easter_egg_unlocked: bool,
 }
 
 impl AppState {
@@ -156,6 +157,7 @@ impl Default for AppState {
             build_trace: Rc::new(RefCell::new(BuildTraceState::default())),
             serial: Rc::new(RefCell::new(SerialState::default())),
             canvas: Rc::new(RefCell::new(DiagramCanvasState::default())),
+            easter_egg_unlocked: false,
         }
     }
 }
@@ -259,6 +261,7 @@ mod tests {
         assert!(!state.build_trace.borrow().build_in_progress);
         assert_eq!(state.serial.borrow().selected_serial_baud, 115200);
         assert_eq!(state.with_canvas_state(|c| c.selected_state_machine), 0);
+        assert!(!state.easter_egg_unlocked);
     }
 
     #[test]
