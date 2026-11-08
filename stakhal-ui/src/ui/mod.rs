@@ -1,4 +1,3 @@
-pub mod board_glance;
 pub mod launch_overlay;
 pub mod main_panel;
 pub mod nucleo_pinout;

@@ -1,4 +1,3 @@
-pub mod coords;
 pub mod draw;
 pub mod panel;
 

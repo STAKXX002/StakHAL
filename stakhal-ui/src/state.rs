@@ -176,10 +176,9 @@ pub struct AppWidgets {
     pub lbl_build_traceability: gtk4::Label,
     pub area_traceability_verify: gtk4::DrawingArea,
     pub lbl_periph_header: gtk4::Label,
-    pub lbl_board_header: gtk4::Label,
+    pub lbl_region_header: gtk4::Label,
     pub list_peripherals: gtk4::ListBox,
-    pub flow_board_legend: gtk4::FlowBox,
-    pub area_board_glance: gtk4::DrawingArea,
+    pub list_user_regions: gtk4::ListBox,
 
     // Build & flash widgets
     pub btn_build: gtk4::Button,
