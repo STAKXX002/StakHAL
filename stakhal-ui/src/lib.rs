@@ -5,6 +5,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 pub mod cli;
 pub mod config;
+pub mod easter_egg;
 pub mod state;
 pub mod toolchain;
 pub mod ui;
