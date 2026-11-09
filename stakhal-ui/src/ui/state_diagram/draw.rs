@@ -14,6 +14,7 @@ fn mix_rgb(a: (f64, f64, f64), b: (f64, f64, f64), t: f64) -> (f64, f64, f64) {
 }
 
 struct DiagramColors {
+    is_default: bool,
     canvas_bg: (f64, f64, f64),
     dot_grid: (f64, f64, f64, f64),
     fault_red: (f64, f64, f64),
@@ -22,26 +23,50 @@ struct DiagramColors {
     node_fill_initial: (f64, f64, f64, f64),
     node_fill_hover: (f64, f64, f64, f64),
     node_fill_selected: (f64, f64, f64, f64),
+    node_fill_dimmed: (f64, f64, f64, f64),
+    edge_default: (f64, f64, f64),
     border_default: (f64, f64, f64),
     border_initial: (f64, f64, f64),
     border_hover: (f64, f64, f64),
     border_selected: (f64, f64, f64),
-    bg_void: (f64, f64, f64),
+    pill_fill: (f64, f64, f64, f64),
+    pill_border: (f64, f64, f64),
     bg_panel: (f64, f64, f64),
     text_primary: (f64, f64, f64),
     text_muted: (f64, f64, f64),
     accent: (f64, f64, f64),
+    lane_alpha_selected: f64,
+    lane_alpha_normal: f64,
+    edge_alpha_default: f64,
+    edge_alpha_dimmed: f64,
+    fault_edge_alpha_normal: f64,
+    fault_edge_alpha_dimmed: f64,
+    dimmed_border_alpha: f64,
+    dimmed_text_alpha: f64,
+    dimmed_tag_alpha: f64,
+    pill_fill_dimmed_alpha: f64,
 }
 
 impl DiagramColors {
     fn from_palette(pal: tokens::Palette) -> Self {
         let is_default = pal == tokens::Palette::DEFAULT;
 
+        let dot_grid = if is_default {
+            (
+                pal.border_hair.0,
+                pal.border_hair.1,
+                pal.border_hair.2,
+                0.35,
+            )
+        } else {
+            (pal.line.0, pal.line.1, pal.line.2, 0.35)
+        };
+
         let fault_fill = if is_default {
             // Preserve historical default FAULT node fill for pixel-identical snapshots
             (45.0 / 255.0, 16.0 / 255.0, 18.0 / 255.0, 0.95)
         } else {
-            let m = mix_rgb(pal.bg_panel.rgb(), pal.state_error.rgb(), 0.18);
+            let m = mix_rgb(pal.bg_panel.rgb(), pal.state_error.rgb(), 0.10);
             (m.0, m.1, m.2, 0.95)
         };
 
@@ -49,63 +74,87 @@ impl DiagramColors {
             // Preserve historical default INITIAL node fill for pixel-identical snapshots
             (24.0 / 255.0, 30.0 / 255.0, 36.0 / 255.0, 0.95)
         } else {
-            let m = mix_rgb(pal.bg_panel.rgb(), pal.bg_raised.rgb(), 0.67);
-            (m.0, m.1, m.2, 0.95)
+            (pal.bg_raised.0, pal.bg_raised.1, pal.bg_raised.2, 0.95)
         };
 
         let node_fill_hover = if is_default {
             // Preserve historical default HOVER node fill for pixel-identical snapshots
             (28.0 / 255.0, 36.0 / 255.0, 44.0 / 255.0, 0.95)
         } else {
-            let m = mix_rgb(pal.bg_raised.rgb(), pal.border_hair.rgb(), 0.25);
-            (m.0, m.1, m.2, 0.95)
+            (pal.bg_raised.0, pal.bg_raised.1, pal.bg_raised.2, 0.95)
         };
 
         let node_fill_selected = if is_default {
             // Preserve historical default SELECTED node fill for pixel-identical snapshots
             (20.0 / 255.0, 32.0 / 255.0, 38.0 / 255.0, 0.95)
         } else {
-            let m = mix_rgb(pal.bg_panel.rgb(), pal.accent.rgb(), 0.08);
-            (m.0, m.1, m.2, 0.95)
+            (pal.bg_raised.0, pal.bg_raised.1, pal.bg_raised.2, 0.95)
+        };
+
+        let node_fill_dimmed = if is_default {
+            (pal.bg_void.0, pal.bg_void.1, pal.bg_void.2, 0.5)
+        } else {
+            (pal.bg_void.0, pal.bg_void.1, pal.bg_void.2, 0.85)
         };
 
         let border_initial = if is_default {
             // Preserve historical default INITIAL border for pixel-identical snapshots
             (50.0 / 255.0, 60.0 / 255.0, 70.0 / 255.0)
         } else {
-            mix_rgb(pal.border_hair.rgb(), pal.text_muted.rgb(), 0.20)
+            pal.node_border.rgb()
         };
 
         let border_hover = if is_default {
             // Preserve historical default HOVER border for pixel-identical snapshots
             (60.0 / 255.0, 75.0 / 255.0, 85.0 / 255.0)
         } else {
-            mix_rgb(pal.border_hair.rgb(), pal.text_muted.rgb(), 0.35)
+            pal.accent.rgb()
+        };
+
+        let pill_fill = if is_default {
+            (pal.bg_panel.0, pal.bg_panel.1, pal.bg_panel.2, 0.95)
+        } else {
+            (pal.bg_raised.0, pal.bg_raised.1, pal.bg_raised.2, 0.95)
+        };
+
+        let pill_border = if is_default {
+            pal.border_hair.rgb()
+        } else {
+            pal.line.rgb()
         };
 
         Self {
+            is_default,
             canvas_bg: pal.bg_void.rgb(),
-            dot_grid: (
-                pal.border_hair.0,
-                pal.border_hair.1,
-                pal.border_hair.2,
-                0.35,
-            ),
+            dot_grid,
             fault_red: pal.state_error.rgb(),
             fault_fill,
             node_fill_default: (pal.bg_panel.0, pal.bg_panel.1, pal.bg_panel.2, 0.95),
             node_fill_initial,
             node_fill_hover,
             node_fill_selected,
-            border_default: pal.border_hair.rgb(),
+            node_fill_dimmed,
+            edge_default: pal.line.rgb(),
+            border_default: pal.node_border.rgb(),
             border_initial,
             border_hover,
             border_selected: pal.accent.rgb(),
-            bg_void: pal.bg_void.rgb(),
+            pill_fill,
+            pill_border,
             bg_panel: pal.bg_panel.rgb(),
             text_primary: pal.text_primary.rgb(),
             text_muted: pal.text_muted.rgb(),
             accent: pal.accent.rgb(),
+            lane_alpha_selected: if is_default { 0.35 } else { 0.70 },
+            lane_alpha_normal: if is_default { 0.75 } else { 0.92 },
+            edge_alpha_default: if is_default { 0.85 } else { 0.95 },
+            edge_alpha_dimmed: if is_default { 0.25 } else { 0.50 },
+            fault_edge_alpha_normal: if is_default { 0.85 } else { 0.95 },
+            fault_edge_alpha_dimmed: if is_default { 0.15 } else { 0.45 },
+            dimmed_border_alpha: if is_default { 0.35 } else { 0.55 },
+            dimmed_text_alpha: if is_default { 0.4 } else { 0.75 },
+            dimmed_tag_alpha: if is_default { 0.3 } else { 0.70 },
+            pill_fill_dimmed_alpha: if is_default { 0.4 } else { 0.75 },
         }
     }
 }
@@ -282,14 +331,14 @@ pub fn draw_state_diagram(
                     colors.text_muted.0,
                     colors.text_muted.1,
                     colors.text_muted.2,
-                    0.35,
+                    colors.lane_alpha_selected,
                 );
             } else {
                 cr.set_source_rgba(
                     colors.text_muted.0,
                     colors.text_muted.1,
                     colors.text_muted.2,
-                    0.75,
+                    colors.lane_alpha_normal,
                 );
             }
             let banner_text = if lane.name == "FAULT" {
@@ -349,7 +398,7 @@ pub fn draw_state_diagram(
                     colors.fault_red.0,
                     colors.fault_red.1,
                     colors.fault_red.2,
-                    0.15,
+                    colors.fault_edge_alpha_dimmed,
                 )
             } else if is_connected_to_selection {
                 (
@@ -363,24 +412,24 @@ pub fn draw_state_diagram(
                     colors.fault_red.0,
                     colors.fault_red.1,
                     colors.fault_red.2,
-                    0.85,
+                    colors.fault_edge_alpha_normal,
                 )
             }
         } else if is_connected_to_selection {
             (colors.accent.0, colors.accent.1, colors.accent.2, 0.95)
         } else if is_dimmed {
             (
-                colors.border_default.0,
-                colors.border_default.1,
-                colors.border_default.2,
-                0.25,
+                colors.edge_default.0,
+                colors.edge_default.1,
+                colors.edge_default.2,
+                colors.edge_alpha_dimmed,
             )
         } else {
             (
-                colors.border_default.0,
-                colors.border_default.1,
-                colors.border_default.2,
-                0.85,
+                colors.edge_default.0,
+                colors.edge_default.1,
+                colors.edge_default.2,
+                colors.edge_alpha_default,
             )
         };
 
@@ -514,7 +563,7 @@ pub fn draw_state_diagram(
                 colors.text_muted.0,
                 colors.text_muted.1,
                 colors.text_muted.2,
-                0.4,
+                colors.dimmed_text_alpha,
             );
         } else if node.is_fault {
             cr.set_source_rgb(colors.fault_red.0, colors.fault_red.1, colors.fault_red.2);
@@ -548,7 +597,7 @@ pub fn draw_state_diagram(
                     colors.text_muted.0,
                     colors.text_muted.1,
                     colors.text_muted.2,
-                    0.3,
+                    colors.dimmed_tag_alpha,
                 );
             } else {
                 cr.set_source_rgb(
@@ -571,7 +620,7 @@ pub fn draw_state_diagram(
                     colors.fault_red.0,
                     colors.fault_red.1,
                     colors.fault_red.2,
-                    0.3,
+                    colors.dimmed_tag_alpha,
                 );
             } else {
                 cr.set_source_rgb(colors.fault_red.0, colors.fault_red.1, colors.fault_red.2);
@@ -711,7 +760,12 @@ fn draw_rounded_node(
 
     // Node fill
     if is_dimmed {
-        cr.set_source_rgba(colors.bg_void.0, colors.bg_void.1, colors.bg_void.2, 0.5);
+        cr.set_source_rgba(
+            colors.node_fill_dimmed.0,
+            colors.node_fill_dimmed.1,
+            colors.node_fill_dimmed.2,
+            colors.node_fill_dimmed.3,
+        );
     } else if is_fault {
         cr.set_source_rgba(
             colors.fault_fill.0,
@@ -773,7 +827,7 @@ fn draw_rounded_node(
             colors.border_default.0,
             colors.border_default.1,
             colors.border_default.2,
-            0.35,
+            colors.dimmed_border_alpha,
         );
     } else if is_fault {
         cr.set_source_rgb(colors.fault_red.0, colors.fault_red.1, colors.fault_red.2);
@@ -853,20 +907,27 @@ fn draw_node_badge(
     );
     cr.close_path();
 
+    let dimmed_fill_alpha = if colors.is_default { 0.3 } else { 0.65 };
+    let dimmed_border_alpha = if colors.is_default {
+        0.25
+    } else {
+        colors.dimmed_border_alpha
+    };
+
     if is_fault {
         if is_dimmed {
             cr.set_source_rgba(
                 colors.fault_fill.0,
                 colors.fault_fill.1,
                 colors.fault_fill.2,
-                0.3,
+                dimmed_fill_alpha,
             );
             let _ = cr.fill_preserve();
             cr.set_source_rgba(
                 colors.fault_red.0,
                 colors.fault_red.1,
                 colors.fault_red.2,
-                0.25,
+                dimmed_border_alpha,
             );
         } else {
             cr.set_source_rgba(
@@ -884,22 +945,22 @@ fn draw_node_badge(
             );
         }
     } else {
+        let badge_fill = if colors.is_default {
+            colors.bg_panel
+        } else {
+            (colors.pill_fill.0, colors.pill_fill.1, colors.pill_fill.2)
+        };
         if is_dimmed {
-            cr.set_source_rgba(colors.bg_panel.0, colors.bg_panel.1, colors.bg_panel.2, 0.3);
+            cr.set_source_rgba(badge_fill.0, badge_fill.1, badge_fill.2, dimmed_fill_alpha);
             let _ = cr.fill_preserve();
             cr.set_source_rgba(
                 colors.border_default.0,
                 colors.border_default.1,
                 colors.border_default.2,
-                0.25,
+                dimmed_border_alpha,
             );
         } else {
-            cr.set_source_rgba(
-                colors.bg_panel.0,
-                colors.bg_panel.1,
-                colors.bg_panel.2,
-                0.95,
-            );
+            cr.set_source_rgba(badge_fill.0, badge_fill.1, badge_fill.2, 0.95);
             let _ = cr.fill_preserve();
             cr.set_source_rgba(
                 colors.border_default.0,
@@ -918,7 +979,7 @@ fn draw_node_badge(
                 colors.fault_red.0,
                 colors.fault_red.1,
                 colors.fault_red.2,
-                0.3,
+                colors.dimmed_tag_alpha,
             );
         } else {
             cr.set_source_rgb(colors.fault_red.0, colors.fault_red.1, colors.fault_red.2);
@@ -929,7 +990,7 @@ fn draw_node_badge(
                 colors.text_muted.0,
                 colors.text_muted.1,
                 colors.text_muted.2,
-                0.3,
+                colors.dimmed_tag_alpha,
             );
         } else {
             cr.set_source_rgb(
@@ -1006,25 +1067,35 @@ fn draw_guard_badge(
 
     // Badge fill
     if is_dimmed {
-        cr.set_source_rgba(colors.bg_panel.0, colors.bg_panel.1, colors.bg_panel.2, 0.4);
+        cr.set_source_rgba(
+            colors.pill_fill.0,
+            colors.pill_fill.1,
+            colors.pill_fill.2,
+            colors.pill_fill_dimmed_alpha,
+        );
     } else {
         cr.set_source_rgba(
-            colors.bg_panel.0,
-            colors.bg_panel.1,
-            colors.bg_panel.2,
-            0.95,
+            colors.pill_fill.0,
+            colors.pill_fill.1,
+            colors.pill_fill.2,
+            colors.pill_fill.3,
         );
     }
     let _ = cr.fill_preserve();
 
     // Badge stroke (1px hairline)
+    let dimmed_pill_border_alpha = if colors.is_default {
+        0.3
+    } else {
+        colors.dimmed_border_alpha
+    };
     if is_fault {
         if is_dimmed {
             cr.set_source_rgba(
                 colors.fault_red.0,
                 colors.fault_red.1,
                 colors.fault_red.2,
-                0.3,
+                dimmed_pill_border_alpha,
             );
         } else {
             cr.set_source_rgba(
@@ -1036,16 +1107,16 @@ fn draw_guard_badge(
         }
     } else if is_dimmed {
         cr.set_source_rgba(
-            colors.border_default.0,
-            colors.border_default.1,
-            colors.border_default.2,
-            0.3,
+            colors.pill_border.0,
+            colors.pill_border.1,
+            colors.pill_border.2,
+            dimmed_pill_border_alpha,
         );
     } else {
         cr.set_source_rgba(
-            colors.border_default.0,
-            colors.border_default.1,
-            colors.border_default.2,
+            colors.pill_border.0,
+            colors.pill_border.1,
+            colors.pill_border.2,
             0.85,
         );
     }
@@ -1059,7 +1130,7 @@ fn draw_guard_badge(
                 colors.fault_red.0,
                 colors.fault_red.1,
                 colors.fault_red.2,
-                0.3,
+                colors.dimmed_tag_alpha,
             );
         } else {
             cr.set_source_rgb(colors.fault_red.0, colors.fault_red.1, colors.fault_red.2);
@@ -1069,7 +1140,7 @@ fn draw_guard_badge(
             colors.text_muted.0,
             colors.text_muted.1,
             colors.text_muted.2,
-            0.3,
+            colors.dimmed_tag_alpha,
         );
     } else {
         cr.set_source_rgb(
@@ -1331,5 +1402,166 @@ mod tests {
         });
         draw_state_diagram(&cr, 1200.0, 800.0, &state);
         surface.flush();
+    }
+
+    struct PaletteResetGuard(tokens::Palette);
+    impl Drop for PaletteResetGuard {
+        fn drop(&mut self) {
+            tokens::set_palette(self.0);
+        }
+    }
+
+    fn rel_luminance(rgb: (f64, f64, f64)) -> f64 {
+        fn lin(c: f64) -> f64 {
+            if c <= 0.04045 {
+                c / 12.92
+            } else {
+                ((c + 0.055) / 1.055).powf(2.4)
+            }
+        }
+        0.2126 * lin(rgb.0) + 0.7152 * lin(rgb.1) + 0.0722 * lin(rgb.2)
+    }
+
+    fn contrast_ratio(a: (f64, f64, f64), b: (f64, f64, f64)) -> f64 {
+        let la = rel_luminance(a);
+        let lb = rel_luminance(b);
+        let (hi, lo) = if la >= lb { (la, lb) } else { (lb, la) };
+        (hi + 0.05) / (lo + 0.05)
+    }
+
+    #[test]
+    fn test_diagram_colors_default_and_stage_light_theme() {
+        let def = DiagramColors::from_palette(tokens::Palette::DEFAULT);
+        assert!(def.is_default);
+        assert_eq!(def.edge_default, tokens::Palette::DEFAULT.line.rgb());
+        assert_eq!(
+            def.border_default,
+            tokens::Palette::DEFAULT.node_border.rgb()
+        );
+        assert_eq!(def.border_selected, tokens::Palette::DEFAULT.accent.rgb());
+        assert_eq!(def.pill_border, tokens::Palette::DEFAULT.border_hair.rgb());
+        assert_eq!(
+            def.pill_fill,
+            (
+                tokens::Palette::DEFAULT.bg_panel.0,
+                tokens::Palette::DEFAULT.bg_panel.1,
+                tokens::Palette::DEFAULT.bg_panel.2,
+                0.95
+            )
+        );
+        assert_eq!(def.edge_alpha_default, 0.85);
+        assert_eq!(def.edge_alpha_dimmed, 0.25);
+
+        let stg = DiagramColors::from_palette(tokens::Palette::STAGE);
+        assert!(!stg.is_default);
+        assert_eq!(stg.edge_default, tokens::Palette::STAGE.line.rgb());
+        assert_eq!(stg.border_default, tokens::Palette::STAGE.node_border.rgb());
+        assert_eq!(stg.border_selected, tokens::Palette::STAGE.accent.rgb());
+        assert_eq!(stg.border_hover, tokens::Palette::STAGE.accent.rgb());
+        assert_eq!(stg.pill_border, tokens::Palette::STAGE.line.rgb());
+        assert_eq!(stg.text_primary, tokens::Palette::STAGE.text_primary.rgb());
+        assert_eq!(
+            stg.pill_fill,
+            (
+                tokens::Palette::STAGE.bg_raised.0,
+                tokens::Palette::STAGE.bg_raised.1,
+                tokens::Palette::STAGE.bg_raised.2,
+                0.95
+            )
+        );
+        assert_eq!(
+            stg.node_fill_default,
+            (
+                tokens::Palette::STAGE.bg_panel.0,
+                tokens::Palette::STAGE.bg_panel.1,
+                tokens::Palette::STAGE.bg_panel.2,
+                0.95
+            )
+        );
+        assert_eq!(
+            stg.node_fill_selected,
+            (
+                tokens::Palette::STAGE.bg_raised.0,
+                tokens::Palette::STAGE.bg_raised.1,
+                tokens::Palette::STAGE.bg_raised.2,
+                0.95
+            )
+        );
+
+        let fault_text_c = contrast_ratio(
+            stg.fault_red,
+            (stg.fault_fill.0, stg.fault_fill.1, stg.fault_fill.2),
+        );
+        assert!(
+            fault_text_c >= 4.5,
+            "Stage fault node text contrast {} must be >= 4.5",
+            fault_text_c
+        );
+
+        let pill_text_c = contrast_ratio(
+            stg.text_primary,
+            (stg.pill_fill.0, stg.pill_fill.1, stg.pill_fill.2),
+        );
+        assert!(
+            pill_text_c >= 4.5,
+            "Stage guard pill text contrast {} must be >= 4.5",
+            pill_text_c
+        );
+    }
+
+    #[test]
+    fn test_stage_palette_state_diagram_renders_light_surfaces_and_edges() {
+        let _guard = PaletteResetGuard(tokens::palette());
+        tokens::set_palette(tokens::Palette::STAGE);
+
+        let mut surface = cairo::ImageSurface::create(cairo::Format::ARgb32, 1200, 800)
+            .expect("Failed to create surface");
+        {
+            let cr = cairo::Context::new(&surface).expect("Failed to create context");
+            let state = Rc::new(RefCell::new(AppState::default()));
+
+            let fixture_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../stakhal-core/tests/fixtures/docking_firmware");
+            let ioc_path = fixture_dir.join("docking_firmware.ioc");
+            let main_c_path = fixture_dir.join("Core/Src/main.c");
+            let project = stakhal_core::ir::schema::load_project(&ioc_path, &main_c_path)
+                .expect("Failed to load docking firmware fixture");
+            state.borrow().project.borrow_mut().loaded_project = Some(project);
+            state.borrow().with_canvas_state_mut(|c| {
+                c.selected_state_node = Some("GOING".to_string());
+                c.hovered_state_node = Some("CALIBRATING".to_string());
+            });
+
+            draw_state_diagram(&cr, 1200.0, 800.0, &state);
+            surface.flush();
+        }
+
+        let data = surface.data().expect("surface pixel data");
+        let mut saw_bg_void = false;
+        let mut saw_bg_panel = false;
+        let mut saw_node_border_or_line = false;
+        // ARGB32 on little-endian stores bytes B, G, R, A
+        for px in data.chunks_exact(4) {
+            let (b, g, r) = (px[0], px[1], px[2]);
+            if r == 0xF4 && g == 0xF9 && b == 0xFD {
+                saw_bg_void = true;
+            }
+            if r > 245 && g > 245 && b > 245 {
+                saw_bg_panel = true;
+            }
+            // Match non-background blue-navy ink from node_border (#3F5FA0), line (#4F76AE), or accent (#2E6DB4)
+            if r < 110 && g < 150 && b > 140 {
+                saw_node_border_or_line = true;
+            }
+        }
+        assert!(
+            saw_bg_void,
+            "Expected Stage light bg_void canvas background"
+        );
+        assert!(saw_bg_panel, "Expected Stage white node panel surface");
+        assert!(
+            saw_node_border_or_line,
+            "Expected Stage blue/navy borders, edges, or accent strokes"
+        );
     }
 }

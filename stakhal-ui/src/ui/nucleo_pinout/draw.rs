@@ -757,6 +757,7 @@ pub fn draw_nucleo_pinout(
     state: &Rc<RefCell<AppState>>,
 ) {
     let pal = tokens::palette();
+    let is_default = pal == tokens::Palette::DEFAULT;
     let (hovered_pin, hovered_mouse, is_filtering_module) = state.borrow().with_canvas_state(|c| {
         (
             c.hovered_pinout_pin.clone(),
@@ -824,11 +825,12 @@ pub fn draw_nucleo_pinout(
     let _ = cr.stroke();
 
     // Subtle PCB Grid Accent Texture Lines
+    let grid_alpha = if is_default { 0.25 } else { 0.65 };
     cr.set_source_rgba(
         pal.border_hair.0,
         pal.border_hair.1,
         pal.border_hair.2,
-        0.25,
+        grid_alpha,
     );
     cr.set_line_width(tokens::shape::BORDER_WIDTH_HAIR);
     let mut gy = board_y + 40.0;
@@ -843,10 +845,20 @@ pub fn draw_nucleo_pinout(
     let notch_w = (board_w * 0.24).clamp(220.0, 380.0);
     let notch_x = board_x + (board_w - notch_w) / 2.0;
     let notch_y = board_y + 8.0;
-    cr.set_source_rgb(pal.bg_void.0, pal.bg_void.1, pal.bg_void.2);
+    let inset_fill = if is_default {
+        pal.bg_void
+    } else {
+        pal.bg_raised
+    };
+    let inset_border = if is_default {
+        pal.border_hair
+    } else {
+        pal.node_border
+    };
+    cr.set_source_rgb(inset_fill.0, inset_fill.1, inset_fill.2);
     cr.rectangle(notch_x, notch_y, notch_w, 20.0);
     let _ = cr.fill_preserve();
-    cr.set_source_rgb(pal.border_hair.0, pal.border_hair.1, pal.border_hair.2);
+    cr.set_source_rgb(inset_border.0, inset_border.1, inset_border.2);
     cr.set_line_width(tokens::shape::BORDER_WIDTH_HAIR);
     let _ = cr.stroke();
 
@@ -934,11 +946,11 @@ pub fn draw_nucleo_pinout(
     let mcu_y = row_start_y + 7.5 * row_h;
     let mcu_h = (4.5 * row_h).clamp(100.0, 180.0);
 
-    // MCU LQFP64 Chip Frame - Sharp 0px corners, BG_VOID fill, 1px BORDER_HAIR
-    cr.set_source_rgb(pal.bg_void.0, pal.bg_void.1, pal.bg_void.2);
+    // MCU LQFP64 Chip Frame - Sharp 0px corners, inset fill & hairline border
+    cr.set_source_rgb(inset_fill.0, inset_fill.1, inset_fill.2);
     cr.rectangle(mcu_x, mcu_y, mcu_w, mcu_h);
     let _ = cr.fill_preserve();
-    cr.set_source_rgb(pal.border_hair.0, pal.border_hair.1, pal.border_hair.2);
+    cr.set_source_rgb(inset_border.0, inset_border.1, inset_border.2);
     cr.set_line_width(tokens::shape::BORDER_WIDTH_HAIR);
     let _ = cr.stroke();
 
@@ -1161,11 +1173,18 @@ pub fn draw_nucleo_pinout(
                 cr.rectangle(cell_x, cell_y, cell_w, cell_h);
                 let _ = cr.fill_preserve();
 
+                let muted_alpha = if is_default { 0.35 } else { 0.55 };
+                let muted_badge_fill = if is_default {
+                    pal.bg_void
+                } else {
+                    pal.bg_raised
+                };
+
                 // Interactive/Selection ONLY uses ACCENT
                 if is_hovered {
                     cr.set_source_rgb(pal.accent.0, pal.accent.1, pal.accent.2);
                 } else if hl_info.is_muted {
-                    cr.set_source_rgba(hl_r, hl_g, hl_b, 0.35);
+                    cr.set_source_rgba(hl_r, hl_g, hl_b, muted_alpha);
                 } else {
                     cr.set_source_rgb(hl_r, hl_g, hl_b);
                 }
@@ -1175,10 +1194,10 @@ pub fn draw_nucleo_pinout(
                 // Pin Number Badge Box - sharp 0px corners
                 let badge_w = (cell_w * 0.16).clamp(24.0, 32.0);
                 if hl_info.is_muted {
-                    cr.set_source_rgb(pal.bg_void.0, pal.bg_void.1, pal.bg_void.2);
+                    cr.set_source_rgb(muted_badge_fill.0, muted_badge_fill.1, muted_badge_fill.2);
                     cr.rectangle(cell_x + 3.0, cell_y + 3.0, badge_w, cell_h - 6.0);
                     let _ = cr.fill_preserve();
-                    cr.set_source_rgba(hl_r, hl_g, hl_b, 0.35);
+                    cr.set_source_rgba(hl_r, hl_g, hl_b, muted_alpha);
                     cr.set_line_width(tokens::shape::BORDER_WIDTH_HAIR);
                     let _ = cr.stroke();
 
@@ -1279,7 +1298,16 @@ pub fn draw_nucleo_pinout(
 
                 // Pin Number Box for Neutral Cell - sharp 0px corners
                 let badge_w = (cell_w * 0.16).clamp(26.0, 34.0);
-                cr.set_source_rgb(pal.bg_void.0, pal.bg_void.1, pal.bg_void.2);
+                let neutral_badge_fill = if is_default {
+                    pal.bg_void
+                } else {
+                    pal.bg_raised
+                };
+                cr.set_source_rgb(
+                    neutral_badge_fill.0,
+                    neutral_badge_fill.1,
+                    neutral_badge_fill.2,
+                );
                 cr.rectangle(cell_x + 4.0, cell_y + 4.0, badge_w, cell_h - 8.0);
                 let _ = cr.fill();
 
@@ -1349,7 +1377,7 @@ pub fn draw_nucleo_pinout(
             pal.state_ready.0,
             pal.state_ready.1,
             pal.state_ready.2,
-            0.35,
+            if is_default { 0.35 } else { 0.55 },
         );
         cr.set_line_width(tokens::shape::BORDER_WIDTH_HAIR);
         let _ = cr.stroke();
@@ -1459,8 +1487,10 @@ pub fn draw_nucleo_pinout(
                     None => {
                         if is_hl.is_some() {
                             pal.state_ready.rgb()
-                        } else {
+                        } else if is_default {
                             pal.border_hair.rgb()
+                        } else {
+                            pal.line.rgb()
                         }
                     }
                 };
@@ -1739,5 +1769,123 @@ mod tests {
         let rc_state = Rc::new(RefCell::new(hatch_state));
         draw_nucleo_pinout(&cr, 1200.0, 750.0, &rc_state);
         surface.flush();
+    }
+
+    struct PaletteResetGuard(tokens::Palette);
+    impl Drop for PaletteResetGuard {
+        fn drop(&mut self) {
+            tokens::set_palette(self.0);
+        }
+    }
+
+    fn rel_luminance(rgb: (f64, f64, f64)) -> f64 {
+        fn lin(c: f64) -> f64 {
+            if c <= 0.04045 {
+                c / 12.92
+            } else {
+                ((c + 0.055) / 1.055).powf(2.4)
+            }
+        }
+        0.2126 * lin(rgb.0) + 0.7152 * lin(rgb.1) + 0.0722 * lin(rgb.2)
+    }
+
+    fn contrast_ratio(a: (f64, f64, f64), b: (f64, f64, f64)) -> f64 {
+        let la = rel_luminance(a);
+        let lb = rel_luminance(b);
+        let (hi, lo) = if la >= lb { (la, lb) } else { (lb, la) };
+        (hi + 0.05) / (lo + 0.05)
+    }
+
+    #[test]
+    fn test_stage_palette_nucleo_pinout_rendering_and_contrast() {
+        let stage = tokens::Palette::STAGE;
+        for (label, fill) in [
+            ("state_ready", stage.state_ready.rgb()),
+            ("state_error (SWD)", stage.state_error.rgb()),
+            ("state_active (OSC)", stage.state_active.rgb()),
+        ] {
+            let badge_c = contrast_ratio(stage.bg_void.rgb(), fill);
+            assert!(
+                badge_c >= 4.5,
+                "Pinout badge text contrast for {} ({}) must be >= 4.5",
+                label,
+                badge_c
+            );
+            let cell_text_c = contrast_ratio(fill, stage.bg_panel.rgb());
+            assert!(
+                cell_text_c >= 4.5,
+                "Pinout label contrast on bg_panel for {} ({}) must be >= 4.5",
+                label,
+                cell_text_c
+            );
+        }
+
+        let _guard = PaletteResetGuard(tokens::palette());
+        tokens::set_palette(stage);
+
+        let mut surface = cairo::ImageSurface::create(cairo::Format::ARgb32, 1200, 750)
+            .expect("Failed to create surface");
+        {
+            let cr = cairo::Context::new(&surface).expect("Failed to create context");
+            let state = Rc::new(RefCell::new(AppState::default()));
+
+            let fixture_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../stakhal-core/tests/fixtures/aa_ns_stm_port");
+            let ioc_path = fixture_dir.join("aa_ns_stm_port.ioc");
+            let main_c_path = fixture_dir.join("Core/Src/main.c");
+            let mut project = stakhal_core::ir::schema::load_project(&ioc_path, &main_c_path)
+                .expect("Failed to load aa_ns_stm_port");
+
+            // Include both an SWD critical conflict (PA13) and an oscillator caution conflict (PH0)
+            project.pins.push(stakhal_core::ioc::parser::PinConfig {
+                pin: "PA13".to_string(),
+                signal: "GPIO_Output".to_string(),
+                label: Some("DBG_SWDIO".to_string()),
+                modules: Vec::new(),
+            });
+            project.pins.push(stakhal_core::ioc::parser::PinConfig {
+                pin: "PH0".to_string(),
+                signal: "RCC_OSC_IN".to_string(),
+                label: Some("OSC_TEST".to_string()),
+                modules: Vec::new(),
+            });
+
+            state.borrow().project.borrow_mut().loaded_project = Some(project);
+            state.borrow().with_canvas_state_mut(|c| {
+                c.hovered_pinout_pin = Some(("CN7".to_string(), 1));
+                c.hovered_pinout_mouse = Some((120.0, 220.0));
+            });
+
+            draw_nucleo_pinout(&cr, 1200.0, 750.0, &state);
+            surface.flush();
+        }
+
+        let data = surface.data().expect("surface pixel data");
+        let mut saw_bg_void = false;
+        let mut saw_bg_panel = false;
+        let mut saw_bg_raised = false;
+        let mut saw_ready = false;
+        let mut saw_error = false;
+        let mut saw_active = false;
+
+        for px in data.chunks_exact(4) {
+            let (b, g, r) = (px[0], px[1], px[2]);
+            match (r, g, b) {
+                (0xF4, 0xF9, 0xFD) => saw_bg_void = true,
+                (0xFF, 0xFF, 0xFF) => saw_bg_panel = true,
+                (0xE8, 0xF2, 0xF9) => saw_bg_raised = true,
+                (0x0A, 0x7A, 0x66) => saw_ready = true,
+                (0xC6, 0x2F, 0x4D) => saw_error = true,
+                (0x8F, 0x67, 0x00) => saw_active = true,
+                _ => {}
+            }
+        }
+
+        assert!(saw_bg_void, "Expected Stage light bg_void canvas");
+        assert!(saw_bg_panel, "Expected Stage white board/cell panel");
+        assert!(saw_bg_raised, "Expected Stage bg_raised badge/MCU fill");
+        assert!(saw_ready, "Expected Stage state_ready active pin cell");
+        assert!(saw_error, "Expected Stage state_error SWD pin cell");
+        assert!(saw_active, "Expected Stage state_active OSC pin cell");
     }
 }
