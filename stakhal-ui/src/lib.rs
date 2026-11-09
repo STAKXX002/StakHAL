@@ -193,6 +193,7 @@ pub fn build_css(p: &ui::tokens::Palette) -> String {
     let state_active = p.state_active.hex();
     let state_error = p.state_error.hex();
     let accent = p.accent.hex();
+    let text_strong = p.text_strong.hex();
 
     let mut css = format!(
         r#"
@@ -252,7 +253,7 @@ button.stakhal-btn {{
 button.stakhal-btn:hover {{
     border-color: @accent;
     background-color: {bg_raised};
-    color: #ffffff;
+    color: {text_strong};
 }}
 
 button.stakhal-btn:active {{
@@ -405,8 +406,71 @@ dropdown button {{
     );
 
     if *p == ui::tokens::Palette::STAGE {
+        let header = p.header.hex();
+        let header_fg = p.header_fg.hex();
+        let gold = p.gold.hex();
         css.push_str(&format!(
             r#"
+@define-color bg_raised {bg_raised};
+@define-color header {header};
+@define-color header_fg {header_fg};
+@define-color gold {gold};
+
+@define-color window_bg_color @bg_void;
+@define-color window_fg_color @text_primary;
+@define-color view_bg_color @bg_panel;
+@define-color view_fg_color @text_primary;
+@define-color headerbar_bg_color @header;
+@define-color headerbar_fg_color @header_fg;
+@define-color headerbar_border_color @gold;
+@define-color headerbar_backdrop_color @header;
+@define-color card_bg_color @bg_panel;
+@define-color card_fg_color @text_primary;
+@define-color dialog_bg_color @bg_panel;
+@define-color dialog_fg_color @text_primary;
+@define-color popover_bg_color @bg_panel;
+@define-color popover_fg_color @text_primary;
+@define-color accent_bg_color @accent;
+@define-color accent_fg_color @bg_void;
+@define-color accent_color @accent;
+
+:root {{
+    --window-bg-color: @window_bg_color;
+    --window-fg-color: @window_fg_color;
+    --view-bg-color: @view_bg_color;
+    --view-fg-color: @view_fg_color;
+    --headerbar-bg-color: @headerbar_bg_color;
+    --headerbar-fg-color: @headerbar_fg_color;
+    --headerbar-border-color: @headerbar_border_color;
+    --headerbar-backdrop-color: @headerbar_backdrop_color;
+    --headerbar-shade-color: alpha(@gold, 0.25);
+    --card-bg-color: @card_bg_color;
+    --card-fg-color: @card_fg_color;
+    --dialog-bg-color: @dialog_bg_color;
+    --dialog-fg-color: @dialog_fg_color;
+    --popover-bg-color: @popover_bg_color;
+    --popover-fg-color: @popover_fg_color;
+    --accent-bg-color: @accent_bg_color;
+    --accent-fg-color: @accent_fg_color;
+    --accent-color: @accent_color;
+}}
+
+window, dialog {{
+    background-color: @bg_void;
+    background-image: linear-gradient(180deg, @bg_panel 0%, @bg_void 45%, mix(@bg_void, @accent, 0.12) 100%);
+    color: @text_primary;
+}}
+
+list, listview {{
+    background-color: @view_bg_color;
+    color: @view_fg_color;
+}}
+
+row, listboxrow, actionrow {{
+    background-color: @card_bg_color;
+    color: @card_fg_color;
+}}
+
 button.stakhal-btn {{
     transition: background-color 180ms cubic-bezier(0.0, 0.0, 0.2, 1.0),
                 border-color 180ms cubic-bezier(0.0, 0.0, 0.2, 1.0);
@@ -419,10 +483,16 @@ button.stakhal-btn:focus-visible {{
 }}
 
 headerbar {{
-    border-bottom: 1px solid {};
+    background-color: @header;
+    color: @header_fg;
+    border-bottom: 1px solid @gold;
+    box-shadow: none;
 }}
-"#,
-            p.gold.hex()
+
+headerbar:backdrop {{
+    background-color: @header;
+}}
+"#
         ));
     }
 
@@ -589,6 +659,13 @@ pub fn build_ui(app: &adw::Application) {
     adw::StyleManager::default().set_color_scheme(adw::ColorScheme::ForceDark);
 
     let css_provider = gtk4::CssProvider::new();
+    css_provider.connect_parsing_error(|_, section, error| {
+        eprintln!(
+            "CSS parse error at {}:{}: {error}",
+            section.start_location().lines() + 1,
+            section.start_location().line_bytes() + 1
+        );
+    });
     apply_skin(&css_provider, ui::tokens::Palette::DEFAULT);
 
     if let Some(display) = gdk::Display::default() {
@@ -1706,6 +1783,61 @@ dropdown button {
         let generated = build_css(&ui::tokens::Palette::DEFAULT);
         assert_eq!(generated, CURRENT_CSS);
         assert_eq!(generated.as_bytes(), CURRENT_CSS.as_bytes());
+    }
+
+    #[test]
+    fn test_build_css_stage_contains_adwaita_overrides_and_uses_text_strong() {
+        let stage = ui::tokens::Palette::STAGE;
+        let css = build_css(&stage);
+
+        assert!(
+            !css.contains("color: #ffffff;"),
+            "Stage CSS must replace hover literal #ffffff with text_strong"
+        );
+        assert!(
+            css.contains(&format!("color: {};", stage.text_strong.hex())),
+            "Stage CSS must use Palette::STAGE.text_strong in button hover"
+        );
+
+        for name in [
+            "window_bg_color",
+            "window_fg_color",
+            "view_bg_color",
+            "view_fg_color",
+            "headerbar_bg_color",
+            "headerbar_fg_color",
+            "headerbar_border_color",
+            "headerbar_backdrop_color",
+            "card_bg_color",
+            "card_fg_color",
+            "dialog_bg_color",
+            "dialog_fg_color",
+            "popover_bg_color",
+            "popover_fg_color",
+            "accent_bg_color",
+            "accent_fg_color",
+            "accent_color",
+        ] {
+            assert!(
+                css.contains(&format!("@define-color {name} ")),
+                "Stage CSS must override libadwaita named color {name}"
+            );
+        }
+
+        assert!(
+            css.contains(":root {") && css.contains("--headerbar-bg-color: @headerbar_bg_color;"),
+            "Stage CSS must override libadwaita :root custom properties"
+        );
+        assert!(
+            css.contains(
+                "linear-gradient(180deg, @bg_panel 0%, @bg_void 45%, mix(@bg_void, @accent, 0.12) 100%)"
+            ),
+            "Stage CSS must include static vertical window gradient via mix()"
+        );
+        assert!(
+            css.contains("border-bottom: 1px solid @gold;"),
+            "Stage CSS must style headerbar bottom border from gold"
+        );
     }
 
     #[test]
