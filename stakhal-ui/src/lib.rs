@@ -434,6 +434,31 @@ pub fn apply_skin(provider: &gtk4::CssProvider, palette: ui::tokens::Palette) {
     provider.load_from_string(&build_css(&palette));
 }
 
+pub fn queue_draw_all_canvases(
+    widgets: &AppWidgets,
+    launch_overlay_area: Option<&gtk4::DrawingArea>,
+) {
+    widgets.pinout_drawing_area.queue_draw();
+    widgets.diagram_drawing_area.queue_draw();
+    widgets.area_traceability_verify.queue_draw();
+    widgets.area_flash_verify.queue_draw();
+    if let Some(area) = launch_overlay_area {
+        if area.parent().is_some() && area.is_visible() {
+            area.queue_draw();
+        }
+    }
+}
+
+pub fn apply_skin_and_redraw(
+    provider: &gtk4::CssProvider,
+    palette: ui::tokens::Palette,
+    widgets: &AppWidgets,
+    launch_overlay_area: Option<&gtk4::DrawingArea>,
+) {
+    apply_skin(provider, palette);
+    queue_draw_all_canvases(widgets, launch_overlay_area);
+}
+
 pub fn build_ui(app: &adw::Application) {
     adw::StyleManager::default().set_color_scheme(adw::ColorScheme::ForceDark);
 
@@ -534,7 +559,7 @@ pub fn build_ui(app: &adw::Application) {
 
     let launch_overlay = gtk4::Overlay::new();
     launch_overlay.set_child(Some(&content_box));
-    ui::launch_overlay::setup_launch_overlay(&launch_overlay);
+    let _launch_overlay_area = ui::launch_overlay::setup_launch_overlay(&launch_overlay);
 
     toast_overlay.set_child(Some(&launch_overlay));
 
@@ -551,7 +576,6 @@ pub fn build_ui(app: &adw::Application) {
         window: window.clone(),
         stack: stack.clone(),
         toast_overlay,
-        css_provider: css_provider.clone(),
         lbl_discovered_dir,
         lbl_ioc_path,
         lbl_main_c_path,

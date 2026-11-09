@@ -49,7 +49,6 @@ printf("BOOT\r\n");
         window,
         stack,
         toast_overlay,
-        css_provider: gtk4::CssProvider::new(),
         lbl_discovered_dir: gtk4::Label::new(None),
         lbl_ioc_path: gtk4::Label::new(None),
         lbl_main_c_path: gtk4::Label::new(None),

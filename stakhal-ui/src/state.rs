@@ -166,7 +166,6 @@ pub struct AppWidgets {
     pub window: adw::ApplicationWindow,
     pub stack: gtk4::Stack,
     pub toast_overlay: adw::ToastOverlay,
-    pub css_provider: gtk4::CssProvider,
     pub lbl_discovered_dir: gtk4::Label,
     pub lbl_ioc_path: gtk4::Label,
     pub lbl_main_c_path: gtk4::Label,

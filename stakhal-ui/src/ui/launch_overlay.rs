@@ -36,14 +36,14 @@ pub fn reset_launch_animation_for_testing() {
 /// Sets up the one-time launch animation atop the given overlay container.
 /// If reduced motion is requested or the animation has already played,
 /// this function is a no-op and the normal window content is displayed immediately.
-pub fn setup_launch_overlay(overlay: &gtk4::Overlay) {
+pub fn setup_launch_overlay(overlay: &gtk4::Overlay) -> Option<gtk4::DrawingArea> {
     if !tokens::motion::is_animations_enabled() {
         LAUNCH_ANIMATION_PLAYED.store(true, Ordering::SeqCst);
-        return;
+        return None;
     }
 
     if LAUNCH_ANIMATION_PLAYED.swap(true, Ordering::SeqCst) {
-        return;
+        return None;
     }
 
     let drawing_area = gtk4::DrawingArea::builder()
@@ -91,6 +91,7 @@ pub fn setup_launch_overlay(overlay: &gtk4::Overlay) {
     });
 
     overlay.add_overlay(&drawing_area);
+    Some(drawing_area)
 }
 
 /// Render a single frame of the launch animation given elapsed milliseconds.
