@@ -73,6 +73,11 @@ pub struct Palette {
     pub accent_hover: ColorToken,
     pub accent_pressed: ColorToken,
     pub gold: ColorToken,
+    pub header: ColorToken,
+    pub header_fg: ColorToken,
+    pub line: ColorToken,
+    pub node_border: ColorToken,
+    pub text_strong: ColorToken,
 }
 
 impl Palette {
@@ -91,23 +96,33 @@ impl Palette {
         accent_hover: ColorToken::new("#5FE3D7", (95.0 / 255.0, 227.0 / 255.0, 215.0 / 255.0)),
         accent_pressed: ColorToken::new("#3BB3A8", (59.0 / 255.0, 179.0 / 255.0, 168.0 / 255.0)),
         gold: ColorToken::new(color::STATE_ACTIVE_HEX, color::STATE_ACTIVE),
+        header: ColorToken::new(color::BG_PANEL_HEX, color::BG_PANEL),
+        header_fg: ColorToken::new(color::TEXT_PRIMARY_HEX, color::TEXT_PRIMARY),
+        line: ColorToken::new(color::BORDER_HAIR_HEX, color::BORDER_HAIR),
+        node_border: ColorToken::new(color::BORDER_HAIR_HEX, color::BORDER_HAIR),
+        text_strong: ColorToken::new("#ffffff", (1.0, 1.0, 1.0)),
     };
 
-    /// The Stage secret theme palette.
+    /// The light Stage secret theme palette.
     pub const STAGE: Self = Self {
-        bg_void: ColorToken::new("#0D1230", (13.0 / 255.0, 18.0 / 255.0, 48.0 / 255.0)),
-        bg_panel: ColorToken::new("#151C45", (21.0 / 255.0, 28.0 / 255.0, 69.0 / 255.0)),
-        bg_raised: ColorToken::new("#1D2658", (29.0 / 255.0, 38.0 / 255.0, 88.0 / 255.0)),
-        border_hair: ColorToken::new("#2A3A7C", (42.0 / 255.0, 58.0 / 255.0, 124.0 / 255.0)),
-        text_primary: ColorToken::new("#E8F2FA", (232.0 / 255.0, 242.0 / 255.0, 250.0 / 255.0)),
-        text_muted: ColorToken::new("#93A6D0", (147.0 / 255.0, 166.0 / 255.0, 208.0 / 255.0)),
-        state_ready: ColorToken::new("#5EE0C2", (94.0 / 255.0, 224.0 / 255.0, 194.0 / 255.0)),
-        state_active: ColorToken::new("#EBCB8B", (235.0 / 255.0, 203.0 / 255.0, 139.0 / 255.0)),
-        state_error: ColorToken::new("#FF7088", (1.0, 112.0 / 255.0, 136.0 / 255.0)),
-        accent: ColorToken::new("#5CCBF2", (92.0 / 255.0, 203.0 / 255.0, 242.0 / 255.0)),
-        accent_hover: ColorToken::new("#86DAF6", (134.0 / 255.0, 218.0 / 255.0, 246.0 / 255.0)),
-        accent_pressed: ColorToken::new("#3AAEDB", (58.0 / 255.0, 174.0 / 255.0, 219.0 / 255.0)),
-        gold: ColorToken::new("#E9C98F", (233.0 / 255.0, 201.0 / 255.0, 143.0 / 255.0)),
+        bg_void: ColorToken::new("#F4F9FD", (244.0 / 255.0, 249.0 / 255.0, 253.0 / 255.0)),
+        bg_panel: ColorToken::new("#FFFFFF", (1.0, 1.0, 1.0)),
+        bg_raised: ColorToken::new("#E8F2F9", (232.0 / 255.0, 242.0 / 255.0, 249.0 / 255.0)),
+        border_hair: ColorToken::new("#C3D7E6", (195.0 / 255.0, 215.0 / 255.0, 230.0 / 255.0)),
+        text_primary: ColorToken::new("#1B2559", (27.0 / 255.0, 37.0 / 255.0, 89.0 / 255.0)),
+        text_muted: ColorToken::new("#566790", (86.0 / 255.0, 103.0 / 255.0, 144.0 / 255.0)),
+        state_ready: ColorToken::new("#0A7A66", (10.0 / 255.0, 122.0 / 255.0, 102.0 / 255.0)),
+        state_active: ColorToken::new("#8F6700", (143.0 / 255.0, 103.0 / 255.0, 0.0)),
+        state_error: ColorToken::new("#C62F4D", (198.0 / 255.0, 47.0 / 255.0, 77.0 / 255.0)),
+        accent: ColorToken::new("#2E6DB4", (46.0 / 255.0, 109.0 / 255.0, 180.0 / 255.0)),
+        accent_hover: ColorToken::new("#285FA0", (40.0 / 255.0, 95.0 / 255.0, 160.0 / 255.0)),
+        accent_pressed: ColorToken::new("#1F4E86", (31.0 / 255.0, 78.0 / 255.0, 134.0 / 255.0)),
+        gold: ColorToken::new("#C9A24F", (201.0 / 255.0, 162.0 / 255.0, 79.0 / 255.0)),
+        header: ColorToken::new("#1F2960", (31.0 / 255.0, 41.0 / 255.0, 96.0 / 255.0)),
+        header_fg: ColorToken::new("#F4F9FD", (244.0 / 255.0, 249.0 / 255.0, 253.0 / 255.0)),
+        line: ColorToken::new("#4F76AE", (79.0 / 255.0, 118.0 / 255.0, 174.0 / 255.0)),
+        node_border: ColorToken::new("#3F5FA0", (63.0 / 255.0, 95.0 / 255.0, 160.0 / 255.0)),
+        text_strong: ColorToken::new("#1B2559", (27.0 / 255.0, 37.0 / 255.0, 89.0 / 255.0)),
     };
 }
 
@@ -297,6 +312,16 @@ mod tests {
         assert_eq!(def.accent_pressed.hex(), "#3BB3A8");
         assert_eq!(def.gold.hex(), color::STATE_ACTIVE_HEX);
         assert_eq!(def.gold.rgb(), color::STATE_ACTIVE);
+        assert_eq!(def.header.hex(), color::BG_PANEL_HEX);
+        assert_eq!(def.header.rgb(), color::BG_PANEL);
+        assert_eq!(def.header_fg.hex(), color::TEXT_PRIMARY_HEX);
+        assert_eq!(def.header_fg.rgb(), color::TEXT_PRIMARY);
+        assert_eq!(def.line.hex(), color::BORDER_HAIR_HEX);
+        assert_eq!(def.line.rgb(), color::BORDER_HAIR);
+        assert_eq!(def.node_border.hex(), color::BORDER_HAIR_HEX);
+        assert_eq!(def.node_border.rgb(), color::BORDER_HAIR);
+        assert_eq!(def.text_strong.hex(), "#ffffff");
+        assert_eq!(def.text_strong.rgb(), (1.0, 1.0, 1.0));
 
         // Thread local get and set
         assert_eq!(palette(), Palette::DEFAULT);
@@ -331,44 +356,49 @@ mod tests {
 
     #[test]
     fn test_stage_palette_wcag_contrast() {
-        let stage = Palette::STAGE;
-        let bg_void = stage.bg_void.rgb();
-        let bg_panel = stage.bg_panel.rgb();
+        let s = Palette::STAGE;
+        let checks = [
+            ("text_primary vs bg_void", s.text_primary, s.bg_void, 4.5),
+            ("text_primary vs bg_panel", s.text_primary, s.bg_panel, 4.5),
+            (
+                "text_primary vs bg_raised",
+                s.text_primary,
+                s.bg_raised,
+                4.5,
+            ),
+            ("text_muted vs bg_void", s.text_muted, s.bg_void, 4.5),
+            ("text_muted vs bg_panel", s.text_muted, s.bg_panel, 4.5),
+            ("text_muted vs bg_raised", s.text_muted, s.bg_raised, 4.5),
+            ("accent vs bg_void", s.accent, s.bg_void, 4.5),
+            ("accent vs bg_panel", s.accent, s.bg_panel, 4.5),
+            ("bg_void vs accent", s.bg_void, s.accent, 4.5),
+            ("bg_void vs accent_hover", s.bg_void, s.accent_hover, 4.5),
+            (
+                "bg_void vs accent_pressed",
+                s.bg_void,
+                s.accent_pressed,
+                4.5,
+            ),
+            ("state_ready vs bg_void", s.state_ready, s.bg_void, 4.5),
+            ("state_ready vs bg_panel", s.state_ready, s.bg_panel, 4.5),
+            ("state_active vs bg_void", s.state_active, s.bg_void, 4.5),
+            ("state_active vs bg_panel", s.state_active, s.bg_panel, 4.5),
+            ("state_error vs bg_void", s.state_error, s.bg_void, 4.5),
+            ("state_error vs bg_panel", s.state_error, s.bg_panel, 4.5),
+            ("line vs bg_void", s.line, s.bg_void, 3.0),
+            ("line vs bg_panel", s.line, s.bg_panel, 3.0),
+            ("node_border vs bg_void", s.node_border, s.bg_void, 3.0),
+            ("node_border vs bg_panel", s.node_border, s.bg_panel, 3.0),
+            ("header_fg vs header", s.header_fg, s.header, 4.5),
+            ("gold vs header", s.gold, s.header, 3.0),
+        ];
 
-        let text_primary = stage.text_primary.rgb();
-        let text_muted = stage.text_muted.rgb();
-        let accent = stage.accent.rgb();
-
-        let ratio_tp_void = contrast_ratio(text_primary, bg_void);
-        let ratio_tp_panel = contrast_ratio(text_primary, bg_panel);
-        let ratio_tm_void = contrast_ratio(text_muted, bg_void);
-        let ratio_tm_panel = contrast_ratio(text_muted, bg_panel);
-        let ratio_acc_void = contrast_ratio(accent, bg_void);
-        let ratio_acc_panel = contrast_ratio(accent, bg_panel);
-
-        assert!(
-            ratio_tp_void >= 4.5,
-            "text_primary vs bg_void must be >= 4.5, got {ratio_tp_void}"
-        );
-        assert!(
-            ratio_tp_panel >= 4.5,
-            "text_primary vs bg_panel must be >= 4.5, got {ratio_tp_panel}"
-        );
-        assert!(
-            ratio_tm_void >= 4.5,
-            "text_muted vs bg_void must be >= 4.5, got {ratio_tm_void}"
-        );
-        assert!(
-            ratio_tm_panel >= 4.5,
-            "text_muted vs bg_panel must be >= 4.5, got {ratio_tm_panel}"
-        );
-        assert!(
-            ratio_acc_void >= 4.5,
-            "accent vs bg_void must be >= 4.5, got {ratio_acc_void}"
-        );
-        assert!(
-            ratio_acc_panel >= 4.5,
-            "accent vs bg_panel must be >= 4.5, got {ratio_acc_panel}"
-        );
+        for (label, fg, bg, min_ratio) in checks {
+            let ratio = contrast_ratio(fg.rgb(), bg.rgb());
+            assert!(
+                ratio >= min_ratio,
+                "{label} contrast must be >= {min_ratio}, got {ratio}"
+            );
+        }
     }
 }
