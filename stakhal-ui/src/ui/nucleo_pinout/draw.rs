@@ -756,6 +756,7 @@ pub fn draw_nucleo_pinout(
     height: f64,
     state: &Rc<RefCell<AppState>>,
 ) {
+    let pal = tokens::palette();
     let (hovered_pin, hovered_mouse, is_filtering_module) = state.borrow().with_canvas_state(|c| {
         (
             c.hovered_pinout_pin.clone(),
@@ -810,35 +811,23 @@ pub fn draw_nucleo_pinout(
     let col_cn5 = col_cn10_0 - 16.0 - cell_w;
 
     // Canvas Background
-    cr.set_source_rgb(
-        tokens::color::BG_VOID.0,
-        tokens::color::BG_VOID.1,
-        tokens::color::BG_VOID.2,
-    );
+    cr.set_source_rgb(pal.bg_void.0, pal.bg_void.1, pal.bg_void.2);
     cr.rectangle(0.0, 0.0, canvas_w, canvas_h);
     let _ = cr.fill();
 
     // 1. Board Silhouette (PCB Outline) - Surface BG_PANEL, hairline border BORDER_HAIR, 0px sharp corners
-    cr.set_source_rgb(
-        tokens::color::BG_PANEL.0,
-        tokens::color::BG_PANEL.1,
-        tokens::color::BG_PANEL.2,
-    );
+    cr.set_source_rgb(pal.bg_panel.0, pal.bg_panel.1, pal.bg_panel.2);
     cr.rectangle(board_x, board_y, board_w, board_h);
     let _ = cr.fill_preserve();
-    cr.set_source_rgb(
-        tokens::color::BORDER_HAIR.0,
-        tokens::color::BORDER_HAIR.1,
-        tokens::color::BORDER_HAIR.2,
-    );
+    cr.set_source_rgb(pal.border_hair.0, pal.border_hair.1, pal.border_hair.2);
     cr.set_line_width(tokens::shape::BORDER_WIDTH_HAIR);
     let _ = cr.stroke();
 
     // Subtle PCB Grid Accent Texture Lines
     cr.set_source_rgba(
-        tokens::color::BORDER_HAIR.0,
-        tokens::color::BORDER_HAIR.1,
-        tokens::color::BORDER_HAIR.2,
+        pal.border_hair.0,
+        pal.border_hair.1,
+        pal.border_hair.2,
         0.25,
     );
     cr.set_line_width(tokens::shape::BORDER_WIDTH_HAIR);
@@ -854,18 +843,10 @@ pub fn draw_nucleo_pinout(
     let notch_w = (board_w * 0.24).clamp(220.0, 380.0);
     let notch_x = board_x + (board_w - notch_w) / 2.0;
     let notch_y = board_y + 8.0;
-    cr.set_source_rgb(
-        tokens::color::BG_VOID.0,
-        tokens::color::BG_VOID.1,
-        tokens::color::BG_VOID.2,
-    );
+    cr.set_source_rgb(pal.bg_void.0, pal.bg_void.1, pal.bg_void.2);
     cr.rectangle(notch_x, notch_y, notch_w, 20.0);
     let _ = cr.fill_preserve();
-    cr.set_source_rgb(
-        tokens::color::BORDER_HAIR.0,
-        tokens::color::BORDER_HAIR.1,
-        tokens::color::BORDER_HAIR.2,
-    );
+    cr.set_source_rgb(pal.border_hair.0, pal.border_hair.1, pal.border_hair.2);
     cr.set_line_width(tokens::shape::BORDER_WIDTH_HAIR);
     let _ = cr.stroke();
 
@@ -875,11 +856,7 @@ pub fn draw_nucleo_pinout(
         cairo::FontWeight::Bold,
     );
     cr.set_font_size(9.0);
-    cr.set_source_rgb(
-        tokens::color::TEXT_MUTED.0,
-        tokens::color::TEXT_MUTED.1,
-        tokens::color::TEXT_MUTED.2,
-    );
+    cr.set_source_rgb(pal.text_muted.0, pal.text_muted.1, pal.text_muted.2);
     if let Ok(ext) = cr.text_extents("ST-LINK V2-1 ON-BOARD DEBUGGER") {
         cr.move_to(notch_x + (notch_w - ext.width()) / 2.0, notch_y + 14.0);
         let _ = cr.show_text("ST-LINK V2-1 ON-BOARD DEBUGGER");
@@ -892,11 +869,7 @@ pub fn draw_nucleo_pinout(
         cairo::FontWeight::Bold,
     );
     cr.set_font_size(16.0);
-    cr.set_source_rgb(
-        tokens::color::TEXT_PRIMARY.0,
-        tokens::color::TEXT_PRIMARY.1,
-        tokens::color::TEXT_PRIMARY.2,
-    );
+    cr.set_source_rgb(pal.text_primary.0, pal.text_primary.1, pal.text_primary.2);
     let title_str = "STMicroelectronics NUCLEO-F446RE";
     let title_y = board_y + 46.0;
     if let Ok(ext) = cr.text_extents(title_str) {
@@ -910,11 +883,7 @@ pub fn draw_nucleo_pinout(
         cairo::FontWeight::Normal,
     );
     cr.set_font_size(10.5);
-    cr.set_source_rgb(
-        tokens::color::TEXT_MUTED.0,
-        tokens::color::TEXT_MUTED.1,
-        tokens::color::TEXT_MUTED.2,
-    );
+    cr.set_source_rgb(pal.text_muted.0, pal.text_muted.1, pal.text_muted.2);
     let subtitle_str = "ARM® Cortex®-M4 MCU @ 180MHz • Physical 64-Pin Connector Pinout";
     let subtitle_y = title_y + 20.0;
     if let Ok(ext) = cr.text_extents(subtitle_str) {
@@ -928,9 +897,9 @@ pub fn draw_nucleo_pinout(
             .iter()
             .any(|(_, r)| r.severity == stakhal_core::nucleo_pinout::ReservedSeverity::Critical);
         let (cr_r, cr_g, cr_b) = if has_critical {
-            tokens::color::STATE_ERROR
+            pal.state_error.rgb()
         } else {
-            tokens::color::STATE_ACTIVE
+            pal.state_active.rgb()
         };
 
         let banner_str = if count == 1 {
@@ -966,27 +935,15 @@ pub fn draw_nucleo_pinout(
     let mcu_h = (4.5 * row_h).clamp(100.0, 180.0);
 
     // MCU LQFP64 Chip Frame - Sharp 0px corners, BG_VOID fill, 1px BORDER_HAIR
-    cr.set_source_rgb(
-        tokens::color::BG_VOID.0,
-        tokens::color::BG_VOID.1,
-        tokens::color::BG_VOID.2,
-    );
+    cr.set_source_rgb(pal.bg_void.0, pal.bg_void.1, pal.bg_void.2);
     cr.rectangle(mcu_x, mcu_y, mcu_w, mcu_h);
     let _ = cr.fill_preserve();
-    cr.set_source_rgb(
-        tokens::color::BORDER_HAIR.0,
-        tokens::color::BORDER_HAIR.1,
-        tokens::color::BORDER_HAIR.2,
-    );
+    cr.set_source_rgb(pal.border_hair.0, pal.border_hair.1, pal.border_hair.2);
     cr.set_line_width(tokens::shape::BORDER_WIDTH_HAIR);
     let _ = cr.stroke();
 
     // MCU Orientation Pin 1 Dot
-    cr.set_source_rgb(
-        tokens::color::TEXT_MUTED.0,
-        tokens::color::TEXT_MUTED.1,
-        tokens::color::TEXT_MUTED.2,
-    );
+    cr.set_source_rgb(pal.text_muted.0, pal.text_muted.1, pal.text_muted.2);
     cr.arc(
         mcu_x + 14.0,
         mcu_y + 14.0,
@@ -1003,31 +960,19 @@ pub fn draw_nucleo_pinout(
         cairo::FontWeight::Bold,
     );
     cr.set_font_size(11.0);
-    cr.set_source_rgb(
-        tokens::color::TEXT_PRIMARY.0,
-        tokens::color::TEXT_PRIMARY.1,
-        tokens::color::TEXT_PRIMARY.2,
-    );
+    cr.set_source_rgb(pal.text_primary.0, pal.text_primary.1, pal.text_primary.2);
     if let Ok(ext) = cr.text_extents("STM32F446") {
         cr.move_to(mcu_x + (mcu_w - ext.width()) / 2.0, mcu_y + mcu_h * 0.42);
         let _ = cr.show_text("STM32F446");
     }
     cr.set_font_size(10.0);
-    cr.set_source_rgb(
-        tokens::color::TEXT_PRIMARY.0,
-        tokens::color::TEXT_PRIMARY.1,
-        tokens::color::TEXT_PRIMARY.2,
-    );
+    cr.set_source_rgb(pal.text_primary.0, pal.text_primary.1, pal.text_primary.2);
     if let Ok(ext) = cr.text_extents("RET6") {
         cr.move_to(mcu_x + (mcu_w - ext.width()) / 2.0, mcu_y + mcu_h * 0.55);
         let _ = cr.show_text("RET6");
     }
     cr.set_font_size(9.0);
-    cr.set_source_rgb(
-        tokens::color::TEXT_MUTED.0,
-        tokens::color::TEXT_MUTED.1,
-        tokens::color::TEXT_MUTED.2,
-    );
+    cr.set_source_rgb(pal.text_muted.0, pal.text_muted.1, pal.text_muted.2);
     if let Ok(ext) = cr.text_extents("LQFP64") {
         cr.move_to(mcu_x + (mcu_w - ext.width()) / 2.0, mcu_y + mcu_h * 0.68);
         let _ = cr.show_text("LQFP64");
@@ -1038,28 +983,16 @@ pub fn draw_nucleo_pinout(
         highlights.contains_key(&("CN10", 11)) || highlights.contains_key(&("CN5", 6));
     let led_y = row_start_y + 2.0 * row_h;
     let led_h = (1.2 * row_h).clamp(30.0, 42.0);
-    cr.set_source_rgb(
-        tokens::color::BG_PANEL.0,
-        tokens::color::BG_PANEL.1,
-        tokens::color::BG_PANEL.2,
-    );
+    cr.set_source_rgb(pal.bg_panel.0, pal.bg_panel.1, pal.bg_panel.2);
     cr.rectangle(mcu_x, led_y, mcu_w, led_h);
     let _ = cr.fill_preserve();
 
     if is_pa5_active {
-        cr.set_source_rgb(
-            tokens::color::STATE_READY.0,
-            tokens::color::STATE_READY.1,
-            tokens::color::STATE_READY.2,
-        );
+        cr.set_source_rgb(pal.state_ready.0, pal.state_ready.1, pal.state_ready.2);
         cr.set_line_width(tokens::shape::BORDER_WIDTH_HAIR);
         let _ = cr.stroke();
 
-        cr.set_source_rgb(
-            tokens::color::STATE_READY.0,
-            tokens::color::STATE_READY.1,
-            tokens::color::STATE_READY.2,
-        );
+        cr.set_source_rgb(pal.state_ready.0, pal.state_ready.1, pal.state_ready.2);
         cr.arc(
             mcu_x + 18.0,
             led_y + led_h / 2.0,
@@ -1075,27 +1008,15 @@ pub fn draw_nucleo_pinout(
             cairo::FontWeight::Bold,
         );
         cr.set_font_size(10.0);
-        cr.set_source_rgb(
-            tokens::color::STATE_READY.0,
-            tokens::color::STATE_READY.1,
-            tokens::color::STATE_READY.2,
-        );
+        cr.set_source_rgb(pal.state_ready.0, pal.state_ready.1, pal.state_ready.2);
         cr.move_to(mcu_x + 32.0, led_y + led_h / 2.0 + 4.0);
         let _ = cr.show_text("LD2 [ON]");
     } else {
-        cr.set_source_rgb(
-            tokens::color::BORDER_HAIR.0,
-            tokens::color::BORDER_HAIR.1,
-            tokens::color::BORDER_HAIR.2,
-        );
+        cr.set_source_rgb(pal.border_hair.0, pal.border_hair.1, pal.border_hair.2);
         cr.set_line_width(tokens::shape::BORDER_WIDTH_HAIR);
         let _ = cr.stroke();
 
-        cr.set_source_rgb(
-            tokens::color::BORDER_HAIR.0,
-            tokens::color::BORDER_HAIR.1,
-            tokens::color::BORDER_HAIR.2,
-        );
+        cr.set_source_rgb(pal.border_hair.0, pal.border_hair.1, pal.border_hair.2);
         cr.arc(
             mcu_x + 18.0,
             led_y + led_h / 2.0,
@@ -1111,11 +1032,7 @@ pub fn draw_nucleo_pinout(
             cairo::FontWeight::Normal,
         );
         cr.set_font_size(9.5);
-        cr.set_source_rgb(
-            tokens::color::TEXT_MUTED.0,
-            tokens::color::TEXT_MUTED.1,
-            tokens::color::TEXT_MUTED.2,
-        );
+        cr.set_source_rgb(pal.text_muted.0, pal.text_muted.1, pal.text_muted.2);
         cr.move_to(mcu_x + 32.0, led_y + led_h / 2.0 + 4.0);
         let _ = cr.show_text("LD2 (PA5)");
     }
@@ -1126,18 +1043,10 @@ pub fn draw_nucleo_pinout(
     let b1_w = (mcu_w - 6.0) / 2.0;
 
     // B1 Button (PC13)
-    cr.set_source_rgb(
-        tokens::color::BG_PANEL.0,
-        tokens::color::BG_PANEL.1,
-        tokens::color::BG_PANEL.2,
-    );
+    cr.set_source_rgb(pal.bg_panel.0, pal.bg_panel.1, pal.bg_panel.2);
     cr.rectangle(mcu_x, btn_y, b1_w, btn_h);
     let _ = cr.fill_preserve();
-    cr.set_source_rgb(
-        tokens::color::BORDER_HAIR.0,
-        tokens::color::BORDER_HAIR.1,
-        tokens::color::BORDER_HAIR.2,
-    );
+    cr.set_source_rgb(pal.border_hair.0, pal.border_hair.1, pal.border_hair.2);
     cr.set_line_width(tokens::shape::BORDER_WIDTH_HAIR);
     let _ = cr.stroke();
     cr.select_font_face(
@@ -1146,27 +1055,15 @@ pub fn draw_nucleo_pinout(
         cairo::FontWeight::Bold,
     );
     cr.set_font_size(9.0);
-    cr.set_source_rgb(
-        tokens::color::TEXT_PRIMARY.0,
-        tokens::color::TEXT_PRIMARY.1,
-        tokens::color::TEXT_PRIMARY.2,
-    );
+    cr.set_source_rgb(pal.text_primary.0, pal.text_primary.1, pal.text_primary.2);
     cr.move_to(mcu_x + 8.0, btn_y + btn_h / 2.0 + 3.0);
     let _ = cr.show_text("B1 USER");
 
     // B2 Button (RESET)
-    cr.set_source_rgb(
-        tokens::color::BG_PANEL.0,
-        tokens::color::BG_PANEL.1,
-        tokens::color::BG_PANEL.2,
-    );
+    cr.set_source_rgb(pal.bg_panel.0, pal.bg_panel.1, pal.bg_panel.2);
     cr.rectangle(mcu_x + b1_w + 6.0, btn_y, b1_w, btn_h);
     let _ = cr.fill_preserve();
-    cr.set_source_rgb(
-        tokens::color::BORDER_HAIR.0,
-        tokens::color::BORDER_HAIR.1,
-        tokens::color::BORDER_HAIR.2,
-    );
+    cr.set_source_rgb(pal.border_hair.0, pal.border_hair.1, pal.border_hair.2);
     cr.set_line_width(tokens::shape::BORDER_WIDTH_HAIR);
     let _ = cr.stroke();
     cr.select_font_face(
@@ -1175,11 +1072,7 @@ pub fn draw_nucleo_pinout(
         cairo::FontWeight::Bold,
     );
     cr.set_font_size(9.0);
-    cr.set_source_rgb(
-        tokens::color::TEXT_PRIMARY.0,
-        tokens::color::TEXT_PRIMARY.1,
-        tokens::color::TEXT_PRIMARY.2,
-    );
+    cr.set_source_rgb(pal.text_primary.0, pal.text_primary.1, pal.text_primary.2);
     cr.move_to(mcu_x + b1_w + 10.0, btn_y + btn_h / 2.0 + 3.0);
     let _ = cr.show_text("B2 RESET");
 
@@ -1224,11 +1117,7 @@ pub fn draw_nucleo_pinout(
             cairo::FontWeight::Bold,
         );
         cr.set_font_size(10.5);
-        cr.set_source_rgb(
-            tokens::color::TEXT_PRIMARY.0,
-            tokens::color::TEXT_PRIMARY.1,
-            tokens::color::TEXT_PRIMARY.2,
-        );
+        cr.set_source_rgb(pal.text_primary.0, pal.text_primary.1, pal.text_primary.2);
 
         if conn.name == "CN10" {
             let morpho_right_edge = col_cn10_1 + cell_w;
@@ -1258,31 +1147,23 @@ pub fn draw_nucleo_pinout(
                 let (hl_r, hl_g, hl_b) = match reserved_info {
                     Some(res) => match res.severity {
                         stakhal_core::nucleo_pinout::ReservedSeverity::Critical => {
-                            tokens::color::STATE_ERROR
+                            pal.state_error.rgb()
                         }
                         stakhal_core::nucleo_pinout::ReservedSeverity::Caution => {
-                            tokens::color::STATE_ACTIVE
+                            pal.state_active.rgb()
                         }
                     },
-                    None => tokens::color::STATE_READY,
+                    None => pal.state_ready.rgb(),
                 };
 
                 // Highlighted Pin (Active in loaded project) - background BG_PANEL
-                cr.set_source_rgb(
-                    tokens::color::BG_PANEL.0,
-                    tokens::color::BG_PANEL.1,
-                    tokens::color::BG_PANEL.2,
-                );
+                cr.set_source_rgb(pal.bg_panel.0, pal.bg_panel.1, pal.bg_panel.2);
                 cr.rectangle(cell_x, cell_y, cell_w, cell_h);
                 let _ = cr.fill_preserve();
 
                 // Interactive/Selection ONLY uses ACCENT
                 if is_hovered {
-                    cr.set_source_rgb(
-                        tokens::color::ACCENT.0,
-                        tokens::color::ACCENT.1,
-                        tokens::color::ACCENT.2,
-                    );
+                    cr.set_source_rgb(pal.accent.0, pal.accent.1, pal.accent.2);
                 } else if hl_info.is_muted {
                     cr.set_source_rgba(hl_r, hl_g, hl_b, 0.35);
                 } else {
@@ -1294,11 +1175,7 @@ pub fn draw_nucleo_pinout(
                 // Pin Number Badge Box - sharp 0px corners
                 let badge_w = (cell_w * 0.16).clamp(24.0, 32.0);
                 if hl_info.is_muted {
-                    cr.set_source_rgb(
-                        tokens::color::BG_VOID.0,
-                        tokens::color::BG_VOID.1,
-                        tokens::color::BG_VOID.2,
-                    );
+                    cr.set_source_rgb(pal.bg_void.0, pal.bg_void.1, pal.bg_void.2);
                     cr.rectangle(cell_x + 3.0, cell_y + 3.0, badge_w, cell_h - 6.0);
                     let _ = cr.fill_preserve();
                     cr.set_source_rgba(hl_r, hl_g, hl_b, 0.35);
@@ -1311,11 +1188,7 @@ pub fn draw_nucleo_pinout(
                         cairo::FontWeight::Normal,
                     );
                     cr.set_font_size(9.5);
-                    cr.set_source_rgb(
-                        tokens::color::TEXT_MUTED.0,
-                        tokens::color::TEXT_MUTED.1,
-                        tokens::color::TEXT_MUTED.2,
-                    );
+                    cr.set_source_rgb(pal.text_muted.0, pal.text_muted.1, pal.text_muted.2);
                 } else {
                     cr.set_source_rgb(hl_r, hl_g, hl_b);
                     cr.rectangle(cell_x + 3.0, cell_y + 3.0, badge_w, cell_h - 6.0);
@@ -1327,11 +1200,7 @@ pub fn draw_nucleo_pinout(
                         cairo::FontWeight::Bold,
                     );
                     cr.set_font_size(9.5);
-                    cr.set_source_rgb(
-                        tokens::color::BG_VOID.0,
-                        tokens::color::BG_VOID.1,
-                        tokens::color::BG_VOID.2,
-                    );
+                    cr.set_source_rgb(pal.bg_void.0, pal.bg_void.1, pal.bg_void.2);
                 }
 
                 let pnum_str = format!("{}", p.pin_num);
@@ -1344,17 +1213,9 @@ pub fn draw_nucleo_pinout(
                 // MCU Pin Text
                 cr.set_font_size(9.5);
                 if hl_info.is_muted {
-                    cr.set_source_rgb(
-                        tokens::color::TEXT_MUTED.0,
-                        tokens::color::TEXT_MUTED.1,
-                        tokens::color::TEXT_MUTED.2,
-                    );
+                    cr.set_source_rgb(pal.text_muted.0, pal.text_muted.1, pal.text_muted.2);
                 } else {
-                    cr.set_source_rgb(
-                        tokens::color::TEXT_PRIMARY.0,
-                        tokens::color::TEXT_PRIMARY.1,
-                        tokens::color::TEXT_PRIMARY.2,
-                    );
+                    cr.set_source_rgb(pal.text_primary.0, pal.text_primary.1, pal.text_primary.2);
                 }
                 let mcu_pin_x = cell_x + badge_w + 8.0;
                 cr.move_to(mcu_pin_x, cell_y + cell_h * 0.64);
@@ -1384,11 +1245,7 @@ pub fn draw_nucleo_pinout(
                         cairo::FontWeight::Normal,
                     );
                     cr.set_font_size(9.0);
-                    cr.set_source_rgb(
-                        tokens::color::TEXT_MUTED.0,
-                        tokens::color::TEXT_MUTED.1,
-                        tokens::color::TEXT_MUTED.2,
-                    );
+                    cr.set_source_rgb(pal.text_muted.0, pal.text_muted.1, pal.text_muted.2);
                 } else {
                     cr.select_font_face(
                         tokens::font::CAIRO_MONO,
@@ -1407,38 +1264,22 @@ pub fn draw_nucleo_pinout(
                 }
             } else {
                 // Neutral / Unused Pin - background BG_PANEL, border BORDER_HAIR
-                cr.set_source_rgb(
-                    tokens::color::BG_PANEL.0,
-                    tokens::color::BG_PANEL.1,
-                    tokens::color::BG_PANEL.2,
-                );
+                cr.set_source_rgb(pal.bg_panel.0, pal.bg_panel.1, pal.bg_panel.2);
                 cr.rectangle(cell_x, cell_y, cell_w, cell_h);
                 let _ = cr.fill_preserve();
 
                 // Interactive/Selection ONLY uses ACCENT
                 if is_hovered {
-                    cr.set_source_rgb(
-                        tokens::color::ACCENT.0,
-                        tokens::color::ACCENT.1,
-                        tokens::color::ACCENT.2,
-                    );
+                    cr.set_source_rgb(pal.accent.0, pal.accent.1, pal.accent.2);
                 } else {
-                    cr.set_source_rgb(
-                        tokens::color::BORDER_HAIR.0,
-                        tokens::color::BORDER_HAIR.1,
-                        tokens::color::BORDER_HAIR.2,
-                    );
+                    cr.set_source_rgb(pal.border_hair.0, pal.border_hair.1, pal.border_hair.2);
                 }
                 cr.set_line_width(tokens::shape::BORDER_WIDTH_HAIR);
                 let _ = cr.stroke();
 
                 // Pin Number Box for Neutral Cell - sharp 0px corners
                 let badge_w = (cell_w * 0.16).clamp(26.0, 34.0);
-                cr.set_source_rgb(
-                    tokens::color::BG_VOID.0,
-                    tokens::color::BG_VOID.1,
-                    tokens::color::BG_VOID.2,
-                );
+                cr.set_source_rgb(pal.bg_void.0, pal.bg_void.1, pal.bg_void.2);
                 cr.rectangle(cell_x + 4.0, cell_y + 4.0, badge_w, cell_h - 8.0);
                 let _ = cr.fill();
 
@@ -1449,17 +1290,9 @@ pub fn draw_nucleo_pinout(
                 );
                 cr.set_font_size(9.5);
                 if is_hovered {
-                    cr.set_source_rgb(
-                        tokens::color::TEXT_PRIMARY.0,
-                        tokens::color::TEXT_PRIMARY.1,
-                        tokens::color::TEXT_PRIMARY.2,
-                    );
+                    cr.set_source_rgb(pal.text_primary.0, pal.text_primary.1, pal.text_primary.2);
                 } else {
-                    cr.set_source_rgb(
-                        tokens::color::TEXT_MUTED.0,
-                        tokens::color::TEXT_MUTED.1,
-                        tokens::color::TEXT_MUTED.2,
-                    );
+                    cr.set_source_rgb(pal.text_muted.0, pal.text_muted.1, pal.text_muted.2);
                 }
                 let pnum_str = format!("{}", p.pin_num);
                 if let Ok(ext) = cr.text_extents(&pnum_str) {
@@ -1469,11 +1302,7 @@ pub fn draw_nucleo_pinout(
                 }
 
                 // MCU Pin & Label Text
-                cr.set_source_rgb(
-                    tokens::color::TEXT_PRIMARY.0,
-                    tokens::color::TEXT_PRIMARY.1,
-                    tokens::color::TEXT_PRIMARY.2,
-                );
+                cr.set_source_rgb(pal.text_primary.0, pal.text_primary.1, pal.text_primary.2);
                 let label_part = match p.default_label {
                     Some(lbl) => format!(" ({})", lbl),
                     None => "".to_string(),
@@ -1498,19 +1327,11 @@ pub fn draw_nucleo_pinout(
     let leg_x = board_x + (board_w * 0.02).max(16.0);
 
     // Active Signal Legend
-    cr.set_source_rgb(
-        tokens::color::STATE_READY.0,
-        tokens::color::STATE_READY.1,
-        tokens::color::STATE_READY.2,
-    );
+    cr.set_source_rgb(pal.state_ready.0, pal.state_ready.1, pal.state_ready.2);
     cr.rectangle(leg_x, legend_y, 14.0, 14.0);
     let _ = cr.fill();
 
-    cr.set_source_rgb(
-        tokens::color::TEXT_PRIMARY.0,
-        tokens::color::TEXT_PRIMARY.1,
-        tokens::color::TEXT_PRIMARY.2,
-    );
+    cr.set_source_rgb(pal.text_primary.0, pal.text_primary.1, pal.text_primary.2);
     cr.move_to(leg_x + 22.0, legend_y + 11.0);
     let active_label = if is_filtering_module {
         "Active in Module"
@@ -1521,27 +1342,19 @@ pub fn draw_nucleo_pinout(
 
     if is_filtering_module {
         let leg_x2 = leg_x + 150.0;
-        cr.set_source_rgb(
-            tokens::color::BG_PANEL.0,
-            tokens::color::BG_PANEL.1,
-            tokens::color::BG_PANEL.2,
-        );
+        cr.set_source_rgb(pal.bg_panel.0, pal.bg_panel.1, pal.bg_panel.2);
         cr.rectangle(leg_x2, legend_y, 14.0, 14.0);
         let _ = cr.fill_preserve();
         cr.set_source_rgba(
-            tokens::color::STATE_READY.0,
-            tokens::color::STATE_READY.1,
-            tokens::color::STATE_READY.2,
+            pal.state_ready.0,
+            pal.state_ready.1,
+            pal.state_ready.2,
             0.35,
         );
         cr.set_line_width(tokens::shape::BORDER_WIDTH_HAIR);
         let _ = cr.stroke();
 
-        cr.set_source_rgb(
-            tokens::color::TEXT_MUTED.0,
-            tokens::color::TEXT_MUTED.1,
-            tokens::color::TEXT_MUTED.2,
-        );
+        cr.set_source_rgb(pal.text_muted.0, pal.text_muted.1, pal.text_muted.2);
         cr.move_to(leg_x2 + 22.0, legend_y + 11.0);
         let _ = cr.show_text("Active Elsewhere in Project");
     }
@@ -1629,11 +1442,7 @@ pub fn draw_nucleo_pinout(
                 }
 
                 // Card Background BG_PANEL, sharp 0px corners
-                cr.set_source_rgb(
-                    tokens::color::BG_PANEL.0,
-                    tokens::color::BG_PANEL.1,
-                    tokens::color::BG_PANEL.2,
-                );
+                cr.set_source_rgb(pal.bg_panel.0, pal.bg_panel.1, pal.bg_panel.2);
                 cr.rectangle(tt_x, tt_y, tt_w, tt_h);
                 let _ = cr.fill_preserve();
 
@@ -1641,17 +1450,17 @@ pub fn draw_nucleo_pinout(
                 let (border_r, border_g, border_b) = match reserved_info {
                     Some(res) => match res.severity {
                         stakhal_core::nucleo_pinout::ReservedSeverity::Critical => {
-                            tokens::color::STATE_ERROR
+                            pal.state_error.rgb()
                         }
                         stakhal_core::nucleo_pinout::ReservedSeverity::Caution => {
-                            tokens::color::STATE_ACTIVE
+                            pal.state_active.rgb()
                         }
                     },
                     None => {
                         if is_hl.is_some() {
-                            tokens::color::STATE_READY
+                            pal.state_ready.rgb()
                         } else {
-                            tokens::color::BORDER_HAIR
+                            pal.border_hair.rgb()
                         }
                     }
                 };
@@ -1667,11 +1476,7 @@ pub fn draw_nucleo_pinout(
                     cairo::FontWeight::Bold,
                 );
                 cr.set_font_size(10.0);
-                cr.set_source_rgb(
-                    tokens::color::TEXT_PRIMARY.0,
-                    tokens::color::TEXT_PRIMARY.1,
-                    tokens::color::TEXT_PRIMARY.2,
-                );
+                cr.set_source_rgb(pal.text_primary.0, pal.text_primary.1, pal.text_primary.2);
                 cr.move_to(tt_x + 10.0, tt_y + 16.0);
                 let _ = cr.show_text(&line1);
 
@@ -1685,11 +1490,7 @@ pub fn draw_nucleo_pinout(
                 if is_hl.is_some() {
                     cr.set_source_rgb(border_r, border_g, border_b);
                 } else {
-                    cr.set_source_rgb(
-                        tokens::color::TEXT_MUTED.0,
-                        tokens::color::TEXT_MUTED.1,
-                        tokens::color::TEXT_MUTED.2,
-                    );
+                    cr.set_source_rgb(pal.text_muted.0, pal.text_muted.1, pal.text_muted.2);
                 }
                 cr.move_to(tt_x + 10.0, tt_y + 32.0);
                 let _ = cr.show_text(&line2);
