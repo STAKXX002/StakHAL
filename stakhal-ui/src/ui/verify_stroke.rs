@@ -29,11 +29,14 @@ pub fn draw_verify_stroke_path(cr: &cairo::Context, progress: f64) {
     let total_len = len1 + len2;
     let target_d = eased * total_len;
 
-    cr.set_source_rgb(
-        COLOR_SUCCESS_RGB.0,
-        COLOR_SUCCESS_RGB.1,
-        COLOR_SUCCESS_RGB.2,
-    );
+    let pal = tokens::palette();
+    let (r, g, b) = if pal == tokens::Palette::DEFAULT {
+        // Preserve historical default checkmark RGB for pixel-identical rendering
+        COLOR_SUCCESS_RGB
+    } else {
+        pal.state_ready.rgb()
+    };
+    cr.set_source_rgb(r, g, b);
     cr.set_line_width(2.0);
     cr.set_line_cap(cairo::LineCap::Round);
     cr.set_line_join(cairo::LineJoin::Round);
