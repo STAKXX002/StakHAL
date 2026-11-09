@@ -503,6 +503,10 @@ impl SkinOverlayController {
         &self.shimmer_area
     }
 
+    pub fn is_effects_active(&self) -> bool {
+        self.effects_active.get()
+    }
+
     /// Trigger the skin unlock sequence once. Subsequent calls are no-ops.
     pub fn trigger_unlock(&self) {
         if self.unlocked.replace(true) {
@@ -862,52 +866,5 @@ mod tests {
         draw_ambient_bands(&cr, -10.0, 200.0, 1.0, &stage);
         draw_header_shimmer(&cr, 320.0, 0.0, 0.5, &stage);
         surface.flush();
-    }
-
-    #[test]
-    fn test_skin_overlay_widgets_are_passthrough() {
-        if let Err(err) = gtk4::init() {
-            if !gtk4::is_initialized() {
-                eprintln!("GTK display not available, skipping skin overlay widget test: {err}");
-                return;
-            }
-        }
-        if gtk4::gdk::Display::default().is_none() {
-            eprintln!("GDK default display not available, skipping skin overlay widget test");
-            return;
-        }
-        let _ = adw::init();
-
-        let window = adw::ApplicationWindow::builder().build();
-        let skin_overlay = gtk4::Overlay::new();
-        let header_overlay = gtk4::Overlay::new();
-        let swapped = Rc::new(Cell::new(false));
-        let swapped_cb = Rc::clone(&swapped);
-
-        let ctrl = SkinOverlayController::setup(
-            &window,
-            &skin_overlay,
-            &header_overlay,
-            Rc::new(move || {
-                swapped_cb.set(true);
-            }),
-        );
-
-        assert!(!ctrl.ambient_area().can_target());
-        assert!(!ctrl.ambient_area().can_focus());
-        assert!(!ctrl.shimmer_area().can_target());
-        assert!(!ctrl.shimmer_area().can_focus());
-
-        // Reduced motion triggers instant swap without starting loops
-        if let Some(settings) = gtk4::Settings::default() {
-            settings.set_gtk_enable_animations(false);
-        }
-        ctrl.trigger_unlock();
-        assert!(swapped.get());
-        assert!(!ctrl.effects_active.get());
-
-        if let Some(settings) = gtk4::Settings::default() {
-            settings.set_gtk_enable_animations(true);
-        }
     }
 }
