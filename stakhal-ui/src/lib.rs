@@ -459,6 +459,132 @@ pub fn apply_skin_and_redraw(
     queue_draw_all_canvases(widgets, launch_overlay_area);
 }
 
+/// Walk from the focused widget up through its parents and return `true` only
+/// if a widget is a `gtk4::Editable` or a `gtk4::TextView` whose `is_editable()` is true.
+pub fn is_text_input_focused(focused: Option<&gtk4::Widget>) -> bool {
+    let mut current = focused.cloned();
+    while let Some(widget) = current {
+        if widget.is::<gtk4::Editable>() {
+            return true;
+        }
+        if let Some(tv) = widget.downcast_ref::<gtk4::TextView>() {
+            if tv.is_editable() {
+                return true;
+            }
+        }
+        current = widget.parent();
+    }
+    false
+}
+
+/// Translate a GDK keyval and modifier state into a pure `DetectorKey`.
+pub fn gdk_key_to_detector_key(
+    key: gdk::Key,
+    modifiers: gdk::ModifierType,
+) -> easter_egg::DetectorKey {
+    let is_mod = matches!(
+        key,
+        gdk::Key::Shift_L
+            | gdk::Key::Shift_R
+            | gdk::Key::Control_L
+            | gdk::Key::Control_R
+            | gdk::Key::Alt_L
+            | gdk::Key::Alt_R
+            | gdk::Key::Super_L
+            | gdk::Key::Super_R
+            | gdk::Key::Meta_L
+            | gdk::Key::Meta_R
+            | gdk::Key::Hyper_L
+            | gdk::Key::Hyper_R
+            | gdk::Key::Caps_Lock
+            | gdk::Key::Shift_Lock
+            | gdk::Key::Num_Lock
+            | gdk::Key::Scroll_Lock
+            | gdk::Key::ISO_Level3_Shift
+            | gdk::Key::ISO_Level5_Shift
+    );
+    if is_mod {
+        return easter_egg::DetectorKey::Modifier;
+    }
+
+    let shortcut_mask = gdk::ModifierType::CONTROL_MASK
+        | gdk::ModifierType::ALT_MASK
+        | gdk::ModifierType::SUPER_MASK;
+    if modifiers.intersects(shortcut_mask) {
+        return easter_egg::DetectorKey::Other;
+    }
+
+    match key {
+        gdk::Key::Up | gdk::Key::KP_Up => easter_egg::DetectorKey::Up,
+        gdk::Key::Down | gdk::Key::KP_Down => easter_egg::DetectorKey::Down,
+        gdk::Key::Left | gdk::Key::KP_Left => easter_egg::DetectorKey::Left,
+        gdk::Key::Right | gdk::Key::KP_Right => easter_egg::DetectorKey::Right,
+        other => match other.to_unicode() {
+            Some(ch) if !ch.is_control() => easter_egg::DetectorKey::Char(ch),
+            _ => easter_egg::DetectorKey::Other,
+        },
+    }
+}
+
+/// Attach a capture-phase key controller to the main window to detect the Konami code.
+/// Always returns `glib::Propagation::Proceed` so normal shortcuts and navigation are unaffected.
+pub fn setup_konami_key_controller(
+    window: &adw::ApplicationWindow,
+    state: &Rc<RefCell<AppState>>,
+    widgets: &Rc<AppWidgets>,
+    skin_ctrl: &ui::skin_overlay::SkinOverlayController,
+) {
+    let key_ctrl = gtk4::EventControllerKey::new();
+    key_ctrl.set_propagation_phase(gtk4::PropagationPhase::Capture);
+
+    let detector = Rc::new(RefCell::new(easter_egg::SequenceDetector::new()));
+    let win_weak = window.downgrade();
+    let state_rc = Rc::clone(state);
+    let widgets_rc = Rc::clone(widgets);
+    let skin_ctrl_cloned = skin_ctrl.clone();
+
+    key_ctrl.connect_key_pressed(move |_, keyval, _, modifiers| {
+        let Some(win) = win_weak.upgrade() else {
+            return glib::Propagation::Proceed;
+        };
+
+        let focused = gtk4::prelude::RootExt::focus(&win);
+        if is_text_input_focused(focused.as_ref()) {
+            return glib::Propagation::Proceed;
+        }
+
+        let already_unlocked = state_rc
+            .try_borrow()
+            .map(|st| st.easter_egg_unlocked)
+            .unwrap_or(true);
+        if already_unlocked {
+            return glib::Propagation::Proceed;
+        }
+
+        let key = gdk_key_to_detector_key(keyval, modifiers);
+        let triggered = match detector.try_borrow_mut() {
+            Ok(mut det) => det.feed(key),
+            Err(_) => return glib::Propagation::Proceed,
+        };
+
+        if triggered {
+            if let Ok(mut st) = state_rc.try_borrow_mut() {
+                if !st.easter_egg_unlocked {
+                    st.easter_egg_unlocked = true;
+                    drop(st);
+                    skin_ctrl_cloned.trigger_unlock();
+                    let toast = adw::Toast::new("Skin unlocked");
+                    widgets_rc.toast_overlay.add_toast(toast);
+                }
+            }
+        }
+
+        glib::Propagation::Proceed
+    });
+
+    window.add_controller(key_ctrl);
+}
+
 pub fn build_ui(app: &adw::Application) {
     adw::StyleManager::default().set_color_scheme(adw::ColorScheme::ForceDark);
 
@@ -549,17 +675,23 @@ pub fn build_ui(app: &adw::Application) {
     stack.set_visible_child_name("overview");
 
     let header_bar = adw::HeaderBar::new();
+    let header_overlay = gtk4::Overlay::new();
+    header_overlay.set_child(Some(&header_bar));
+
     let toast_overlay = adw::ToastOverlay::new();
 
     let content_box = gtk4::Box::builder()
         .orientation(gtk4::Orientation::Vertical)
         .build();
-    content_box.append(&header_bar);
+    content_box.append(&header_overlay);
     content_box.append(&stack);
 
+    let skin_overlay = gtk4::Overlay::new();
+    skin_overlay.set_child(Some(&content_box));
+
     let launch_overlay = gtk4::Overlay::new();
-    launch_overlay.set_child(Some(&content_box));
-    let _launch_overlay_area = ui::launch_overlay::setup_launch_overlay(&launch_overlay);
+    launch_overlay.set_child(Some(&skin_overlay));
+    let launch_overlay_area = ui::launch_overlay::setup_launch_overlay(&launch_overlay);
 
     toast_overlay.set_child(Some(&launch_overlay));
 
@@ -640,6 +772,25 @@ pub fn build_ui(app: &adw::Application) {
 
     // Connect Serial Monitor Controls
     ui::setup_serial::setup_serial_handlers(&state, &widgets);
+
+    // Wire skin overlay controller and main-window Konami key controller
+    let css_provider_swap = css_provider.clone();
+    let widgets_swap = Rc::clone(&widgets);
+    let launch_area_swap = launch_overlay_area.clone();
+    let skin_ctrl = ui::skin_overlay::SkinOverlayController::setup(
+        &window,
+        &skin_overlay,
+        &header_overlay,
+        Rc::new(move || {
+            apply_skin_and_redraw(
+                &css_provider_swap,
+                ui::tokens::Palette::STAGE,
+                &widgets_swap,
+                launch_area_swap.as_ref(),
+            );
+        }),
+    );
+    setup_konami_key_controller(&window, &state, &widgets, &skin_ctrl);
 
     window.present();
 
@@ -1642,5 +1793,101 @@ dropdown button {
 
         gtk4::style_context_remove_provider_for_display(&display, &provider);
         apply_skin(&provider, ui::tokens::Palette::DEFAULT);
+    }
+
+    #[test]
+    fn test_gdk_key_to_detector_key_mapping() {
+        assert_eq!(
+            gdk_key_to_detector_key(gdk::Key::Up, gdk::ModifierType::empty()),
+            easter_egg::DetectorKey::Up
+        );
+        assert_eq!(
+            gdk_key_to_detector_key(gdk::Key::Down, gdk::ModifierType::empty()),
+            easter_egg::DetectorKey::Down
+        );
+        assert_eq!(
+            gdk_key_to_detector_key(gdk::Key::Left, gdk::ModifierType::empty()),
+            easter_egg::DetectorKey::Left
+        );
+        assert_eq!(
+            gdk_key_to_detector_key(gdk::Key::Right, gdk::ModifierType::empty()),
+            easter_egg::DetectorKey::Right
+        );
+        assert_eq!(
+            gdk_key_to_detector_key(gdk::Key::b, gdk::ModifierType::empty()),
+            easter_egg::DetectorKey::Char('b')
+        );
+        assert_eq!(
+            gdk_key_to_detector_key(gdk::Key::A, gdk::ModifierType::SHIFT_MASK),
+            easter_egg::DetectorKey::Char('A')
+        );
+        assert_eq!(
+            gdk_key_to_detector_key(gdk::Key::Shift_L, gdk::ModifierType::empty()),
+            easter_egg::DetectorKey::Modifier
+        );
+        assert_eq!(
+            gdk_key_to_detector_key(gdk::Key::a, gdk::ModifierType::CONTROL_MASK),
+            easter_egg::DetectorKey::Other
+        );
+    }
+
+    #[test]
+    fn test_is_text_input_focused_rules() {
+        if let Err(err) = gtk4::init() {
+            if !gtk4::is_initialized() {
+                eprintln!("GTK display not available, skipping text-input focus rule test: {err}");
+                return;
+            }
+        }
+        if gdk::Display::default().is_none() {
+            eprintln!("GDK default display not available, skipping text-input focus rule test");
+            return;
+        }
+
+        // Entry -> true (implements gtk4::Editable, including internal child walking up to Entry)
+        let entry = gtk4::Entry::new();
+        assert!(
+            is_text_input_focused(Some(entry.upcast_ref())),
+            "Entry must be treated as text input"
+        );
+        if let Some(child) = entry.first_child() {
+            assert!(
+                is_text_input_focused(Some(&child)),
+                "Internal child of Entry must walk up to Editable and return true"
+            );
+        }
+
+        // Editable TextView -> true
+        let editable_tv = gtk4::TextView::builder().editable(true).build();
+        assert!(
+            is_text_input_focused(Some(editable_tv.upcast_ref())),
+            "Editable TextView must be treated as text input"
+        );
+
+        // Read-only TextView -> false
+        let readonly_tv = gtk4::TextView::builder().editable(false).build();
+        assert!(
+            !is_text_input_focused(Some(readonly_tv.upcast_ref())),
+            "Read-only TextView must not block sequence detection"
+        );
+
+        // Button (and child label inside Button) -> false
+        let button = gtk4::Button::with_label("Action");
+        assert!(
+            !is_text_input_focused(Some(button.upcast_ref())),
+            "Button must not block sequence detection"
+        );
+        if let Some(lbl) = button.child() {
+            assert!(
+                !is_text_input_focused(Some(&lbl)),
+                "Child of Button must not block sequence detection"
+            );
+        }
+
+        // No focused widget -> false
+        assert!(
+            !is_text_input_focused(None),
+            "No focused widget must return false"
+        );
     }
 }
