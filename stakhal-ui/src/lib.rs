@@ -502,6 +502,14 @@ headerbar:backdrop {{
 pub fn apply_skin(provider: &gtk4::CssProvider, palette: ui::tokens::Palette) {
     ui::tokens::set_palette(palette);
     provider.load_from_string(&build_css(&palette));
+    if adw::is_initialized() {
+        let scheme = if palette == ui::tokens::Palette::STAGE {
+            adw::ColorScheme::ForceLight
+        } else {
+            adw::ColorScheme::ForceDark
+        };
+        adw::StyleManager::default().set_color_scheme(scheme);
+    }
 }
 
 pub fn queue_draw_all_canvases(
