@@ -113,7 +113,8 @@ pub fn draw_launch_frame(cr: &cairo::Context, width: f64, height: f64, elapsed_m
     }
 
     // 2. Background void fill
-    let (bg_r, bg_g, bg_b) = tokens::color::BG_VOID;
+    let pal = tokens::palette();
+    let (bg_r, bg_g, bg_b) = pal.bg_void.rgb();
     cr.set_source_rgba(bg_r, bg_g, bg_b, global_alpha);
     cr.rectangle(0.0, 0.0, width, height);
     let _ = cr.fill();
@@ -131,8 +132,8 @@ pub fn draw_launch_frame(cr: &cairo::Context, width: f64, height: f64, elapsed_m
     let current_arm = max_arm * reveal_p;
     let offset_slide = 16.0 * (1.0 - reveal_p);
 
-    let (acc_r, acc_g, acc_b) = tokens::color::ACCENT;
-    let (text_r, text_g, text_b) = tokens::color::TEXT_PRIMARY;
+    let (acc_r, acc_g, acc_b) = pal.accent.rgb();
+    let (text_r, text_g, text_b) = pal.text_primary.rgb();
 
     // 4. Draw Corner Brackets (stroke width 4.0, ease-out draw in)
     cr.set_line_width(4.0);
