@@ -1,4 +1,5 @@
 use gtk4::gdk;
+use gtk4::glib;
 use gtk4::prelude::*;
 use stakhal_ui::{apply_skin, ui};
 
@@ -23,10 +24,13 @@ fn test_skin_swap_resolved_color() {
     apply_skin(&provider, ui::tokens::Palette::DEFAULT);
     assert_eq!(ui::tokens::palette(), ui::tokens::Palette::DEFAULT);
     let win = gtk4::Window::new();
+    win.present();
+    while glib::MainContext::default().iteration(false) {}
     let color_default = win.color();
 
     apply_skin(&provider, ui::tokens::Palette::STAGE);
     assert_eq!(ui::tokens::palette(), ui::tokens::Palette::STAGE);
+    while glib::MainContext::default().iteration(false) {}
     let color_stage = win.color();
 
     assert_ne!(
@@ -34,6 +38,7 @@ fn test_skin_swap_resolved_color() {
         "Widget resolved color must change after applying Stage skin"
     );
 
+    win.close();
     gtk4::style_context_remove_provider_for_display(&display, &provider);
     apply_skin(&provider, ui::tokens::Palette::DEFAULT);
 }
