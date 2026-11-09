@@ -429,11 +429,16 @@ headerbar {{
     css
 }
 
+pub fn apply_skin(provider: &gtk4::CssProvider, palette: ui::tokens::Palette) {
+    ui::tokens::set_palette(palette);
+    provider.load_from_string(&build_css(&palette));
+}
+
 pub fn build_ui(app: &adw::Application) {
     adw::StyleManager::default().set_color_scheme(adw::ColorScheme::ForceDark);
 
     let css_provider = gtk4::CssProvider::new();
-    css_provider.load_from_string(&build_css(&ui::tokens::Palette::DEFAULT));
+    apply_skin(&css_provider, ui::tokens::Palette::DEFAULT);
 
     if let Some(display) = gdk::Display::default() {
         gtk4::style_context_add_provider_for_display(
@@ -546,6 +551,7 @@ pub fn build_ui(app: &adw::Application) {
         window: window.clone(),
         stack: stack.clone(),
         toast_overlay,
+        css_provider: css_provider.clone(),
         lbl_discovered_dir,
         lbl_ioc_path,
         lbl_main_c_path,
@@ -1574,5 +1580,43 @@ dropdown button {
             ratio_pressed >= 4.5,
             "bg_void vs accent_pressed must be >= 4.5, got {ratio_pressed}"
         );
+    }
+
+    #[test]
+    fn test_skin_swap_resolved_color() {
+        if let Err(err) = gtk4::init() {
+            if !gtk4::is_initialized() {
+                eprintln!("GTK display not available, skipping skin swap test: {err}");
+                return;
+            }
+        }
+        let Some(display) = gdk::Display::default() else {
+            eprintln!("GDK default display not available, skipping skin swap test");
+            return;
+        };
+
+        let provider = gtk4::CssProvider::new();
+        gtk4::style_context_add_provider_for_display(
+            &display,
+            &provider,
+            gtk4::STYLE_PROVIDER_PRIORITY_APPLICATION,
+        );
+
+        apply_skin(&provider, ui::tokens::Palette::DEFAULT);
+        assert_eq!(ui::tokens::palette(), ui::tokens::Palette::DEFAULT);
+        let win = gtk4::Window::new();
+        let color_default = win.color();
+
+        apply_skin(&provider, ui::tokens::Palette::STAGE);
+        assert_eq!(ui::tokens::palette(), ui::tokens::Palette::STAGE);
+        let color_stage = win.color();
+
+        assert_ne!(
+            color_default, color_stage,
+            "Widget resolved color must change after applying Stage skin"
+        );
+
+        gtk4::style_context_remove_provider_for_display(&display, &provider);
+        apply_skin(&provider, ui::tokens::Palette::DEFAULT);
     }
 }
