@@ -1,14 +1,15 @@
-//! Secret Stage skin unlock and ambient visual effects.
+//! Secret Stage skin unlock and header shimmer visual effects.
 //!
-//! Renders three non-interactive overlay layers using Cairo and GTK4 tick callbacks:
-//! - Unlock ripple: expands from the top-right corner over 450ms (ease-out cubic),
-//!   swaps the application skin at 50% progress, and fades out by 900ms.
-//! - Ambient bands: three slow drifting azure and accent bands at alpha <= 0.06,
-//!   capped near 30 fps by frame skipping, paused when window is inactive or hidden.
-//! - Header shimmer: a 1px gold highlight sweeping along the header bottom edge
-//!   every 8 seconds at alpha <= 0.25.
+//! Renders two non-interactive overlay layers using Cairo and GTK4 tick callbacks:
+//! - Unlock ripple: a stroked azure ring with a soft accent inner glow expanding from
+//!   the top-right corner over 450ms (ease-out cubic), swapping the application skin at
+//!   50% progress, and fading out/removing itself by 900ms with no full-window fill.
+//! - Header shimmer: a thin strip along the header bottom edge (height_request <= 3,
+//!   valign Start positioned at the bottom edge) sweeping a gold highlight every 8 seconds
+//!   at alpha <= 0.25, stopping its tick callback when inactive or hidden and resuming
+//!   on activation.
 //!
-//! All effects collapse immediately (instant swap, no ambient, no shimmer) when
+//! All effects collapse immediately (instant swap, no ripple, no shimmer) when
 //! reduced motion is active via `tokens::motion::is_animations_enabled()`.
 
 use std::cell::{Cell, RefCell};
@@ -16,6 +17,7 @@ use std::rc::Rc;
 use std::time::{Duration, Instant};
 
 use gtk4::cairo;
+use gtk4::gdk;
 use gtk4::glib;
 use gtk4::prelude::*;
 use libadwaita as adw;
@@ -25,13 +27,13 @@ use super::tokens;
 pub const RIPPLE_EXPAND_MS: f64 = 450.0;
 pub const RIPPLE_TOTAL_MS: f64 = 900.0;
 pub const RIPPLE_SWAP_PROGRESS: f64 = 0.5;
-
-pub const AMBIENT_MAX_ALPHA: f64 = 0.06;
-pub const AMBIENT_FRAME_INTERVAL: Duration = Duration::from_millis(33);
+pub const RIPPLE_MAX_RING_ALPHA: f64 = 0.35;
+pub const RIPPLE_MAX_GLOW_ALPHA: f64 = 0.10;
 
 pub const SHIMMER_PERIOD_SECS: f64 = 8.0;
 pub const SHIMMER_SWEEP_SECS: f64 = 1.2;
 pub const SHIMMER_MAX_ALPHA: f64 = 0.25;
+pub const SHIMMER_STRIP_HEIGHT: i32 = 2;
 const SHIMMER_FRAME_INTERVAL: Duration = Duration::from_millis(16);
 
 /// Calculated frame parameters for the unlock ripple overlay.
@@ -39,7 +41,7 @@ const SHIMMER_FRAME_INTERVAL: Duration = Duration::from_millis(16);
 pub struct RippleFrame {
     pub radius_frac: f64,
     pub ring_alpha: f64,
-    pub wash_alpha: f64,
+    pub inner_glow_alpha: f64,
     pub progress: f64,
     pub should_swap_skin: bool,
     pub finished: bool,
@@ -60,24 +62,25 @@ pub fn compute_ripple_frame(elapsed_ms: f64) -> RippleFrame {
         (1.0 - tokens::motion::ease_out_cubic(fade_t)).clamp(0.0, 1.0)
     };
 
-    let ring_alpha = (0.78 * fade_alpha).clamp(0.0, 1.0);
-    let wash_alpha = if clamped_ms <= RIPPLE_EXPAND_MS {
-        0.24 * radius_frac
+    let ring_alpha = (RIPPLE_MAX_RING_ALPHA * fade_alpha).clamp(0.0, RIPPLE_MAX_RING_ALPHA);
+    let inner_glow_alpha = if clamped_ms <= RIPPLE_EXPAND_MS {
+        RIPPLE_MAX_GLOW_ALPHA * radius_frac
     } else {
-        0.24 * fade_alpha
-    };
+        RIPPLE_MAX_GLOW_ALPHA * fade_alpha
+    }
+    .clamp(0.0, RIPPLE_MAX_GLOW_ALPHA);
 
     RippleFrame {
         radius_frac,
         ring_alpha,
-        wash_alpha,
+        inner_glow_alpha,
         progress,
         should_swap_skin: progress >= RIPPLE_SWAP_PROGRESS,
         finished: clamped_ms >= RIPPLE_TOTAL_MS,
     }
 }
 
-/// Draw a single frame of the top-right unlock ripple.
+/// Draw a single frame of the top-right unlock ripple (stroked ring + soft inner glow only).
 pub fn draw_ripple_frame(
     cr: &cairo::Context,
     width: f64,
@@ -90,7 +93,7 @@ pub fn draw_ripple_frame(
     }
 
     let frame = compute_ripple_frame(elapsed_ms);
-    if frame.finished || (frame.ring_alpha <= 0.0 && frame.wash_alpha <= 0.0) {
+    if frame.finished || (frame.ring_alpha <= 0.0 && frame.inner_glow_alpha <= 0.0) {
         return;
     }
 
@@ -103,149 +106,27 @@ pub fn draw_ripple_frame(
     }
 
     let (acc_r, acc_g, acc_b) = pal.accent.rgb();
-    let (gold_r, gold_g, gold_b) = pal.gold.rgb();
+    // Quadrant inside (0..width, 0..height) relative to top-right origin (width, 0)
+    let angle_start = std::f64::consts::FRAC_PI_2 - 0.05;
+    let angle_end = std::f64::consts::PI + 0.05;
 
-    // Soft radial wash sweeping inward from top-right
-    if frame.wash_alpha > 0.0 {
-        let inner = (radius * 0.45).max(0.0);
-        let wash =
-            cairo::RadialGradient::new(origin_x, origin_y, inner, origin_x, origin_y, radius);
-        wash.add_color_stop_rgba(0.0, acc_r, acc_g, acc_b, 0.0);
-        wash.add_color_stop_rgba(0.75, acc_r, acc_g, acc_b, frame.wash_alpha * 0.55);
-        wash.add_color_stop_rgba(1.0, acc_r, acc_g, acc_b, frame.wash_alpha);
-        let _ = cr.set_source(&wash);
-        cr.arc(origin_x, origin_y, radius, 0.0, std::f64::consts::TAU);
-        let _ = cr.fill();
+    // Soft accent inner glow stroke (no full-window fill)
+    if frame.inner_glow_alpha > 0.0 {
+        let glow_r = (radius - 6.0).max(0.5);
+        cr.set_source_rgba(acc_r, acc_g, acc_b, frame.inner_glow_alpha);
+        cr.set_line_width(12.0);
+        cr.new_path();
+        cr.arc(origin_x, origin_y, glow_r, angle_start, angle_end);
+        let _ = cr.stroke();
     }
 
-    // Glowing halo + crisp leading ring
+    // Stroked azure leading ring
     if frame.ring_alpha > 0.0 {
-        cr.set_source_rgba(acc_r, acc_g, acc_b, frame.ring_alpha * 0.28);
-        cr.set_line_width(16.0);
-        cr.new_path();
-        cr.arc(origin_x, origin_y, radius, 0.0, std::f64::consts::TAU);
-        let _ = cr.stroke();
-
-        cr.set_source_rgba(acc_r, acc_g, acc_b, frame.ring_alpha * 0.85);
+        cr.set_source_rgba(acc_r, acc_g, acc_b, frame.ring_alpha);
         cr.set_line_width(2.5);
         cr.new_path();
-        cr.arc(origin_x, origin_y, radius, 0.0, std::f64::consts::TAU);
+        cr.arc(origin_x, origin_y, radius, angle_start, angle_end);
         let _ = cr.stroke();
-
-        cr.set_source_rgba(gold_r, gold_g, gold_b, frame.ring_alpha * 0.45);
-        cr.set_line_width(1.25);
-        cr.new_path();
-        cr.arc(
-            origin_x,
-            origin_y,
-            (radius - 4.0).max(0.5),
-            0.0,
-            std::f64::consts::TAU,
-        );
-        let _ = cr.stroke();
-    }
-}
-
-/// Pure specification of one drifting ambient light band.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct AmbientBandSpec {
-    pub color: (f64, f64, f64),
-    pub alpha: f64,
-    pub center_x: f64,
-    pub center_y: f64,
-    pub dx: f64,
-    pub dy: f64,
-}
-
-/// Compute 3 slow drifting azure and accent bands for `phase_secs`, keeping alpha <= 0.06.
-pub fn compute_ambient_bands(
-    phase_secs: f64,
-    width: f64,
-    height: f64,
-    pal: &tokens::Palette,
-) -> [AmbientBandSpec; 3] {
-    let w = width.max(1.0);
-    let h = height.max(1.0);
-
-    // Azure hue harmonized with the palette border and deep blue tones
-    let azure = (40.0 / 255.0, 110.0 / 255.0, 232.0 / 255.0);
-    let accent = pal.accent.rgb();
-    let azure_accent_mix = (
-        azure.0 * 0.5 + accent.0 * 0.5,
-        azure.1 * 0.5 + accent.1 * 0.5,
-        azure.2 * 0.5 + accent.2 * 0.5,
-    );
-
-    let cx0 = w * (0.30 + 0.22 * (phase_secs * 0.075).sin());
-    let cy0 = h * (0.28 + 0.14 * (phase_secs * 0.055).cos());
-
-    let cx1 = w * (0.68 + 0.20 * (phase_secs * 0.060 + 2.1).cos());
-    let cy1 = h * (0.58 + 0.16 * (phase_secs * 0.048 + 1.0).sin());
-
-    let cx2 = w * (0.48 + 0.25 * (phase_secs * 0.042 + 4.0).sin());
-    let cy2 = h * (0.80 + 0.12 * (phase_secs * 0.052 + 2.8).cos());
-
-    let span = w.max(h) * 0.28;
-
-    [
-        AmbientBandSpec {
-            color: azure,
-            alpha: 0.052_f64.min(AMBIENT_MAX_ALPHA),
-            center_x: cx0,
-            center_y: cy0,
-            dx: span * 0.72,
-            dy: span * 0.68,
-        },
-        AmbientBandSpec {
-            color: accent,
-            alpha: 0.042_f64.min(AMBIENT_MAX_ALPHA),
-            center_x: cx1,
-            center_y: cy1,
-            dx: -span * 0.66,
-            dy: span * 0.74,
-        },
-        AmbientBandSpec {
-            color: azure_accent_mix,
-            alpha: 0.036_f64.min(AMBIENT_MAX_ALPHA),
-            center_x: cx2,
-            center_y: cy2,
-            dx: span * 0.52,
-            dy: span * 0.85,
-        },
-    ]
-}
-
-/// Render the 3 slow drifting azure and accent bands onto `cr`.
-pub fn draw_ambient_bands(
-    cr: &cairo::Context,
-    width: f64,
-    height: f64,
-    phase_secs: f64,
-    pal: &tokens::Palette,
-) {
-    if width <= 0.0 || height <= 0.0 {
-        return;
-    }
-
-    let bands = compute_ambient_bands(phase_secs, width, height, pal);
-    for band in &bands {
-        let alpha = band.alpha.clamp(0.0, AMBIENT_MAX_ALPHA);
-        if alpha <= 0.0 {
-            continue;
-        }
-        let (r, g, b) = band.color;
-        let grad = cairo::LinearGradient::new(
-            band.center_x - band.dx,
-            band.center_y - band.dy,
-            band.center_x + band.dx,
-            band.center_y + band.dy,
-        );
-        grad.add_color_stop_rgba(0.0, r, g, b, 0.0);
-        grad.add_color_stop_rgba(0.5, r, g, b, alpha);
-        grad.add_color_stop_rgba(1.0, r, g, b, 0.0);
-        let _ = cr.set_source(&grad);
-        cr.rectangle(0.0, 0.0, width, height);
-        let _ = cr.fill();
     }
 }
 
@@ -354,7 +235,7 @@ pub fn compute_shimmer_frame(elapsed_secs: f64) -> Option<ShimmerFrame> {
     })
 }
 
-/// Render the 1px gold shimmer highlight along the bottom edge of the header overlay.
+/// Render the 1px gold shimmer highlight along the bottom edge of the header strip.
 pub fn draw_header_shimmer(
     cr: &cairo::Context,
     width: f64,
@@ -385,18 +266,15 @@ pub fn draw_header_shimmer(
     let _ = cr.fill();
 }
 
-/// Manages Stage unlock ripple, ambient background bands, and header shimmer overlays.
+/// Manages the Stage unlock ripple and header bottom-edge shimmer overlays.
 #[derive(Clone)]
 pub struct SkinOverlayController {
     skin_overlay: gtk4::Overlay,
     window: adw::ApplicationWindow,
-    ambient_area: gtk4::DrawingArea,
     shimmer_area: gtk4::DrawingArea,
     unlocked: Rc<Cell<bool>>,
+    closed: Rc<Cell<bool>>,
     effects_active: Rc<Cell<bool>>,
-    ambient_clock: Rc<RefCell<AnimationClock>>,
-    ambient_running: Rc<Cell<bool>>,
-    ambient_gen: Rc<Cell<u64>>,
     shimmer_clock: Rc<RefCell<AnimationClock>>,
     shimmer_running: Rc<Cell<bool>>,
     shimmer_gen: Rc<Cell<u64>>,
@@ -405,45 +283,38 @@ pub struct SkinOverlayController {
 }
 
 impl SkinOverlayController {
-    /// Wire passive pass-through ambient and shimmer overlays onto `skin_overlay` and `header_overlay`.
+    /// Wire the thin pass-through header shimmer overlay onto `header_overlay`,
+    /// retaining `skin_overlay` for the one-shot unlock ripple.
     pub fn setup(
         window: &adw::ApplicationWindow,
         skin_overlay: &gtk4::Overlay,
         header_overlay: &gtk4::Overlay,
         on_skin_swap: Rc<dyn Fn()>,
     ) -> Self {
-        let ambient_area = gtk4::DrawingArea::builder()
-            .hexpand(true)
-            .vexpand(true)
-            .can_target(false)
-            .can_focus(false)
-            .build();
-        skin_overlay.add_overlay(&ambient_area);
-
         let shimmer_area = gtk4::DrawingArea::builder()
+            .height_request(SHIMMER_STRIP_HEIGHT)
+            .valign(gtk4::Align::Start)
+            .vexpand(false)
             .hexpand(true)
-            .vexpand(true)
             .can_target(false)
             .can_focus(false)
             .build();
         header_overlay.add_overlay(&shimmer_area);
+        header_overlay.set_measure_overlay(&shimmer_area, false);
+
+        let shimmer_for_pos = shimmer_area.clone();
+        header_overlay.connect_get_child_position(move |ov, child| {
+            if child == shimmer_for_pos.upcast_ref::<gtk4::Widget>() {
+                let w = ov.width().max(1);
+                let h = ov.height().max(SHIMMER_STRIP_HEIGHT);
+                let y = (h - SHIMMER_STRIP_HEIGHT).max(0);
+                return Some(gdk::Rectangle::new(0, y, w, SHIMMER_STRIP_HEIGHT));
+            }
+            None
+        });
 
         let effects_active = Rc::new(Cell::new(false));
-        let ambient_clock = Rc::new(RefCell::new(AnimationClock::new(AMBIENT_FRAME_INTERVAL)));
         let shimmer_clock = Rc::new(RefCell::new(AnimationClock::new(SHIMMER_FRAME_INTERVAL)));
-
-        {
-            let active_draw = Rc::clone(&effects_active);
-            let clk_draw = Rc::clone(&ambient_clock);
-            ambient_area.set_draw_func(move |_, cr, w, h| {
-                if !active_draw.get() || !tokens::motion::is_animations_enabled() {
-                    return;
-                }
-                let phase = clk_draw.borrow().phase_secs();
-                let pal = tokens::palette();
-                draw_ambient_bands(cr, w as f64, h as f64, phase, &pal);
-            });
-        }
 
         {
             let active_draw = Rc::clone(&effects_active);
@@ -461,13 +332,10 @@ impl SkinOverlayController {
         let controller = Self {
             skin_overlay: skin_overlay.clone(),
             window: window.clone(),
-            ambient_area,
             shimmer_area,
             unlocked: Rc::new(Cell::new(false)),
+            closed: Rc::new(Cell::new(false)),
             effects_active,
-            ambient_clock,
-            ambient_running: Rc::new(Cell::new(false)),
-            ambient_gen: Rc::new(Cell::new(0)),
             shimmer_clock,
             shimmer_running: Rc::new(Cell::new(false)),
             shimmer_gen: Rc::new(Cell::new(0)),
@@ -487,16 +355,13 @@ impl SkinOverlayController {
 
         let ctrl_close = controller.clone();
         window.connect_close_request(move |_| {
+            ctrl_close.closed.set(true);
             ctrl_close.effects_active.set(false);
             ctrl_close.stop_loops(Instant::now());
             glib::Propagation::Proceed
         });
 
         controller
-    }
-
-    pub fn ambient_area(&self) -> &gtk4::DrawingArea {
-        &self.ambient_area
     }
 
     pub fn shimmer_area(&self) -> &gtk4::DrawingArea {
@@ -507,6 +372,10 @@ impl SkinOverlayController {
         self.effects_active.get()
     }
 
+    pub fn is_shimmer_running(&self) -> bool {
+        self.shimmer_running.get()
+    }
+
     /// Trigger the skin unlock sequence once. Subsequent calls are no-ops.
     pub fn trigger_unlock(&self) {
         if self.unlocked.replace(true) {
@@ -514,7 +383,7 @@ impl SkinOverlayController {
         }
 
         if !tokens::motion::is_animations_enabled() {
-            // Reduced motion: instant skin swap, no ripple, no ambient, no shimmer.
+            // Reduced motion: instant skin swap, no ripple, no shimmer.
             (self.on_skin_swap)();
             return;
         }
@@ -562,6 +431,13 @@ impl SkinOverlayController {
                 }
             };
 
+            if ctrl_tick.closed.get() || overlay_weak.upgrade().is_none() {
+                if let (Some(ov), Some(ar)) = (overlay_weak.upgrade(), area_weak.upgrade()) {
+                    ov.remove_overlay(&ar);
+                }
+                return glib::ControlFlow::Break;
+            }
+
             if !tokens::motion::is_animations_enabled() {
                 if !swapped_tick.replace(true) {
                     (on_swap)();
@@ -581,7 +457,7 @@ impl SkinOverlayController {
                 ctrl_tick.sync_loop_state();
             }
 
-            if frame.finished || overlay_weak.upgrade().is_none() {
+            if frame.finished {
                 if let (Some(ov), Some(ar)) = (overlay_weak.upgrade(), area_weak.upgrade()) {
                     ov.remove_overlay(&ar);
                 }
@@ -595,16 +471,16 @@ impl SkinOverlayController {
         self.skin_overlay.add_overlay(&ripple_area);
     }
 
-    /// Synchronize ambient band and header shimmer tick loops with window active/visible state.
+    /// Synchronize the header shimmer tick loop with window active/visible state.
     pub fn sync_loop_state(&self) {
-        let should_run = self.effects_active.get()
+        let should_run = !self.closed.get()
+            && self.effects_active.get()
             && tokens::motion::is_animations_enabled()
             && self.window.is_active()
             && self.window.is_visible();
 
         let now = Instant::now();
         if should_run {
-            self.start_ambient_loop(now);
             self.start_shimmer_loop(now);
         } else {
             self.stop_loops(now);
@@ -612,59 +488,12 @@ impl SkinOverlayController {
     }
 
     fn stop_loops(&self, now: Instant) {
-        self.ambient_clock.borrow_mut().pause(now);
-        self.ambient_running.set(false);
-        self.ambient_gen.set(self.ambient_gen.get().wrapping_add(1));
-
         self.shimmer_clock.borrow_mut().pause(now);
         self.shimmer_running.set(false);
         self.shimmer_gen.set(self.shimmer_gen.get().wrapping_add(1));
         if !tokens::motion::is_animations_enabled() && self.shimmer_was_drawing.replace(false) {
             self.shimmer_area.queue_draw();
-            self.ambient_area.queue_draw();
         }
-    }
-
-    fn start_ambient_loop(&self, now: Instant) {
-        self.ambient_clock.borrow_mut().resume(now);
-        if self.ambient_running.replace(true) {
-            return;
-        }
-
-        let my_gen = self.ambient_gen.get().wrapping_add(1);
-        self.ambient_gen.set(my_gen);
-
-        let win_weak = self.window.downgrade();
-        let active_flag = Rc::clone(&self.effects_active);
-        let running_flag = Rc::clone(&self.ambient_running);
-        let gen_cell = Rc::clone(&self.ambient_gen);
-        let clock = Rc::clone(&self.ambient_clock);
-
-        self.ambient_area.add_tick_callback(move |area, _| {
-            let now = Instant::now();
-            let alive = my_gen == gen_cell.get()
-                && active_flag.get()
-                && tokens::motion::is_animations_enabled()
-                && win_weak
-                    .upgrade()
-                    .is_some_and(|w| w.is_active() && w.is_visible());
-
-            if !alive {
-                clock.borrow_mut().pause(now);
-                if my_gen == gen_cell.get() {
-                    running_flag.set(false);
-                }
-                if !tokens::motion::is_animations_enabled() {
-                    area.queue_draw();
-                }
-                return glib::ControlFlow::Break;
-            }
-
-            if clock.borrow_mut().tick(now) {
-                area.queue_draw();
-            }
-            glib::ControlFlow::Continue
-        });
     }
 
     fn start_shimmer_loop(&self, now: Instant) {
@@ -678,6 +507,7 @@ impl SkinOverlayController {
 
         let win_weak = self.window.downgrade();
         let active_flag = Rc::clone(&self.effects_active);
+        let closed_flag = Rc::clone(&self.closed);
         let running_flag = Rc::clone(&self.shimmer_running);
         let gen_cell = Rc::clone(&self.shimmer_gen);
         let clock = Rc::clone(&self.shimmer_clock);
@@ -686,6 +516,7 @@ impl SkinOverlayController {
         self.shimmer_area.add_tick_callback(move |area, _| {
             let now = Instant::now();
             let alive = my_gen == gen_cell.get()
+                && !closed_flag.get()
                 && active_flag.get()
                 && tokens::motion::is_animations_enabled()
                 && win_weak
@@ -728,12 +559,16 @@ mod tests {
         assert_eq!(f0.radius_frac, 0.0);
         assert!(!f0.should_swap_skin);
         assert!(!f0.finished);
+        assert!(f0.ring_alpha <= RIPPLE_MAX_RING_ALPHA);
+        assert!(f0.inner_glow_alpha <= RIPPLE_MAX_GLOW_ALPHA);
 
         // At 225ms (half of 450ms expansion): ease_out_cubic(0.5) = 0.875
         let f_mid_expand = compute_ripple_frame(225.0);
         assert!((f_mid_expand.radius_frac - 0.875).abs() < 1e-6);
         assert!(!f_mid_expand.should_swap_skin);
         assert!(!f_mid_expand.finished);
+        assert!(f_mid_expand.ring_alpha <= 0.35);
+        assert!(f_mid_expand.inner_glow_alpha <= 0.10);
 
         // At 450ms (50% progress of 900ms lifecycle): ring fully expanded, swap triggers
         let f_swap = compute_ripple_frame(450.0);
@@ -741,18 +576,21 @@ mod tests {
         assert!((f_swap.radius_frac - 1.0).abs() < 1e-6);
         assert!(f_swap.should_swap_skin);
         assert!(!f_swap.finished);
+        assert!(f_swap.ring_alpha <= 0.35);
+        assert!(f_swap.inner_glow_alpha <= 0.10);
 
         // At 675ms: overlay fading out cleanly
         let f_fade = compute_ripple_frame(675.0);
         assert!(f_fade.ring_alpha < f_swap.ring_alpha);
         assert!(f_fade.ring_alpha > 0.0);
+        assert!(f_fade.inner_glow_alpha < f_swap.inner_glow_alpha);
         assert!(f_fade.should_swap_skin);
         assert!(!f_fade.finished);
 
         // At 900ms: fade complete and finished
         let f_end = compute_ripple_frame(900.0);
         assert_eq!(f_end.ring_alpha, 0.0);
-        assert_eq!(f_end.wash_alpha, 0.0);
+        assert_eq!(f_end.inner_glow_alpha, 0.0);
         assert!(f_end.finished);
 
         // Out-of-range times clamp cleanly without panics
@@ -762,35 +600,33 @@ mod tests {
         let f_over = compute_ripple_frame(1500.0);
         assert_eq!(f_over.progress, 1.0);
         assert_eq!(f_over.ring_alpha, 0.0);
+        assert_eq!(f_over.inner_glow_alpha, 0.0);
         assert!(f_over.finished);
     }
 
     #[test]
-    fn test_ambient_bands_count_and_alpha_cap() {
-        let stage = tokens::Palette::STAGE;
-        let bands_0 = compute_ambient_bands(0.0, 1280.0, 820.0, &stage);
-        let bands_10 = compute_ambient_bands(10.0, 1280.0, 820.0, &stage);
-        assert_ne!(
-            bands_0[0].center_x, bands_10[0].center_x,
-            "Ambient bands must drift slowly over time"
-        );
-        for t in [0.0, 2.5, 17.3, 60.0] {
-            let bands = compute_ambient_bands(t, 1280.0, 820.0, &stage);
-            assert_eq!(bands.len(), 3);
-            for band in &bands {
-                assert!(band.alpha > 0.0);
-                assert!(
-                    band.alpha <= 0.06,
-                    "Ambient band alpha must be <= 0.06, got {}",
-                    band.alpha
-                );
-            }
+    fn test_draw_ripple_frame_no_full_window_fill() {
+        let mut surface = cairo::ImageSurface::create(cairo::Format::ARgb32, 400, 300).unwrap();
+        {
+            let cr = cairo::Context::new(&surface).unwrap();
+            // Render near t=225ms where radius ~ 455px covers almost the entire surface
+            draw_ripple_frame(&cr, 400.0, 300.0, 225.0, &tokens::Palette::STAGE);
+            surface.flush();
         }
+        let stride = surface.stride() as usize;
+        let data = surface.data().unwrap();
+        // Top-right corner region (x=380, y=20) is well inside the ring radius and must stay transparent (no fill wash)
+        let off = 20 * stride + 380 * 4;
+        assert_eq!(
+            &data[off..off + 4],
+            &[0, 0, 0, 0],
+            "Ripple must stroke the ring only with no full-window interior fill"
+        );
     }
 
     #[test]
     fn test_animation_clock_frame_skip_and_pause_resume() {
-        let mut clock = AnimationClock::new(AMBIENT_FRAME_INTERVAL);
+        let mut clock = AnimationClock::new(Duration::from_millis(33));
         let t0 = Instant::now();
 
         // Starts paused until resume
@@ -802,7 +638,7 @@ mod tests {
         assert!(!clock.is_paused());
         assert!(clock.tick(t0));
 
-        // At 16ms (~60fps tick), frame is skipped to maintain ~30fps cap
+        // At 16ms, frame is skipped to maintain ~30fps cap
         let t_16 = t0 + Duration::from_millis(16);
         assert!(!clock.tick(t_16));
 
@@ -851,19 +687,17 @@ mod tests {
     }
 
     #[test]
-    fn test_cairo_draws_ripple_ambient_and_shimmer_safely() {
+    fn test_cairo_draws_ripple_and_shimmer_safely() {
         let surface = cairo::ImageSurface::create(cairo::Format::ARgb32, 320, 200).unwrap();
         let cr = cairo::Context::new(&surface).unwrap();
         let stage = tokens::Palette::STAGE;
 
         draw_ripple_frame(&cr, 320.0, 200.0, 200.0, &stage);
         draw_ripple_frame(&cr, 320.0, 200.0, 600.0, &stage);
-        draw_ambient_bands(&cr, 320.0, 200.0, 3.5, &stage);
-        draw_header_shimmer(&cr, 320.0, 48.0, 0.5, &stage);
+        draw_header_shimmer(&cr, 320.0, 2.0, 0.5, &stage);
 
         // Zero and negative dimensions must not panic
         draw_ripple_frame(&cr, 0.0, 0.0, 100.0, &stage);
-        draw_ambient_bands(&cr, -10.0, 200.0, 1.0, &stage);
         draw_header_shimmer(&cr, 320.0, 0.0, 0.5, &stage);
         surface.flush();
     }
