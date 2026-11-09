@@ -495,6 +495,14 @@ toast button {{
     color: @header_fg;
 }}
 
+toast .heading,
+toast .dim-label,
+toast button label,
+toast image {{
+    background-color: transparent;
+    color: @header_fg;
+}}
+
 toast {{
     background-image: none;
     border-radius: 150px;
@@ -1928,6 +1936,7 @@ dropdown button {
             ".dim-label,",
             "row label.subtitle",
             "toast label,",
+            "toast .heading,",
             "border-radius: 150px;",
             "entry text",
             "entry:focus-within",
