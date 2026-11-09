@@ -175,4 +175,33 @@ mod tests {
         let roundtrip: AppConfig = serde_json::from_str(&serialized).unwrap();
         assert_eq!(config, roundtrip);
     }
+
+    #[test]
+    fn test_app_config_serialization_contains_no_skin_state() {
+        let config = AppConfig {
+            project_dir: Some("/path/to/project".to_string()),
+            target: Some("AA_NS_STM32".to_string()),
+        };
+        let serialized = serde_json::to_string_pretty(&config).unwrap();
+        let lower = serialized.to_ascii_lowercase();
+        for forbidden in [
+            "skin",
+            "stage",
+            "palette",
+            "theme",
+            "easter_egg",
+            "unlocked",
+        ] {
+            assert!(
+                !lower.contains(forbidden),
+                "AppConfig serialization must not contain skin/easter-egg field '{forbidden}'"
+            );
+        }
+
+        let parsed: serde_json::Value = serde_json::from_str(&serialized).unwrap();
+        let obj = parsed.as_object().expect("AppConfig serializes as object");
+        assert_eq!(obj.len(), 2);
+        assert!(obj.contains_key("project_dir"));
+        assert!(obj.contains_key("target"));
+    }
 }
