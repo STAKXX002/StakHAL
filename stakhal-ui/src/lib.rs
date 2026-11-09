@@ -453,6 +453,8 @@ dropdown button {{
     --accent-bg-color: @accent_bg_color;
     --accent-fg-color: @accent_fg_color;
     --accent-color: @accent_color;
+    --dim-opacity: 100%;
+    --disabled-opacity: 75%;
 }}
 
 window, dialog {{
@@ -471,6 +473,70 @@ row, listboxrow, actionrow {{
     color: @card_fg_color;
 }}
 
+row .title,
+row label.title {{
+    opacity: 1;
+    color: @text_primary;
+}}
+
+.dim-label,
+.subtitle,
+row .subtitle,
+row .subtitle label,
+row label.subtitle {{
+    opacity: 1;
+    color: @text_muted;
+}}
+
+toast,
+toast label,
+toast button {{
+    background-color: @header;
+    color: @header_fg;
+}}
+
+toast {{
+    background-image: none;
+    border-radius: 150px;
+}}
+
+toast button:hover {{
+    background-color: alpha(@header_fg, 0.14);
+    color: @header_fg;
+}}
+
+toast button.circular {{
+    border-radius: 9999px;
+}}
+
+entry,
+entry text {{
+    background-color: @bg_panel;
+    color: @text_primary;
+}}
+
+entry {{
+    border: 1px solid @border_hair;
+    border-radius: 2px;
+}}
+
+entry:focus-within {{
+    border-color: @accent;
+    outline: none;
+    box-shadow: 0 0 0 2px alpha(@accent, 0.35);
+}}
+
+entry > text > placeholder,
+text > placeholder {{
+    color: @text_muted;
+    opacity: 1;
+}}
+
+button.flat:disabled,
+button.stakhal-btn.flat:disabled {{
+    filter: Opacity(var(--disabled-opacity));
+}}
+
 button.stakhal-btn {{
     transition: background-color 180ms cubic-bezier(0.0, 0.0, 0.2, 1.0),
                 border-color 180ms cubic-bezier(0.0, 0.0, 0.2, 1.0);
@@ -487,6 +553,11 @@ headerbar {{
     color: @header_fg;
     border-bottom: 1px solid @gold;
     box-shadow: none;
+}}
+
+headerbar .subtitle {{
+    opacity: 1;
+    color: @header_fg;
 }}
 
 headerbar:backdrop {{
@@ -1845,6 +1916,38 @@ dropdown button {
         assert!(
             css.contains("border-bottom: 1px solid @gold;"),
             "Stage CSS must style headerbar bottom border from gold"
+        );
+    }
+
+    #[test]
+    fn test_build_css_stage_contrast_fixes() {
+        let css = build_css(&ui::tokens::Palette::STAGE);
+        for needle in [
+            "--dim-opacity: 100%;",
+            "--disabled-opacity: 75%;",
+            ".dim-label,",
+            "row label.subtitle",
+            "toast label,",
+            "border-radius: 150px;",
+            "entry text",
+            "entry:focus-within",
+            "entry > text > placeholder",
+            "opacity: 1;",
+        ] {
+            assert!(
+                css.contains(needle),
+                "Stage CSS missing contrast rule fragment: {needle}"
+            );
+        }
+
+        let def = build_css(&ui::tokens::Palette::DEFAULT);
+        assert!(
+            !def.contains("--dim-opacity"),
+            "DEFAULT CSS must remain unchanged"
+        );
+        assert!(
+            !def.contains("toast {"),
+            "DEFAULT CSS must remain unchanged"
         );
     }
 
