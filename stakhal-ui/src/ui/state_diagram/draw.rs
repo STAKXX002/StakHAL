@@ -5,38 +5,110 @@ use stakhal_core::graph::{compute_state_machine_layout, is_fault_state};
 use std::cell::RefCell;
 use std::rc::Rc;
 
-// Strict Design Tokens Integration
-const COLOR_CANVAS_BG: (f64, f64, f64) = tokens::color::BG_VOID;
-const COLOR_DOT_GRID: (f64, f64, f64, f64) = (
-    tokens::color::BORDER_HAIR.0,
-    tokens::color::BORDER_HAIR.1,
-    tokens::color::BORDER_HAIR.2,
-    0.35,
-);
+fn mix_rgb(a: (f64, f64, f64), b: (f64, f64, f64), t: f64) -> (f64, f64, f64) {
+    (
+        (a.0 + (b.0 - a.0) * t).clamp(0.0, 1.0),
+        (a.1 + (b.1 - a.1) * t).clamp(0.0, 1.0),
+        (a.2 + (b.2 - a.2) * t).clamp(0.0, 1.0),
+    )
+}
 
-// Fault tokens (strictly reserved for FAULT state and fault transitions)
-const COLOR_FAULT_RED: (f64, f64, f64) = tokens::color::STATE_ERROR;
-const COLOR_FAULT_FILL: (f64, f64, f64, f64) = (45.0 / 255.0, 16.0 / 255.0, 18.0 / 255.0, 0.95);
+struct DiagramColors {
+    canvas_bg: (f64, f64, f64),
+    dot_grid: (f64, f64, f64, f64),
+    fault_red: (f64, f64, f64),
+    fault_fill: (f64, f64, f64, f64),
+    node_fill_default: (f64, f64, f64, f64),
+    node_fill_initial: (f64, f64, f64, f64),
+    node_fill_hover: (f64, f64, f64, f64),
+    node_fill_selected: (f64, f64, f64, f64),
+    border_default: (f64, f64, f64),
+    border_initial: (f64, f64, f64),
+    border_hover: (f64, f64, f64),
+    border_selected: (f64, f64, f64),
+    bg_void: (f64, f64, f64),
+    bg_panel: (f64, f64, f64),
+    text_primary: (f64, f64, f64),
+    text_muted: (f64, f64, f64),
+    accent: (f64, f64, f64),
+}
 
-// Panel surface fills
-const COLOR_NODE_FILL_DEFAULT: (f64, f64, f64, f64) = (
-    tokens::color::BG_PANEL.0,
-    tokens::color::BG_PANEL.1,
-    tokens::color::BG_PANEL.2,
-    0.95,
-);
-const COLOR_NODE_FILL_INITIAL: (f64, f64, f64, f64) =
-    (24.0 / 255.0, 30.0 / 255.0, 36.0 / 255.0, 0.95);
-const COLOR_NODE_FILL_HOVER: (f64, f64, f64, f64) =
-    (28.0 / 255.0, 36.0 / 255.0, 44.0 / 255.0, 0.95);
-const COLOR_NODE_FILL_SELECTED: (f64, f64, f64, f64) =
-    (20.0 / 255.0, 32.0 / 255.0, 38.0 / 255.0, 0.95);
+impl DiagramColors {
+    fn from_palette(pal: tokens::Palette) -> Self {
+        let is_default = pal == tokens::Palette::DEFAULT;
 
-// 1px Hairline Borders
-const COLOR_BORDER_DEFAULT: (f64, f64, f64) = tokens::color::BORDER_HAIR;
-const COLOR_BORDER_INITIAL: (f64, f64, f64) = (50.0 / 255.0, 60.0 / 255.0, 70.0 / 255.0);
-const COLOR_BORDER_HOVER: (f64, f64, f64) = (60.0 / 255.0, 75.0 / 255.0, 85.0 / 255.0);
-const COLOR_BORDER_SELECTED: (f64, f64, f64) = tokens::color::ACCENT;
+        let fault_fill = if is_default {
+            // Preserve historical default FAULT node fill for pixel-identical snapshots
+            (45.0 / 255.0, 16.0 / 255.0, 18.0 / 255.0, 0.95)
+        } else {
+            let m = mix_rgb(pal.bg_panel.rgb(), pal.state_error.rgb(), 0.18);
+            (m.0, m.1, m.2, 0.95)
+        };
+
+        let node_fill_initial = if is_default {
+            // Preserve historical default INITIAL node fill for pixel-identical snapshots
+            (24.0 / 255.0, 30.0 / 255.0, 36.0 / 255.0, 0.95)
+        } else {
+            let m = mix_rgb(pal.bg_panel.rgb(), pal.bg_raised.rgb(), 0.67);
+            (m.0, m.1, m.2, 0.95)
+        };
+
+        let node_fill_hover = if is_default {
+            // Preserve historical default HOVER node fill for pixel-identical snapshots
+            (28.0 / 255.0, 36.0 / 255.0, 44.0 / 255.0, 0.95)
+        } else {
+            let m = mix_rgb(pal.bg_raised.rgb(), pal.border_hair.rgb(), 0.25);
+            (m.0, m.1, m.2, 0.95)
+        };
+
+        let node_fill_selected = if is_default {
+            // Preserve historical default SELECTED node fill for pixel-identical snapshots
+            (20.0 / 255.0, 32.0 / 255.0, 38.0 / 255.0, 0.95)
+        } else {
+            let m = mix_rgb(pal.bg_panel.rgb(), pal.accent.rgb(), 0.08);
+            (m.0, m.1, m.2, 0.95)
+        };
+
+        let border_initial = if is_default {
+            // Preserve historical default INITIAL border for pixel-identical snapshots
+            (50.0 / 255.0, 60.0 / 255.0, 70.0 / 255.0)
+        } else {
+            mix_rgb(pal.border_hair.rgb(), pal.text_muted.rgb(), 0.20)
+        };
+
+        let border_hover = if is_default {
+            // Preserve historical default HOVER border for pixel-identical snapshots
+            (60.0 / 255.0, 75.0 / 255.0, 85.0 / 255.0)
+        } else {
+            mix_rgb(pal.border_hair.rgb(), pal.text_muted.rgb(), 0.35)
+        };
+
+        Self {
+            canvas_bg: pal.bg_void.rgb(),
+            dot_grid: (
+                pal.border_hair.0,
+                pal.border_hair.1,
+                pal.border_hair.2,
+                0.35,
+            ),
+            fault_red: pal.state_error.rgb(),
+            fault_fill,
+            node_fill_default: (pal.bg_panel.0, pal.bg_panel.1, pal.bg_panel.2, 0.95),
+            node_fill_initial,
+            node_fill_hover,
+            node_fill_selected,
+            border_default: pal.border_hair.rgb(),
+            border_initial,
+            border_hover,
+            border_selected: pal.accent.rgb(),
+            bg_void: pal.bg_void.rgb(),
+            bg_panel: pal.bg_panel.rgb(),
+            text_primary: pal.text_primary.rgb(),
+            text_muted: pal.text_muted.rgb(),
+            accent: pal.accent.rgb(),
+        }
+    }
+}
 
 pub fn draw_state_diagram_canvas(
     _area: &gtk4::DrawingArea,
@@ -54,6 +126,7 @@ pub fn draw_state_diagram(
     height: f64,
     state: &Rc<RefCell<AppState>>,
 ) {
+    let colors = DiagramColors::from_palette(tokens::palette());
     // 1. Ensure state diagram layout is computed and view is fitted if needed
     {
         let loaded_project = state.borrow().project.borrow().loaded_project.clone();
@@ -124,7 +197,7 @@ pub fn draw_state_diagram(
         Some(l) => l,
         None => {
             // Draw empty placeholder message
-            cr.set_source_rgb(COLOR_CANVAS_BG.0, COLOR_CANVAS_BG.1, COLOR_CANVAS_BG.2);
+            cr.set_source_rgb(colors.canvas_bg.0, colors.canvas_bg.1, colors.canvas_bg.2);
             cr.rectangle(0.0, 0.0, width, height);
             let _ = cr.fill();
 
@@ -135,9 +208,9 @@ pub fn draw_state_diagram(
             );
             cr.set_font_size(14.0);
             cr.set_source_rgb(
-                tokens::color::TEXT_MUTED.0,
-                tokens::color::TEXT_MUTED.1,
-                tokens::color::TEXT_MUTED.2,
+                colors.text_muted.0,
+                colors.text_muted.1,
+                colors.text_muted.2,
             );
             cr.move_to(width * 0.35, height * 0.5);
             let _ = cr.show_text("No state machines detected in current project.");
@@ -179,7 +252,7 @@ pub fn draw_state_diagram(
     };
 
     // Fill canvas background
-    cr.set_source_rgb(COLOR_CANVAS_BG.0, COLOR_CANVAS_BG.1, COLOR_CANVAS_BG.2);
+    cr.set_source_rgb(colors.canvas_bg.0, colors.canvas_bg.1, colors.canvas_bg.2);
     cr.rectangle(0.0, 0.0, width.max(4000.0), height.max(4000.0));
     let _ = cr.fill();
 
@@ -188,7 +261,12 @@ pub fn draw_state_diagram(
     cr.scale(zoom, zoom);
 
     // Draw technical dot grid
-    draw_dot_grid(cr, layout.width.max(1600.0), layout.height.max(1200.0));
+    draw_dot_grid(
+        cr,
+        layout.width.max(1600.0),
+        layout.height.max(1200.0),
+        &colors,
+    );
 
     // Draw Lane Header Banners (Interface talking -> Sans)
     for lane in &layout.lanes {
@@ -201,16 +279,16 @@ pub fn draw_state_diagram(
             cr.set_font_size(8.5);
             if selected_node.is_some() {
                 cr.set_source_rgba(
-                    tokens::color::TEXT_MUTED.0,
-                    tokens::color::TEXT_MUTED.1,
-                    tokens::color::TEXT_MUTED.2,
+                    colors.text_muted.0,
+                    colors.text_muted.1,
+                    colors.text_muted.2,
                     0.35,
                 );
             } else {
                 cr.set_source_rgba(
-                    tokens::color::TEXT_MUTED.0,
-                    tokens::color::TEXT_MUTED.1,
-                    tokens::color::TEXT_MUTED.2,
+                    colors.text_muted.0,
+                    colors.text_muted.1,
+                    colors.text_muted.2,
                     0.75,
                 );
             }
@@ -268,40 +346,40 @@ pub fn draw_state_diagram(
         let (edge_r, edge_g, edge_b, edge_a) = if edge.is_fault {
             if is_dimmed {
                 (
-                    COLOR_FAULT_RED.0,
-                    COLOR_FAULT_RED.1,
-                    COLOR_FAULT_RED.2,
+                    colors.fault_red.0,
+                    colors.fault_red.1,
+                    colors.fault_red.2,
                     0.15,
                 )
             } else if is_connected_to_selection {
-                (COLOR_FAULT_RED.0, COLOR_FAULT_RED.1, COLOR_FAULT_RED.2, 1.0)
+                (
+                    colors.fault_red.0,
+                    colors.fault_red.1,
+                    colors.fault_red.2,
+                    1.0,
+                )
             } else {
                 (
-                    COLOR_FAULT_RED.0,
-                    COLOR_FAULT_RED.1,
-                    COLOR_FAULT_RED.2,
+                    colors.fault_red.0,
+                    colors.fault_red.1,
+                    colors.fault_red.2,
                     0.85,
                 )
             }
         } else if is_connected_to_selection {
-            (
-                tokens::color::ACCENT.0,
-                tokens::color::ACCENT.1,
-                tokens::color::ACCENT.2,
-                0.95,
-            )
+            (colors.accent.0, colors.accent.1, colors.accent.2, 0.95)
         } else if is_dimmed {
             (
-                COLOR_BORDER_DEFAULT.0,
-                COLOR_BORDER_DEFAULT.1,
-                COLOR_BORDER_DEFAULT.2,
+                colors.border_default.0,
+                colors.border_default.1,
+                colors.border_default.2,
                 0.25,
             )
         } else {
             (
-                COLOR_BORDER_DEFAULT.0,
-                COLOR_BORDER_DEFAULT.1,
-                COLOR_BORDER_DEFAULT.2,
+                colors.border_default.0,
+                colors.border_default.1,
+                colors.border_default.2,
                 0.85,
             )
         };
@@ -346,12 +424,7 @@ pub fn draw_state_diagram(
 
         // Overlay pass: traveling signal pulse along active state transition edge
         if is_pulse_edge {
-            cr.set_source_rgba(
-                tokens::color::ACCENT.0,
-                tokens::color::ACCENT.1,
-                tokens::color::ACCENT.2,
-                1.0,
-            );
+            cr.set_source_rgba(colors.accent.0, colors.accent.1, colors.accent.2, 1.0);
             cr.set_line_width(2.0);
             let pulse_len = 24.0_f64.min(total_len * 0.4).max(8.0);
             cr.set_dash(&[pulse_len, total_len * 2.0], -(pulse_t * total_len));
@@ -425,6 +498,7 @@ pub fn draw_state_diagram(
             is_hovered,
             is_dimmed_node,
             flash_intensity,
+            &colors,
         );
 
         // Draw node label (Data -> JetBrains Mono)
@@ -437,18 +511,18 @@ pub fn draw_state_diagram(
 
         if is_dimmed_node {
             cr.set_source_rgba(
-                tokens::color::TEXT_MUTED.0,
-                tokens::color::TEXT_MUTED.1,
-                tokens::color::TEXT_MUTED.2,
+                colors.text_muted.0,
+                colors.text_muted.1,
+                colors.text_muted.2,
                 0.4,
             );
         } else if node.is_fault {
-            cr.set_source_rgb(COLOR_FAULT_RED.0, COLOR_FAULT_RED.1, COLOR_FAULT_RED.2);
+            cr.set_source_rgb(colors.fault_red.0, colors.fault_red.1, colors.fault_red.2);
         } else {
             cr.set_source_rgb(
-                tokens::color::TEXT_PRIMARY.0,
-                tokens::color::TEXT_PRIMARY.1,
-                tokens::color::TEXT_PRIMARY.2,
+                colors.text_primary.0,
+                colors.text_primary.1,
+                colors.text_primary.2,
             );
         }
 
@@ -471,16 +545,16 @@ pub fn draw_state_diagram(
             cr.set_font_size(8.0);
             if is_dimmed_node {
                 cr.set_source_rgba(
-                    tokens::color::TEXT_MUTED.0,
-                    tokens::color::TEXT_MUTED.1,
-                    tokens::color::TEXT_MUTED.2,
+                    colors.text_muted.0,
+                    colors.text_muted.1,
+                    colors.text_muted.2,
                     0.3,
                 );
             } else {
                 cr.set_source_rgb(
-                    tokens::color::TEXT_MUTED.0,
-                    tokens::color::TEXT_MUTED.1,
-                    tokens::color::TEXT_MUTED.2,
+                    colors.text_muted.0,
+                    colors.text_muted.1,
+                    colors.text_muted.2,
                 );
             }
             cr.move_to(node.x + 8.0, node.y + 12.0);
@@ -493,9 +567,14 @@ pub fn draw_state_diagram(
             );
             cr.set_font_size(8.0);
             if is_dimmed_node {
-                cr.set_source_rgba(COLOR_FAULT_RED.0, COLOR_FAULT_RED.1, COLOR_FAULT_RED.2, 0.3);
+                cr.set_source_rgba(
+                    colors.fault_red.0,
+                    colors.fault_red.1,
+                    colors.fault_red.2,
+                    0.3,
+                );
             } else {
-                cr.set_source_rgb(COLOR_FAULT_RED.0, COLOR_FAULT_RED.1, COLOR_FAULT_RED.2);
+                cr.set_source_rgb(colors.fault_red.0, colors.fault_red.1, colors.fault_red.2);
             }
             cr.move_to(node.x + 8.0, node.y + 12.0);
             let _ = cr.show_text("[FAULT]");
@@ -512,6 +591,7 @@ pub fn draw_state_diagram(
                 &badge_text,
                 true,
                 is_dimmed_node,
+                &colors,
             );
         }
 
@@ -526,7 +606,15 @@ pub fn draw_state_diagram(
                 };
                 let bx = node.x + node.width - 56.0 - idx as f64 * 58.0;
                 let by = node.y + node.height - 15.0;
-                draw_node_badge(cr, bx, by, badge_label, is_fault_target, is_dimmed_node);
+                draw_node_badge(
+                    cr,
+                    bx,
+                    by,
+                    badge_label,
+                    is_fault_target,
+                    is_dimmed_node,
+                    &colors,
+                );
             }
         }
     }
@@ -559,17 +647,18 @@ pub fn draw_state_diagram(
                 &edge.display_guard,
                 edge.is_fault,
                 is_dimmed,
+                &colors,
             );
         }
     }
 }
 
-fn draw_dot_grid(cr: &cairo::Context, max_w: f64, max_h: f64) {
+fn draw_dot_grid(cr: &cairo::Context, max_w: f64, max_h: f64, colors: &DiagramColors) {
     cr.set_source_rgba(
-        COLOR_DOT_GRID.0,
-        COLOR_DOT_GRID.1,
-        COLOR_DOT_GRID.2,
-        COLOR_DOT_GRID.3,
+        colors.dot_grid.0,
+        colors.dot_grid.1,
+        colors.dot_grid.2,
+        colors.dot_grid.3,
     );
     let step = 32.0;
     let mut x = 20.0;
@@ -599,6 +688,7 @@ fn draw_rounded_node(
     is_hovered: bool,
     is_dimmed: bool,
     flash_intensity: f64,
+    colors: &DiagramColors,
 ) {
     cr.new_path();
     cr.arc(x + w - r, y + r, r, -std::f64::consts::FRAC_PI_2, 0.0);
@@ -621,55 +711,50 @@ fn draw_rounded_node(
 
     // Node fill
     if is_dimmed {
-        cr.set_source_rgba(
-            tokens::color::BG_VOID.0,
-            tokens::color::BG_VOID.1,
-            tokens::color::BG_VOID.2,
-            0.5,
-        );
+        cr.set_source_rgba(colors.bg_void.0, colors.bg_void.1, colors.bg_void.2, 0.5);
     } else if is_fault {
         cr.set_source_rgba(
-            COLOR_FAULT_FILL.0,
-            COLOR_FAULT_FILL.1,
-            COLOR_FAULT_FILL.2,
-            COLOR_FAULT_FILL.3,
+            colors.fault_fill.0,
+            colors.fault_fill.1,
+            colors.fault_fill.2,
+            colors.fault_fill.3,
         );
     } else if is_selected {
         cr.set_source_rgba(
-            COLOR_NODE_FILL_SELECTED.0,
-            COLOR_NODE_FILL_SELECTED.1,
-            COLOR_NODE_FILL_SELECTED.2,
-            COLOR_NODE_FILL_SELECTED.3,
+            colors.node_fill_selected.0,
+            colors.node_fill_selected.1,
+            colors.node_fill_selected.2,
+            colors.node_fill_selected.3,
         );
     } else if is_hovered {
         cr.set_source_rgba(
-            COLOR_NODE_FILL_HOVER.0,
-            COLOR_NODE_FILL_HOVER.1,
-            COLOR_NODE_FILL_HOVER.2,
-            COLOR_NODE_FILL_HOVER.3,
+            colors.node_fill_hover.0,
+            colors.node_fill_hover.1,
+            colors.node_fill_hover.2,
+            colors.node_fill_hover.3,
         );
     } else if is_initial {
         cr.set_source_rgba(
-            COLOR_NODE_FILL_INITIAL.0,
-            COLOR_NODE_FILL_INITIAL.1,
-            COLOR_NODE_FILL_INITIAL.2,
-            COLOR_NODE_FILL_INITIAL.3,
+            colors.node_fill_initial.0,
+            colors.node_fill_initial.1,
+            colors.node_fill_initial.2,
+            colors.node_fill_initial.3,
         );
     } else {
         cr.set_source_rgba(
-            COLOR_NODE_FILL_DEFAULT.0,
-            COLOR_NODE_FILL_DEFAULT.1,
-            COLOR_NODE_FILL_DEFAULT.2,
-            COLOR_NODE_FILL_DEFAULT.3,
+            colors.node_fill_default.0,
+            colors.node_fill_default.1,
+            colors.node_fill_default.2,
+            colors.node_fill_default.3,
         );
     }
     let _ = cr.fill_preserve();
 
     if flash_intensity > 0.0 {
         cr.set_source_rgba(
-            tokens::color::ACCENT.0,
-            tokens::color::ACCENT.1,
-            tokens::color::ACCENT.2,
+            colors.accent.0,
+            colors.accent.1,
+            colors.accent.2,
             0.40 * flash_intensity,
         );
         let _ = cr.fill_preserve();
@@ -678,43 +763,43 @@ fn draw_rounded_node(
     // Node stroke (Strict 1px hairline)
     if flash_intensity > 0.0 {
         cr.set_source_rgba(
-            tokens::color::ACCENT.0,
-            tokens::color::ACCENT.1,
-            tokens::color::ACCENT.2,
+            colors.accent.0,
+            colors.accent.1,
+            colors.accent.2,
             (0.6 + 0.4 * flash_intensity).min(1.0),
         );
     } else if is_dimmed {
         cr.set_source_rgba(
-            tokens::color::BORDER_HAIR.0,
-            tokens::color::BORDER_HAIR.1,
-            tokens::color::BORDER_HAIR.2,
+            colors.border_default.0,
+            colors.border_default.1,
+            colors.border_default.2,
             0.35,
         );
     } else if is_fault {
-        cr.set_source_rgb(COLOR_FAULT_RED.0, COLOR_FAULT_RED.1, COLOR_FAULT_RED.2);
+        cr.set_source_rgb(colors.fault_red.0, colors.fault_red.1, colors.fault_red.2);
     } else if is_selected {
         cr.set_source_rgb(
-            COLOR_BORDER_SELECTED.0,
-            COLOR_BORDER_SELECTED.1,
-            COLOR_BORDER_SELECTED.2,
+            colors.border_selected.0,
+            colors.border_selected.1,
+            colors.border_selected.2,
         );
     } else if is_hovered {
         cr.set_source_rgb(
-            COLOR_BORDER_HOVER.0,
-            COLOR_BORDER_HOVER.1,
-            COLOR_BORDER_HOVER.2,
+            colors.border_hover.0,
+            colors.border_hover.1,
+            colors.border_hover.2,
         );
     } else if is_initial {
         cr.set_source_rgb(
-            COLOR_BORDER_INITIAL.0,
-            COLOR_BORDER_INITIAL.1,
-            COLOR_BORDER_INITIAL.2,
+            colors.border_initial.0,
+            colors.border_initial.1,
+            colors.border_initial.2,
         );
     } else {
         cr.set_source_rgb(
-            COLOR_BORDER_DEFAULT.0,
-            COLOR_BORDER_DEFAULT.1,
-            COLOR_BORDER_DEFAULT.2,
+            colors.border_default.0,
+            colors.border_default.1,
+            colors.border_default.2,
         );
     }
     cr.set_line_width(tokens::shape::BORDER_WIDTH_HAIR);
@@ -728,6 +813,7 @@ fn draw_node_badge(
     text: &str,
     is_fault: bool,
     is_dimmed: bool,
+    colors: &DiagramColors,
 ) {
     cr.select_font_face(
         tokens::font::CAIRO_MONO,
@@ -770,60 +856,55 @@ fn draw_node_badge(
     if is_fault {
         if is_dimmed {
             cr.set_source_rgba(
-                COLOR_FAULT_FILL.0,
-                COLOR_FAULT_FILL.1,
-                COLOR_FAULT_FILL.2,
+                colors.fault_fill.0,
+                colors.fault_fill.1,
+                colors.fault_fill.2,
                 0.3,
             );
             let _ = cr.fill_preserve();
             cr.set_source_rgba(
-                COLOR_FAULT_RED.0,
-                COLOR_FAULT_RED.1,
-                COLOR_FAULT_RED.2,
+                colors.fault_red.0,
+                colors.fault_red.1,
+                colors.fault_red.2,
                 0.25,
             );
         } else {
             cr.set_source_rgba(
-                COLOR_FAULT_FILL.0,
-                COLOR_FAULT_FILL.1,
-                COLOR_FAULT_FILL.2,
+                colors.fault_fill.0,
+                colors.fault_fill.1,
+                colors.fault_fill.2,
                 0.95,
             );
             let _ = cr.fill_preserve();
             cr.set_source_rgba(
-                COLOR_FAULT_RED.0,
-                COLOR_FAULT_RED.1,
-                COLOR_FAULT_RED.2,
+                colors.fault_red.0,
+                colors.fault_red.1,
+                colors.fault_red.2,
                 0.85,
             );
         }
     } else {
         if is_dimmed {
-            cr.set_source_rgba(
-                tokens::color::BG_PANEL.0,
-                tokens::color::BG_PANEL.1,
-                tokens::color::BG_PANEL.2,
-                0.3,
-            );
+            cr.set_source_rgba(colors.bg_panel.0, colors.bg_panel.1, colors.bg_panel.2, 0.3);
             let _ = cr.fill_preserve();
             cr.set_source_rgba(
-                tokens::color::BORDER_HAIR.0,
-                tokens::color::BORDER_HAIR.1,
-                tokens::color::BORDER_HAIR.2,
+                colors.border_default.0,
+                colors.border_default.1,
+                colors.border_default.2,
                 0.25,
             );
         } else {
             cr.set_source_rgba(
-                tokens::color::BG_PANEL.0,
-                tokens::color::BG_PANEL.1,
-                tokens::color::BG_PANEL.2,
+                colors.bg_panel.0,
+                colors.bg_panel.1,
+                colors.bg_panel.2,
                 0.95,
             );
             let _ = cr.fill_preserve();
             cr.set_source_rgba(
-                tokens::color::BORDER_HAIR.0,
-                tokens::color::BORDER_HAIR.1,
-                tokens::color::BORDER_HAIR.2,
+                colors.border_default.0,
+                colors.border_default.1,
+                colors.border_default.2,
                 0.85,
             );
         }
@@ -833,23 +914,28 @@ fn draw_node_badge(
 
     if is_fault {
         if is_dimmed {
-            cr.set_source_rgba(COLOR_FAULT_RED.0, COLOR_FAULT_RED.1, COLOR_FAULT_RED.2, 0.3);
+            cr.set_source_rgba(
+                colors.fault_red.0,
+                colors.fault_red.1,
+                colors.fault_red.2,
+                0.3,
+            );
         } else {
-            cr.set_source_rgb(COLOR_FAULT_RED.0, COLOR_FAULT_RED.1, COLOR_FAULT_RED.2);
+            cr.set_source_rgb(colors.fault_red.0, colors.fault_red.1, colors.fault_red.2);
         }
     } else {
         if is_dimmed {
             cr.set_source_rgba(
-                tokens::color::TEXT_MUTED.0,
-                tokens::color::TEXT_MUTED.1,
-                tokens::color::TEXT_MUTED.2,
+                colors.text_muted.0,
+                colors.text_muted.1,
+                colors.text_muted.2,
                 0.3,
             );
         } else {
             cr.set_source_rgb(
-                tokens::color::TEXT_PRIMARY.0,
-                tokens::color::TEXT_PRIMARY.1,
-                tokens::color::TEXT_PRIMARY.2,
+                colors.text_primary.0,
+                colors.text_primary.1,
+                colors.text_primary.2,
             );
         }
     }
@@ -864,6 +950,7 @@ fn draw_guard_badge(
     text: &str,
     is_fault: bool,
     is_dimmed: bool,
+    colors: &DiagramColors,
 ) {
     cr.select_font_face(
         tokens::font::CAIRO_MONO,
@@ -919,17 +1006,12 @@ fn draw_guard_badge(
 
     // Badge fill
     if is_dimmed {
-        cr.set_source_rgba(
-            tokens::color::BG_PANEL.0,
-            tokens::color::BG_PANEL.1,
-            tokens::color::BG_PANEL.2,
-            0.4,
-        );
+        cr.set_source_rgba(colors.bg_panel.0, colors.bg_panel.1, colors.bg_panel.2, 0.4);
     } else {
         cr.set_source_rgba(
-            tokens::color::BG_PANEL.0,
-            tokens::color::BG_PANEL.1,
-            tokens::color::BG_PANEL.2,
+            colors.bg_panel.0,
+            colors.bg_panel.1,
+            colors.bg_panel.2,
             0.95,
         );
     }
@@ -938,27 +1020,32 @@ fn draw_guard_badge(
     // Badge stroke (1px hairline)
     if is_fault {
         if is_dimmed {
-            cr.set_source_rgba(COLOR_FAULT_RED.0, COLOR_FAULT_RED.1, COLOR_FAULT_RED.2, 0.3);
+            cr.set_source_rgba(
+                colors.fault_red.0,
+                colors.fault_red.1,
+                colors.fault_red.2,
+                0.3,
+            );
         } else {
             cr.set_source_rgba(
-                COLOR_FAULT_RED.0,
-                COLOR_FAULT_RED.1,
-                COLOR_FAULT_RED.2,
+                colors.fault_red.0,
+                colors.fault_red.1,
+                colors.fault_red.2,
                 0.85,
             );
         }
     } else if is_dimmed {
         cr.set_source_rgba(
-            tokens::color::BORDER_HAIR.0,
-            tokens::color::BORDER_HAIR.1,
-            tokens::color::BORDER_HAIR.2,
+            colors.border_default.0,
+            colors.border_default.1,
+            colors.border_default.2,
             0.3,
         );
     } else {
         cr.set_source_rgba(
-            tokens::color::BORDER_HAIR.0,
-            tokens::color::BORDER_HAIR.1,
-            tokens::color::BORDER_HAIR.2,
+            colors.border_default.0,
+            colors.border_default.1,
+            colors.border_default.2,
             0.85,
         );
     }
@@ -968,22 +1055,27 @@ fn draw_guard_badge(
     // Badge text
     if is_fault {
         if is_dimmed {
-            cr.set_source_rgba(COLOR_FAULT_RED.0, COLOR_FAULT_RED.1, COLOR_FAULT_RED.2, 0.3);
+            cr.set_source_rgba(
+                colors.fault_red.0,
+                colors.fault_red.1,
+                colors.fault_red.2,
+                0.3,
+            );
         } else {
-            cr.set_source_rgb(COLOR_FAULT_RED.0, COLOR_FAULT_RED.1, COLOR_FAULT_RED.2);
+            cr.set_source_rgb(colors.fault_red.0, colors.fault_red.1, colors.fault_red.2);
         }
     } else if is_dimmed {
         cr.set_source_rgba(
-            tokens::color::TEXT_MUTED.0,
-            tokens::color::TEXT_MUTED.1,
-            tokens::color::TEXT_MUTED.2,
+            colors.text_muted.0,
+            colors.text_muted.1,
+            colors.text_muted.2,
             0.3,
         );
     } else {
         cr.set_source_rgb(
-            tokens::color::TEXT_PRIMARY.0,
-            tokens::color::TEXT_PRIMARY.1,
-            tokens::color::TEXT_PRIMARY.2,
+            colors.text_primary.0,
+            colors.text_primary.1,
+            colors.text_primary.2,
         );
     }
 
