@@ -6,6 +6,7 @@ pub mod setup_build_flash;
 pub mod setup_diagram;
 pub mod setup_project;
 pub mod setup_serial;
+pub mod skin_overlay;
 pub mod state_diagram;
 pub mod tokens;
 pub mod verify_stroke;
