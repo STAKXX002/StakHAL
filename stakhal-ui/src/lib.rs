@@ -167,53 +167,77 @@ pub fn run() {
     app.run_with_args(&["stakhal-ui"]);
 }
 
-pub fn build_ui(app: &adw::Application) {
-    adw::StyleManager::default().set_color_scheme(adw::ColorScheme::ForceDark);
+pub fn build_css(p: &ui::tokens::Palette) -> String {
+    let bg_raised = if *p == ui::tokens::Palette::DEFAULT {
+        "#1a2026"
+    } else {
+        p.bg_raised.hex()
+    };
+    let accent_hover = if *p == ui::tokens::Palette::DEFAULT {
+        "#5fe3d7"
+    } else {
+        p.accent_hover.hex()
+    };
+    let accent_pressed = if *p == ui::tokens::Palette::DEFAULT {
+        "#3bb3a8"
+    } else {
+        p.accent_pressed.hex()
+    };
 
-    let css_provider = gtk4::CssProvider::new();
-    css_provider.load_from_string(r#"
-@define-color bg_void #0A0D10;
-@define-color bg_panel #14181C;
-@define-color border_hair #262C31;
-@define-color text_primary #E4E7EA;
-@define-color text_muted #6B7378;
-@define-color state_ready #34D399;
-@define-color state_active #F5A623;
-@define-color state_error #E5484D;
-@define-color accent #4FD1C5;
+    let bg_void = p.bg_void.hex();
+    let bg_panel = p.bg_panel.hex();
+    let border_hair = p.border_hair.hex();
+    let text_primary = p.text_primary.hex();
+    let text_muted = p.text_muted.hex();
+    let state_ready = p.state_ready.hex();
+    let state_active = p.state_active.hex();
+    let state_error = p.state_error.hex();
+    let accent = p.accent.hex();
 
-* {
+    let mut css = format!(
+        r#"
+@define-color bg_void {bg_void};
+@define-color bg_panel {bg_panel};
+@define-color border_hair {border_hair};
+@define-color text_primary {text_primary};
+@define-color text_muted {text_muted};
+@define-color state_ready {state_ready};
+@define-color state_active {state_active};
+@define-color state_error {state_error};
+@define-color accent {accent};
+
+* {{
     font-family: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
     font-size: 13px;
     border-radius: 0px;
     box-shadow: none;
-}
+}}
 
-window, dialog {
+window, dialog {{
     background-color: @bg_void;
     color: @text_primary;
-}
+}}
 
-windowcontrols button {
+windowcontrols button {{
     border: none;
     background: transparent;
     border-radius: 0px;
-}
+}}
 
-windowcontrols button:hover {
+windowcontrols button:hover {{
     border: none;
     background: transparent;
-}
+}}
 
 /* Panel and Card Containers */
-.card, frame, scrolledwindow.card, box.card {
+.card, frame, scrolledwindow.card, box.card {{
     background-color: @bg_panel;
     border: 1px solid @border_hair;
     border-radius: 0px;
-}
+}}
 
 /* Buttons */
-button.stakhal-btn {
+button.stakhal-btn {{
     font-family: 'IBM Plex Sans', sans-serif;
     font-weight: 500;
     border: 1px solid @border_hair;
@@ -223,19 +247,19 @@ button.stakhal-btn {
                 background-color 100ms cubic-bezier(0.0, 0.0, 0.2, 1.0),
                 border-color 100ms cubic-bezier(0.0, 0.0, 0.2, 1.0);
     border-radius: 2px;
-}
+}}
 
-button.stakhal-btn:hover {
+button.stakhal-btn:hover {{
     border-color: @accent;
-    background-color: #1a2026;
+    background-color: {bg_raised};
     color: #ffffff;
-}
+}}
 
-button.stakhal-btn:active {
-    background-color: #262C31;
-}
+button.stakhal-btn:active {{
+    background-color: {border_hair};
+}}
 
-button.stakhal-btn.suggested-action {
+button.stakhal-btn.suggested-action {{
     border: 1px solid @accent;
     background-color: @accent;
     color: @bg_void;
@@ -244,19 +268,19 @@ button.stakhal-btn.suggested-action {
                 background-color 100ms cubic-bezier(0.0, 0.0, 0.2, 1.0),
                 border-color 100ms cubic-bezier(0.0, 0.0, 0.2, 1.0);
     border-radius: 2px;
-}
+}}
 
-button.stakhal-btn.suggested-action:hover {
-    border-color: #5fe3d7;
-    background-color: #5fe3d7;
+button.stakhal-btn.suggested-action:hover {{
+    border-color: {accent_hover};
+    background-color: {accent_hover};
     color: @bg_void;
-}
+}}
 
-button.stakhal-btn.suggested-action:active {
-    background-color: #3bb3a8;
-}
+button.stakhal-btn.suggested-action:active {{
+    background-color: {accent_pressed};
+}}
 
-button.stakhal-btn.flat {
+button.stakhal-btn.flat {{
     border: 1px solid transparent;
     background-color: transparent;
     color: @text_muted;
@@ -264,120 +288,152 @@ button.stakhal-btn.flat {
                 background-color 100ms cubic-bezier(0.0, 0.0, 0.2, 1.0),
                 border-color 100ms cubic-bezier(0.0, 0.0, 0.2, 1.0);
     border-radius: 2px;
-}
+}}
 
-button.stakhal-btn.flat:hover {
+button.stakhal-btn.flat:hover {{
     border-color: @border_hair;
     background-color: @bg_panel;
     color: @text_primary;
-}
+}}
 
-button.stakhal-btn.flat:active {
-    background-color: #1a2026;
-}
+button.stakhal-btn.flat:active {{
+    background-color: {bg_raised};
+}}
 
 /* Rows and ListBoxes */
-row, listboxrow, actionrow {
+row, listboxrow, actionrow {{
     border-radius: 0px;
     transition: none;
     border-bottom: 1px solid @border_hair;
-}
+}}
 
-.stagger-reveal-row {
+.stagger-reveal-row {{
     transition: opacity 180ms cubic-bezier(0.0, 0.0, 0.2, 1.0);
-}
+}}
 
-.clickable-row {
+.clickable-row {{
     transition: color 100ms cubic-bezier(0.0, 0.0, 0.2, 1.0),
                 background-color 100ms cubic-bezier(0.0, 0.0, 0.2, 1.0);
-}
+}}
 
-.clickable-row:hover {
-    background-color: #1a2026;
-}
+.clickable-row:hover {{
+    background-color: {bg_raised};
+}}
 
-.clickable-row:active {
-    background-color: #262C31;
-}
+.clickable-row:active {{
+    background-color: {border_hair};
+}}
 
 /* Data / Monospace Typography Split */
-textview, textview text, .data-mono, .data-mono * {
+textview, textview text, .data-mono, .data-mono * {{
     font-family: 'JetBrains Mono', 'DejaVu Sans Mono', 'Liberation Mono', monospace;
     font-size: 12px;
-}
+}}
 
-textview text {
+textview text {{
     background-color: @bg_panel;
     color: @text_primary;
-}
+}}
 
-.dim-label {
+.dim-label {{
     color: @text_muted;
-}
+}}
 
-.title-1, .title-2, .title-3, .title-4, .heading {
+.title-1, .title-2, .title-3, .title-4, .heading {{
     font-family: 'IBM Plex Sans', sans-serif;
     color: @text_primary;
     font-weight: 600;
-}
+}}
 
 /* Status Chips and Badges */
-label.card, .status-chip {
+label.card, .status-chip {{
     transition: color 180ms cubic-bezier(0.0, 0.0, 0.2, 1.0),
                 background-color 180ms cubic-bezier(0.0, 0.0, 0.2, 1.0),
                 border-color 180ms cubic-bezier(0.0, 0.0, 0.2, 1.0);
     padding: 2px 8px;
-}
+}}
 
 /* Strictly Reserved Status Classes (signal only, never decoration) */
-.status-ready, .status-ok {
+.status-ready, .status-ok {{
     color: @state_ready;
     font-weight: 600;
     transition: color 180ms cubic-bezier(0.0, 0.0, 0.2, 1.0),
                 background-color 180ms cubic-bezier(0.0, 0.0, 0.2, 1.0),
                 border-color 180ms cubic-bezier(0.0, 0.0, 0.2, 1.0);
-}
+}}
 
-.status-active, .status-busy, .status-warning {
+.status-active, .status-busy, .status-warning {{
     color: @state_active;
     font-weight: 600;
     transition: color 180ms cubic-bezier(0.0, 0.0, 0.2, 1.0),
                 background-color 180ms cubic-bezier(0.0, 0.0, 0.2, 1.0),
                 border-color 180ms cubic-bezier(0.0, 0.0, 0.2, 1.0);
-}
+}}
 
-.status-error, .status-fault {
+.status-error, .status-fault {{
     color: @state_error;
     font-weight: 600;
     transition: color 180ms cubic-bezier(0.0, 0.0, 0.2, 1.0),
                 background-color 180ms cubic-bezier(0.0, 0.0, 0.2, 1.0),
                 border-color 180ms cubic-bezier(0.0, 0.0, 0.2, 1.0);
-}
+}}
 
-.status-idle {
+.status-idle {{
     color: @text_muted;
     transition: color 180ms cubic-bezier(0.0, 0.0, 0.2, 1.0),
                 background-color 180ms cubic-bezier(0.0, 0.0, 0.2, 1.0),
                 border-color 180ms cubic-bezier(0.0, 0.0, 0.2, 1.0);
-}
+}}
 
-.implicit-badge {
+.implicit-badge {{
     font-family: 'JetBrains Mono', monospace;
     color: @text_muted;
-    background-color: #1a2026;
+    background-color: {bg_raised};
     border: 1px solid @border_hair;
     border-radius: 2px;
     padding: 2px 6px;
-}
+}}
 
-dropdown button {
+dropdown button {{
     border: 1px solid @border_hair;
     background-color: @bg_panel;
     color: @text_primary;
     border-radius: 2px;
     font-family: 'IBM Plex Sans', sans-serif;
+}}
+"#
+    );
+
+    if *p == ui::tokens::Palette::STAGE {
+        css.push_str(&format!(
+            r#"
+button.stakhal-btn {{
+    transition: background-color 180ms cubic-bezier(0.0, 0.0, 0.2, 1.0),
+                border-color 180ms cubic-bezier(0.0, 0.0, 0.2, 1.0);
+}}
+
+button.stakhal-btn:hover,
+button.stakhal-btn:focus-visible {{
+    outline: 2px solid alpha(@accent, 0.35);
+    box-shadow: 0 0 0 2px alpha(@accent, 0.35);
+}}
+
+headerbar {{
+    border-bottom: 1px solid {};
+}}
+"#,
+            p.gold.hex()
+        ));
+    }
+
+    css
 }
-"#);
+
+pub fn build_ui(app: &adw::Application) {
+    adw::StyleManager::default().set_color_scheme(adw::ColorScheme::ForceDark);
+
+    let css_provider = gtk4::CssProvider::new();
+    css_provider.load_from_string(&build_css(&ui::tokens::Palette::DEFAULT));
 
     if let Some(display) = gdk::Display::default() {
         gtk4::style_context_add_provider_for_display(
@@ -1254,5 +1310,269 @@ mod tests {
             });
         }
         assert!(st.with_canvas_state(|c| c.edge_pulse_animation.is_none()));
+    }
+
+    #[test]
+    fn test_build_css_default_palette_byte_identical() {
+        const CURRENT_CSS: &str = r#"
+@define-color bg_void #0A0D10;
+@define-color bg_panel #14181C;
+@define-color border_hair #262C31;
+@define-color text_primary #E4E7EA;
+@define-color text_muted #6B7378;
+@define-color state_ready #34D399;
+@define-color state_active #F5A623;
+@define-color state_error #E5484D;
+@define-color accent #4FD1C5;
+
+* {
+    font-family: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    font-size: 13px;
+    border-radius: 0px;
+    box-shadow: none;
+}
+
+window, dialog {
+    background-color: @bg_void;
+    color: @text_primary;
+}
+
+windowcontrols button {
+    border: none;
+    background: transparent;
+    border-radius: 0px;
+}
+
+windowcontrols button:hover {
+    border: none;
+    background: transparent;
+}
+
+/* Panel and Card Containers */
+.card, frame, scrolledwindow.card, box.card {
+    background-color: @bg_panel;
+    border: 1px solid @border_hair;
+    border-radius: 0px;
+}
+
+/* Buttons */
+button.stakhal-btn {
+    font-family: 'IBM Plex Sans', sans-serif;
+    font-weight: 500;
+    border: 1px solid @border_hair;
+    background-color: @bg_panel;
+    color: @text_primary;
+    transition: color 100ms cubic-bezier(0.0, 0.0, 0.2, 1.0),
+                background-color 100ms cubic-bezier(0.0, 0.0, 0.2, 1.0),
+                border-color 100ms cubic-bezier(0.0, 0.0, 0.2, 1.0);
+    border-radius: 2px;
+}
+
+button.stakhal-btn:hover {
+    border-color: @accent;
+    background-color: #1a2026;
+    color: #ffffff;
+}
+
+button.stakhal-btn:active {
+    background-color: #262C31;
+}
+
+button.stakhal-btn.suggested-action {
+    border: 1px solid @accent;
+    background-color: @accent;
+    color: @bg_void;
+    font-weight: 600;
+    transition: color 100ms cubic-bezier(0.0, 0.0, 0.2, 1.0),
+                background-color 100ms cubic-bezier(0.0, 0.0, 0.2, 1.0),
+                border-color 100ms cubic-bezier(0.0, 0.0, 0.2, 1.0);
+    border-radius: 2px;
+}
+
+button.stakhal-btn.suggested-action:hover {
+    border-color: #5fe3d7;
+    background-color: #5fe3d7;
+    color: @bg_void;
+}
+
+button.stakhal-btn.suggested-action:active {
+    background-color: #3bb3a8;
+}
+
+button.stakhal-btn.flat {
+    border: 1px solid transparent;
+    background-color: transparent;
+    color: @text_muted;
+    transition: color 100ms cubic-bezier(0.0, 0.0, 0.2, 1.0),
+                background-color 100ms cubic-bezier(0.0, 0.0, 0.2, 1.0),
+                border-color 100ms cubic-bezier(0.0, 0.0, 0.2, 1.0);
+    border-radius: 2px;
+}
+
+button.stakhal-btn.flat:hover {
+    border-color: @border_hair;
+    background-color: @bg_panel;
+    color: @text_primary;
+}
+
+button.stakhal-btn.flat:active {
+    background-color: #1a2026;
+}
+
+/* Rows and ListBoxes */
+row, listboxrow, actionrow {
+    border-radius: 0px;
+    transition: none;
+    border-bottom: 1px solid @border_hair;
+}
+
+.stagger-reveal-row {
+    transition: opacity 180ms cubic-bezier(0.0, 0.0, 0.2, 1.0);
+}
+
+.clickable-row {
+    transition: color 100ms cubic-bezier(0.0, 0.0, 0.2, 1.0),
+                background-color 100ms cubic-bezier(0.0, 0.0, 0.2, 1.0);
+}
+
+.clickable-row:hover {
+    background-color: #1a2026;
+}
+
+.clickable-row:active {
+    background-color: #262C31;
+}
+
+/* Data / Monospace Typography Split */
+textview, textview text, .data-mono, .data-mono * {
+    font-family: 'JetBrains Mono', 'DejaVu Sans Mono', 'Liberation Mono', monospace;
+    font-size: 12px;
+}
+
+textview text {
+    background-color: @bg_panel;
+    color: @text_primary;
+}
+
+.dim-label {
+    color: @text_muted;
+}
+
+.title-1, .title-2, .title-3, .title-4, .heading {
+    font-family: 'IBM Plex Sans', sans-serif;
+    color: @text_primary;
+    font-weight: 600;
+}
+
+/* Status Chips and Badges */
+label.card, .status-chip {
+    transition: color 180ms cubic-bezier(0.0, 0.0, 0.2, 1.0),
+                background-color 180ms cubic-bezier(0.0, 0.0, 0.2, 1.0),
+                border-color 180ms cubic-bezier(0.0, 0.0, 0.2, 1.0);
+    padding: 2px 8px;
+}
+
+/* Strictly Reserved Status Classes (signal only, never decoration) */
+.status-ready, .status-ok {
+    color: @state_ready;
+    font-weight: 600;
+    transition: color 180ms cubic-bezier(0.0, 0.0, 0.2, 1.0),
+                background-color 180ms cubic-bezier(0.0, 0.0, 0.2, 1.0),
+                border-color 180ms cubic-bezier(0.0, 0.0, 0.2, 1.0);
+}
+
+.status-active, .status-busy, .status-warning {
+    color: @state_active;
+    font-weight: 600;
+    transition: color 180ms cubic-bezier(0.0, 0.0, 0.2, 1.0),
+                background-color 180ms cubic-bezier(0.0, 0.0, 0.2, 1.0),
+                border-color 180ms cubic-bezier(0.0, 0.0, 0.2, 1.0);
+}
+
+.status-error, .status-fault {
+    color: @state_error;
+    font-weight: 600;
+    transition: color 180ms cubic-bezier(0.0, 0.0, 0.2, 1.0),
+                background-color 180ms cubic-bezier(0.0, 0.0, 0.2, 1.0),
+                border-color 180ms cubic-bezier(0.0, 0.0, 0.2, 1.0);
+}
+
+.status-idle {
+    color: @text_muted;
+    transition: color 180ms cubic-bezier(0.0, 0.0, 0.2, 1.0),
+                background-color 180ms cubic-bezier(0.0, 0.0, 0.2, 1.0),
+                border-color 180ms cubic-bezier(0.0, 0.0, 0.2, 1.0);
+}
+
+.implicit-badge {
+    font-family: 'JetBrains Mono', monospace;
+    color: @text_muted;
+    background-color: #1a2026;
+    border: 1px solid @border_hair;
+    border-radius: 2px;
+    padding: 2px 6px;
+}
+
+dropdown button {
+    border: 1px solid @border_hair;
+    background-color: @bg_panel;
+    color: @text_primary;
+    border-radius: 2px;
+    font-family: 'IBM Plex Sans', sans-serif;
+}
+"#;
+
+        let generated = build_css(&ui::tokens::Palette::DEFAULT);
+        assert_eq!(generated, CURRENT_CSS);
+        assert_eq!(generated.as_bytes(), CURRENT_CSS.as_bytes());
+    }
+
+    #[test]
+    fn test_stage_accent_background_wcag_contrast() {
+        let stage = ui::tokens::Palette::STAGE;
+        let bg_void = stage.bg_void.rgb();
+        let accent = stage.accent.rgb();
+        let accent_hover = stage.accent_hover.rgb();
+        let accent_pressed = stage.accent_pressed.rgb();
+
+        fn srgb_to_linear(c: f64) -> f64 {
+            if c <= 0.04045 {
+                c / 12.92
+            } else {
+                ((c + 0.055) / 1.055).powf(2.4)
+            }
+        }
+
+        fn relative_luminance(rgb: (f64, f64, f64)) -> f64 {
+            let r = srgb_to_linear(rgb.0);
+            let g = srgb_to_linear(rgb.1);
+            let b = srgb_to_linear(rgb.2);
+            0.2126 * r + 0.7152 * g + 0.0722 * b
+        }
+
+        fn contrast_ratio(c1: (f64, f64, f64), c2: (f64, f64, f64)) -> f64 {
+            let l1 = relative_luminance(c1);
+            let l2 = relative_luminance(c2);
+            let lighter = l1.max(l2);
+            let darker = l1.min(l2);
+            (lighter + 0.05) / (darker + 0.05)
+        }
+
+        let ratio_acc = contrast_ratio(bg_void, accent);
+        let ratio_hover = contrast_ratio(bg_void, accent_hover);
+        let ratio_pressed = contrast_ratio(bg_void, accent_pressed);
+
+        assert!(
+            ratio_acc >= 4.5,
+            "bg_void vs accent must be >= 4.5, got {ratio_acc}"
+        );
+        assert!(
+            ratio_hover >= 4.5,
+            "bg_void vs accent_hover must be >= 4.5, got {ratio_hover}"
+        );
+        assert!(
+            ratio_pressed >= 4.5,
+            "bg_void vs accent_pressed must be >= 4.5, got {ratio_pressed}"
+        );
     }
 }
