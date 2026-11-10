@@ -78,6 +78,9 @@ pub struct Palette {
     pub line: ColorToken,
     pub node_border: ColorToken,
     pub text_strong: ColorToken,
+    pub sky: ColorToken,
+    pub azure: ColorToken,
+    pub pin_active: ColorToken,
 }
 
 impl Palette {
@@ -101,6 +104,9 @@ impl Palette {
         line: ColorToken::new(color::BORDER_HAIR_HEX, color::BORDER_HAIR),
         node_border: ColorToken::new(color::BORDER_HAIR_HEX, color::BORDER_HAIR),
         text_strong: ColorToken::new("#ffffff", (1.0, 1.0, 1.0)),
+        sky: ColorToken::new(color::BORDER_HAIR_HEX, color::BORDER_HAIR),
+        azure: ColorToken::new(color::ACCENT_HEX, color::ACCENT),
+        pin_active: ColorToken::new(color::STATE_READY_HEX, color::STATE_READY),
     };
 
     /// The light Stage secret theme palette.
@@ -110,7 +116,7 @@ impl Palette {
         bg_raised: ColorToken::new("#E8F2F9", (232.0 / 255.0, 242.0 / 255.0, 249.0 / 255.0)),
         border_hair: ColorToken::new("#C3D7E6", (195.0 / 255.0, 215.0 / 255.0, 230.0 / 255.0)),
         text_primary: ColorToken::new("#1B2559", (27.0 / 255.0, 37.0 / 255.0, 89.0 / 255.0)),
-        text_muted: ColorToken::new("#566790", (86.0 / 255.0, 103.0 / 255.0, 144.0 / 255.0)),
+        text_muted: ColorToken::new("#4A5B86", (74.0 / 255.0, 91.0 / 255.0, 134.0 / 255.0)),
         state_ready: ColorToken::new("#0A7A66", (10.0 / 255.0, 122.0 / 255.0, 102.0 / 255.0)),
         state_active: ColorToken::new("#8F6700", (143.0 / 255.0, 103.0 / 255.0, 0.0)),
         state_error: ColorToken::new("#C62F4D", (198.0 / 255.0, 47.0 / 255.0, 77.0 / 255.0)),
@@ -123,6 +129,9 @@ impl Palette {
         line: ColorToken::new("#4F76AE", (79.0 / 255.0, 118.0 / 255.0, 174.0 / 255.0)),
         node_border: ColorToken::new("#3F5FA0", (63.0 / 255.0, 95.0 / 255.0, 160.0 / 255.0)),
         text_strong: ColorToken::new("#1B2559", (27.0 / 255.0, 37.0 / 255.0, 89.0 / 255.0)),
+        sky: ColorToken::new("#A0D3EA", (160.0 / 255.0, 211.0 / 255.0, 234.0 / 255.0)),
+        azure: ColorToken::new("#59A0CF", (89.0 / 255.0, 160.0 / 255.0, 207.0 / 255.0)),
+        pin_active: ColorToken::new("#2E6DB4", (46.0 / 255.0, 109.0 / 255.0, 180.0 / 255.0)),
     };
 }
 
@@ -322,6 +331,18 @@ mod tests {
         assert_eq!(def.node_border.rgb(), color::BORDER_HAIR);
         assert_eq!(def.text_strong.hex(), "#ffffff");
         assert_eq!(def.text_strong.rgb(), (1.0, 1.0, 1.0));
+        assert_eq!(def.sky.hex(), color::BORDER_HAIR_HEX);
+        assert_eq!(def.sky.rgb(), color::BORDER_HAIR);
+        assert_eq!(def.azure.hex(), color::ACCENT_HEX);
+        assert_eq!(def.azure.rgb(), color::ACCENT);
+        assert_eq!(def.pin_active.hex(), color::STATE_READY_HEX);
+        assert_eq!(def.pin_active.rgb(), color::STATE_READY);
+
+        let stage = Palette::STAGE;
+        assert_eq!(stage.text_muted.hex(), "#4A5B86");
+        assert_eq!(stage.sky.hex(), "#A0D3EA");
+        assert_eq!(stage.azure.hex(), "#59A0CF");
+        assert_eq!(stage.pin_active, stage.accent);
 
         // Thread local get and set
         assert_eq!(palette(), Palette::DEFAULT);
@@ -354,47 +375,138 @@ mod tests {
         (lighter + 0.05) / (darker + 0.05)
     }
 
+    fn mix_rgb(a: (f64, f64, f64), b: (f64, f64, f64), t: f64) -> (f64, f64, f64) {
+        (
+            a.0 * (1.0 - t) + b.0 * t,
+            a.1 * (1.0 - t) + b.1 * t,
+            a.2 * (1.0 - t) + b.2 * t,
+        )
+    }
+
     #[test]
     fn test_stage_palette_wcag_contrast() {
         let s = Palette::STAGE;
+        let win_end = mix_rgb(s.bg_void.rgb(), s.azure.rgb(), 0.28);
         let checks = [
-            ("text_primary vs bg_void", s.text_primary, s.bg_void, 4.5),
-            ("text_primary vs bg_panel", s.text_primary, s.bg_panel, 4.5),
+            (
+                "text_primary vs bg_void",
+                s.text_primary.rgb(),
+                s.bg_void.rgb(),
+                4.5,
+            ),
+            (
+                "text_primary vs bg_panel",
+                s.text_primary.rgb(),
+                s.bg_panel.rgb(),
+                4.5,
+            ),
             (
                 "text_primary vs bg_raised",
-                s.text_primary,
-                s.bg_raised,
+                s.text_primary.rgb(),
+                s.bg_raised.rgb(),
                 4.5,
             ),
-            ("text_muted vs bg_void", s.text_muted, s.bg_void, 4.5),
-            ("text_muted vs bg_panel", s.text_muted, s.bg_panel, 4.5),
-            ("text_muted vs bg_raised", s.text_muted, s.bg_raised, 4.5),
-            ("accent vs bg_void", s.accent, s.bg_void, 4.5),
-            ("accent vs bg_panel", s.accent, s.bg_panel, 4.5),
-            ("bg_void vs accent", s.bg_void, s.accent, 4.5),
-            ("bg_void vs accent_hover", s.bg_void, s.accent_hover, 4.5),
+            (
+                "text_primary vs window end",
+                s.text_primary.rgb(),
+                win_end,
+                4.5,
+            ),
+            (
+                "text_muted vs bg_void",
+                s.text_muted.rgb(),
+                s.bg_void.rgb(),
+                4.5,
+            ),
+            (
+                "text_muted vs bg_panel",
+                s.text_muted.rgb(),
+                s.bg_panel.rgb(),
+                4.5,
+            ),
+            (
+                "text_muted vs bg_raised",
+                s.text_muted.rgb(),
+                s.bg_raised.rgb(),
+                4.5,
+            ),
+            ("text_muted vs window end", s.text_muted.rgb(), win_end, 4.5),
+            ("accent vs bg_void", s.accent.rgb(), s.bg_void.rgb(), 4.5),
+            ("accent vs bg_panel", s.accent.rgb(), s.bg_panel.rgb(), 4.5),
+            ("bg_void vs accent", s.bg_void.rgb(), s.accent.rgb(), 4.5),
+            (
+                "bg_void vs accent_hover",
+                s.bg_void.rgb(),
+                s.accent_hover.rgb(),
+                4.5,
+            ),
             (
                 "bg_void vs accent_pressed",
-                s.bg_void,
-                s.accent_pressed,
+                s.bg_void.rgb(),
+                s.accent_pressed.rgb(),
                 4.5,
             ),
-            ("state_ready vs bg_void", s.state_ready, s.bg_void, 4.5),
-            ("state_ready vs bg_panel", s.state_ready, s.bg_panel, 4.5),
-            ("state_active vs bg_void", s.state_active, s.bg_void, 4.5),
-            ("state_active vs bg_panel", s.state_active, s.bg_panel, 4.5),
-            ("state_error vs bg_void", s.state_error, s.bg_void, 4.5),
-            ("state_error vs bg_panel", s.state_error, s.bg_panel, 4.5),
-            ("line vs bg_void", s.line, s.bg_void, 3.0),
-            ("line vs bg_panel", s.line, s.bg_panel, 3.0),
-            ("node_border vs bg_void", s.node_border, s.bg_void, 3.0),
-            ("node_border vs bg_panel", s.node_border, s.bg_panel, 3.0),
-            ("header_fg vs header", s.header_fg, s.header, 4.5),
-            ("gold vs header", s.gold, s.header, 3.0),
+            (
+                "state_ready vs bg_void",
+                s.state_ready.rgb(),
+                s.bg_void.rgb(),
+                4.5,
+            ),
+            (
+                "state_ready vs bg_panel",
+                s.state_ready.rgb(),
+                s.bg_panel.rgb(),
+                4.5,
+            ),
+            (
+                "state_active vs bg_void",
+                s.state_active.rgb(),
+                s.bg_void.rgb(),
+                4.5,
+            ),
+            (
+                "state_active vs bg_panel",
+                s.state_active.rgb(),
+                s.bg_panel.rgb(),
+                4.5,
+            ),
+            (
+                "state_error vs bg_void",
+                s.state_error.rgb(),
+                s.bg_void.rgb(),
+                4.5,
+            ),
+            (
+                "state_error vs bg_panel",
+                s.state_error.rgb(),
+                s.bg_panel.rgb(),
+                4.5,
+            ),
+            ("line vs bg_void", s.line.rgb(), s.bg_void.rgb(), 3.0),
+            ("line vs bg_panel", s.line.rgb(), s.bg_panel.rgb(), 3.0),
+            (
+                "node_border vs bg_void",
+                s.node_border.rgb(),
+                s.bg_void.rgb(),
+                3.0,
+            ),
+            (
+                "node_border vs bg_panel",
+                s.node_border.rgb(),
+                s.bg_panel.rgb(),
+                3.0,
+            ),
+            (
+                "header_fg vs header",
+                s.header_fg.rgb(),
+                s.header.rgb(),
+                4.5,
+            ),
+            ("gold vs header", s.gold.rgb(), s.header.rgb(), 3.0),
         ];
 
         for (label, fg, bg, min_ratio) in checks {
-            let ratio = contrast_ratio(fg.rgb(), bg.rgb());
+            let ratio = contrast_ratio(fg, bg);
             assert!(
                 ratio >= min_ratio,
                 "{label} contrast must be >= {min_ratio}, got {ratio}"
