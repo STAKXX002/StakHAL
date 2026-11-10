@@ -1,9 +1,13 @@
 use gtk4::gdk;
 use gtk4::glib;
+use gtk4::graphene;
 use gtk4::prelude::*;
 use libadwaita as adw;
 use libadwaita::prelude::*;
-use stakhal_ui::ui::skin_overlay::SkinOverlayController;
+use stakhal_ui::apply_skin;
+use stakhal_ui::ui::skin_overlay::{
+    capture_window_texture, snapshot_reveal_nodes, RevealOverlay, SkinOverlayController,
+};
 use stakhal_ui::ui::tokens;
 use std::cell::Cell;
 use std::rc::Rc;
@@ -15,10 +19,10 @@ fn test_skin_overlay_widgets_and_thin_shimmer_strip() {
         eprintln!("GTK display not available, skipping skin overlay widget test: {err}");
         return;
     }
-    if gdk::Display::default().is_none() {
+    let Some(display) = gdk::Display::default() else {
         eprintln!("GDK default display not available, skipping skin overlay widget test");
         return;
-    }
+    };
     let _ = adw::init();
 
     let window = adw::ApplicationWindow::builder().build();
@@ -60,12 +64,17 @@ fn test_skin_overlay_widgets_and_thin_shimmer_strip() {
         "Shimmer overlay must not vertically expand"
     );
 
-    // Reduced motion triggers instant swap without starting shimmer or ripple
+    // Reduced motion triggers instant swap without capture, reveal overlay, or shimmer
     if let Some(settings) = gtk4::Settings::default() {
         settings.set_gtk_enable_animations(false);
     }
     ctrl.trigger_unlock();
     assert!(swapped.get());
+    assert_eq!(
+        skin_overlay.last_child().as_ref(),
+        Some(content.upcast_ref::<gtk4::Widget>()),
+        "Reduced motion must not add a reveal overlay"
+    );
     assert!(!ctrl.is_effects_active());
     assert!(!ctrl.is_shimmer_running());
 
@@ -73,8 +82,54 @@ fn test_skin_overlay_widgets_and_thin_shimmer_strip() {
         settings.set_gtk_enable_animations(true);
     }
 
-    // Exercise live ripple animation, cleanup, strip geometry, and inactive pause if animations enabled
+    // Fallback on unrealized/unpresented window: capture returns None, unlock swaps instantly without panicking
     if tokens::motion::is_animations_enabled() {
+        let unpresented = adw::ApplicationWindow::builder().build();
+        let u_ov = gtk4::Overlay::new();
+        let u_hov = gtk4::Overlay::new();
+        let u_box = gtk4::Box::new(gtk4::Orientation::Vertical, 0);
+        u_ov.set_child(Some(&u_box));
+        unpresented.set_content(Some(&u_ov));
+        assert!(
+            capture_window_texture(&unpresented, &u_ov).is_none(),
+            "Capture on unpresented window must fail cleanly with None"
+        );
+        let u_swapped = Rc::new(Cell::new(false));
+        let u_swapped_cb = Rc::clone(&u_swapped);
+        let u_ctrl = SkinOverlayController::setup(
+            &unpresented,
+            &u_ov,
+            &u_hov,
+            Rc::new(move || {
+                u_swapped_cb.set(true);
+            }),
+        );
+        u_ctrl.trigger_unlock();
+        assert!(
+            u_swapped.get(),
+            "Capture failure must still trigger immediate fallback skin swap"
+        );
+        assert_eq!(
+            u_ov.last_child().as_ref(),
+            Some(u_box.upcast_ref::<gtk4::Widget>()),
+            "Fallback skin swap must not attach a reveal overlay"
+        );
+        unpresented.close();
+    }
+
+    // Exercise live circular reveal capture, immediate underlying skin swap, cleanup,
+    // strip geometry, and inactive pause if animations are enabled.
+    if tokens::motion::is_animations_enabled() {
+        let style_manager = adw::StyleManager::default();
+        style_manager.set_color_scheme(adw::ColorScheme::ForceDark);
+        let provider = gtk4::CssProvider::new();
+        gtk4::style_context_add_provider_for_display(
+            &display,
+            &provider,
+            gtk4::STYLE_PROVIDER_PRIORITY_APPLICATION,
+        );
+        apply_skin(&provider, tokens::Palette::DEFAULT);
+
         let win2 = adw::ApplicationWindow::builder()
             .default_width(400)
             .default_height(300)
@@ -92,30 +147,33 @@ fn test_skin_overlay_widgets_and_thin_shimmer_strip() {
         win2.set_content(Some(&ov2));
         win2.present();
 
-        let layout_start = Instant::now();
-        while (hdr2.height() <= 0 || hov2.height() <= 0)
-            && layout_start.elapsed() < Duration::from_secs(1)
-        {
-            glib::MainContext::default().iteration(false);
-            std::thread::sleep(Duration::from_millis(10));
-        }
-
         let swapped2 = Rc::new(Cell::new(false));
         let swapped2_cb = Rc::clone(&swapped2);
+        let provider_swap = provider.clone();
         let ctrl2 = SkinOverlayController::setup(
             &win2,
             &ov2,
             &hov2,
             Rc::new(move || {
                 swapped2_cb.set(true);
+                apply_skin(&provider_swap, tokens::Palette::STAGE);
             }),
         );
 
-        let alloc_start = Instant::now();
-        while ctrl2.shimmer_area().height() == 0 && alloc_start.elapsed() < Duration::from_secs(1) {
+        let layout_start = Instant::now();
+        while (hdr2.height() <= 0
+            || hov2.height() <= 0
+            || ctrl2.shimmer_area().height() == 0
+            || win2
+                .native()
+                .and_then(|n| n.renderer())
+                .is_none_or(|r| !r.is_realized()))
+            && layout_start.elapsed() < Duration::from_secs(2)
+        {
             glib::MainContext::default().iteration(false);
             std::thread::sleep(Duration::from_millis(10));
         }
+
         let bounds = ctrl2
             .shimmer_area()
             .compute_bounds(&hov2)
@@ -139,38 +197,91 @@ fn test_skin_overlay_widgets_and_thin_shimmer_strip() {
             expected_y
         );
 
-        ctrl2.trigger_unlock();
-
-        // Newly added ripple overlay sits as last_child of ov2 and must be pass-through
-        let ripple_widget = ov2.last_child().expect("ripple overlay added");
-        assert!(!ripple_widget.can_target());
-        assert!(!ripple_widget.can_focus());
+        let captured = capture_window_texture(&win2, &ov2)
+            .expect("Capture on realized presented window must produce a texture");
         assert!(
-            !swapped2.get(),
-            "Skin must not swap at t=0ms before 50% progress"
+            captured.width() >= ov2.width() && captured.height() >= ov2.height(),
+            "Captured texture {}x{} must cover scaled overlay {}x{}",
+            captured.width(),
+            captured.height(),
+            ov2.width(),
+            ov2.height()
         );
 
-        let start = Instant::now();
-        while start.elapsed() < Duration::from_millis(600) {
-            glib::MainContext::default().iteration(false);
-            std::thread::sleep(Duration::from_millis(10));
-        }
+        // Verify snapshot_reveal_nodes produces a circular center hole at tiny t=0.05
+        // while keeping corners outside the radius opaque from the captured texture.
+        let renderer = win2
+            .native()
+            .and_then(|n| n.renderer())
+            .expect("realized native renderer");
+        let w_f = ov2.width() as f64;
+        let h_f = ov2.height() as f64;
+        let test_snap = gtk4::Snapshot::new();
+        snapshot_reveal_nodes(
+            &test_snap,
+            &captured,
+            w_f,
+            h_f,
+            0.05,
+            &tokens::Palette::STAGE,
+        );
+        let reveal_node = test_snap
+            .to_node()
+            .expect("snapshot_reveal_nodes must record render nodes");
+        let lbounds = graphene::Rect::new(0.0, 0.0, w_f as f32, h_f as f32);
+        let rendered = renderer.render_texture(&reveal_node, Some(&lbounds));
+        let rw = rendered.width() as usize;
+        let rh = rendered.height() as usize;
+        assert!(rw > 20 && rh > 20);
+        let mut pixels = vec![0u8; rw * rh * 4];
+        rendered.download(&mut pixels, rw * 4);
+        let center_alpha = pixels[((rh / 2) * rw + (rw / 2)) * 4 + 3];
+        let corner_alpha = pixels[(5 * rw + 5) * 4 + 3];
+        assert!(
+            center_alpha <= 10,
+            "Reveal hole center must be transparent, got alpha {center_alpha}"
+        );
+        assert_eq!(
+            corner_alpha, 255,
+            "Reveal corner outside radius must keep captured texture opaque, got alpha {corner_alpha}"
+        );
+
+        // Trigger the unlock sequence: overlay sits on top while Stage skin swaps immediately underneath
+        ctrl2.trigger_unlock();
+
+        let reveal_widget = ov2.last_child().expect("reveal overlay added");
+        assert!(
+            reveal_widget.downcast_ref::<RevealOverlay>().is_some(),
+            "Added reveal overlay must be a RevealOverlay widget subclass"
+        );
+        assert!(!reveal_widget.can_target());
+        assert!(!reveal_widget.can_focus());
         assert!(
             swapped2.get(),
-            "Skin swap must have occurred after 50% (450ms) progress"
+            "Skin must swap immediately beneath the captured old-texture overlay"
+        );
+        assert!(
+            !style_manager.is_dark(),
+            "Stage skin ForceLight scheme must already be applied beneath the reveal overlay"
         );
         assert!(ctrl2.is_effects_active());
 
-        while start.elapsed() < Duration::from_millis(1050) {
+        let start = Instant::now();
+        while reveal_widget.parent().is_some() && start.elapsed() < Duration::from_millis(2000) {
             glib::MainContext::default().iteration(false);
             std::thread::sleep(Duration::from_millis(10));
         }
         while glib::MainContext::default().iteration(false) {}
 
-        // After 900ms, ripple overlay must have been removed leaving only content_box
+        // After 750ms reveal duration, RevealOverlay must have been removed cleanly
         assert!(
-            ripple_widget.parent().is_none(),
-            "Ripple DrawingArea must be removed from overlay by 900ms"
+            reveal_widget.parent().is_none(),
+            "RevealOverlay must be removed from overlay after 750ms animation"
+        );
+        assert_eq!(
+            ov2.last_child().as_ref(),
+            Some(box2.upcast_ref::<gtk4::Widget>()),
+            "Original child must remain cleanly after reveal overlay removal"
         );
 
         // Hiding the window must stop the shimmer tick callback cleanly (ControlFlow::Break)
@@ -200,6 +311,8 @@ fn test_skin_overlay_widgets_and_thin_shimmer_strip() {
         }
 
         win2.close();
+        gtk4::style_context_remove_provider_for_display(&display, &provider);
+        style_manager.set_color_scheme(adw::ColorScheme::ForceDark);
     }
 
     window.close();

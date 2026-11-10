@@ -1,16 +1,18 @@
 //! Secret Stage skin unlock and header shimmer visual effects.
 //!
-//! Renders two non-interactive overlay layers using Cairo and GTK4 tick callbacks:
-//! - Unlock ripple: a stroked azure ring with a soft accent inner glow expanding from
-//!   the top-right corner over 450ms (ease-out cubic), swapping the application skin at
-//!   50% progress, and fading out/removing itself by 900ms with no full-window fill.
+//! Renders two non-interactive overlay layers driven by GTK4 tick callbacks:
+//! - Unlock reveal: captures the prior window appearance into a `gdk::Texture`, applies
+//!   the new skin immediately beneath a pass-through `RevealOverlay` widget subclass, and
+//!   expands a circular cutout from the window center to the farthest corner plus an 8px
+//!   feather width over 750ms (`ease_out_cubic`) via `Snapshot::push_mask(MaskMode::InvertedAlpha)`,
+//!   using GSK radial gradient nodes for the rim and trailing rings (no Cairo).
 //! - Header shimmer: a thin strip along the header bottom edge (height_request <= 3,
 //!   valign Start positioned at the bottom edge) sweeping a gold highlight every 8 seconds
 //!   at alpha <= 0.25, stopping its tick callback when inactive or hidden and resuming
 //!   on activation.
 //!
-//! All effects collapse immediately (instant swap, no ripple, no shimmer) when
-//! reduced motion is active via `tokens::motion::is_animations_enabled()`.
+//! All effects collapse immediately (instant swap, no capture, no overlay, no shimmer)
+//! when reduced motion is active via `tokens::motion::is_animations_enabled()`.
 
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
@@ -19,16 +21,19 @@ use std::time::{Duration, Instant};
 use gtk4::cairo;
 use gtk4::gdk;
 use gtk4::glib;
+use gtk4::graphene;
+use gtk4::gsk;
 use gtk4::prelude::*;
+use gtk4::subclass::prelude::*;
 use libadwaita as adw;
 
 use super::tokens;
 
-pub const RIPPLE_EXPAND_MS: f64 = 450.0;
-pub const RIPPLE_TOTAL_MS: f64 = 900.0;
-pub const RIPPLE_SWAP_PROGRESS: f64 = 0.5;
-pub const RIPPLE_MAX_RING_ALPHA: f64 = 0.35;
-pub const RIPPLE_MAX_GLOW_ALPHA: f64 = 0.10;
+pub const REVEAL_DURATION_MS: f64 = 750.0;
+pub const REVEAL_FEATHER_PX: f64 = 8.0;
+pub const REVEAL_RIM_MAX_ALPHA: f64 = 0.6;
+pub const REVEAL_OUTER_TRAIL_MAX_ALPHA: f64 = 0.25;
+pub const REVEAL_INNER_TRAIL_MAX_ALPHA: f64 = 0.15;
 
 pub const SHIMMER_PERIOD_SECS: f64 = 8.0;
 pub const SHIMMER_SWEEP_SECS: f64 = 1.2;
@@ -36,97 +41,349 @@ pub const SHIMMER_MAX_ALPHA: f64 = 0.25;
 pub const SHIMMER_STRIP_HEIGHT: i32 = 2;
 const SHIMMER_FRAME_INTERVAL: Duration = Duration::from_millis(16);
 
-/// Calculated frame parameters for the unlock ripple overlay.
+/// Expanding circular hole radius (in logical pixels) at normalized progress `t in [0.0, 1.0]`.
+///
+/// Uses `ease_out_cubic` from the window center out to the farthest corner plus `REVEAL_FEATHER_PX`.
+/// Returns `0.0` for `t <= 0.0`, non-finite inputs, or zero/negative dimensions.
+pub fn reveal_radius(t: f64, width: f64, height: f64) -> f64 {
+    if !width.is_finite() || !height.is_finite() || width <= 0.0 || height <= 0.0 {
+        return 0.0;
+    }
+    let tc = if t.is_nan() { 0.0 } else { t.clamp(0.0, 1.0) };
+    let eased = tokens::motion::ease_out_cubic(tc);
+    let max_radius = (0.5 * width).hypot(0.5 * height) + REVEAL_FEATHER_PX;
+    eased * max_radius
+}
+
+/// Opacity values for the circular reveal's rim and two trailing rings.
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub struct RippleFrame {
-    pub radius_frac: f64,
-    pub ring_alpha: f64,
-    pub inner_glow_alpha: f64,
-    pub progress: f64,
-    pub should_swap_skin: bool,
-    pub finished: bool,
+pub struct RingAlphas {
+    pub rim: f64,
+    pub outer_trail: f64,
+    pub inner_trail: f64,
 }
 
-/// Compute ripple state at `elapsed_ms` within `[0.0, RIPPLE_TOTAL_MS]`.
-pub fn compute_ripple_frame(elapsed_ms: f64) -> RippleFrame {
-    let clamped_ms = elapsed_ms.max(0.0);
-    let progress = (clamped_ms / RIPPLE_TOTAL_MS).clamp(0.0, 1.0);
-    let expand_t = (clamped_ms / RIPPLE_EXPAND_MS).clamp(0.0, 1.0);
-    let radius_frac = tokens::motion::ease_out_cubic(expand_t);
-
-    let fade_duration = (RIPPLE_TOTAL_MS - RIPPLE_EXPAND_MS).max(1.0);
-    let fade_alpha = if clamped_ms <= RIPPLE_EXPAND_MS {
+fn reveal_ring_envelope(tc: f64, fade_in_end: f64, fade_out_start: f64) -> f64 {
+    if tc <= 0.0 || tc >= 1.0 {
+        return 0.0;
+    }
+    let fade_in = if tc < fade_in_end && fade_in_end > 0.0 {
+        tokens::motion::ease_out_cubic(tc / fade_in_end)
+    } else {
         1.0
-    } else {
-        let fade_t = ((clamped_ms - RIPPLE_EXPAND_MS) / fade_duration).clamp(0.0, 1.0);
-        (1.0 - tokens::motion::ease_out_cubic(fade_t)).clamp(0.0, 1.0)
     };
-
-    let ring_alpha = (RIPPLE_MAX_RING_ALPHA * fade_alpha).clamp(0.0, RIPPLE_MAX_RING_ALPHA);
-    let inner_glow_alpha = if clamped_ms <= RIPPLE_EXPAND_MS {
-        RIPPLE_MAX_GLOW_ALPHA * radius_frac
+    let fade_out = if tc > fade_out_start && fade_out_start < 1.0 {
+        let u = (tc - fade_out_start) / (1.0 - fade_out_start);
+        (1.0 - tokens::motion::ease_out_cubic(u)).max(0.0)
     } else {
-        RIPPLE_MAX_GLOW_ALPHA * fade_alpha
-    }
-    .clamp(0.0, RIPPLE_MAX_GLOW_ALPHA);
+        1.0
+    };
+    (fade_in * fade_out).clamp(0.0, 1.0)
+}
 
-    RippleFrame {
-        radius_frac,
-        ring_alpha,
-        inner_glow_alpha,
-        progress,
-        should_swap_skin: progress >= RIPPLE_SWAP_PROGRESS,
-        finished: clamped_ms >= RIPPLE_TOTAL_MS,
+/// Compute bounded ring alphas at normalized progress `t in [0.0, 1.0]`.
+pub fn ring_alphas(t: f64) -> RingAlphas {
+    let tc = if t.is_nan() { 0.0 } else { t.clamp(0.0, 1.0) };
+    RingAlphas {
+        rim: (REVEAL_RIM_MAX_ALPHA * reveal_ring_envelope(tc, 0.08, 0.55))
+            .clamp(0.0, REVEAL_RIM_MAX_ALPHA),
+        outer_trail: (REVEAL_OUTER_TRAIL_MAX_ALPHA * reveal_ring_envelope(tc, 0.14, 0.50))
+            .clamp(0.0, REVEAL_OUTER_TRAIL_MAX_ALPHA),
+        inner_trail: (REVEAL_INNER_TRAIL_MAX_ALPHA * reveal_ring_envelope(tc, 0.20, 0.45))
+            .clamp(0.0, REVEAL_INNER_TRAIL_MAX_ALPHA),
     }
 }
 
-/// Draw a single frame of the top-right unlock ripple (stroked ring + soft inner glow only).
-pub fn draw_ripple_frame(
-    cr: &cairo::Context,
+/// Capture the current window contents (including window background styling) into a
+/// `gdk::Texture` aligned to `target_overlay`, accounting for the display scale factor.
+///
+/// Returns `None` cleanly if the window or renderer is unrealized or zero-sized.
+pub fn capture_window_texture(
+    window: &impl IsA<gtk4::Widget>,
+    target_overlay: &gtk4::Overlay,
+) -> Option<gdk::Texture> {
+    let win_widget = window.as_ref();
+    if !win_widget.is_realized() || !win_widget.is_visible() {
+        return None;
+    }
+    let win_w = win_widget.width();
+    let win_h = win_widget.height();
+    if win_w <= 0 || win_h <= 0 {
+        return None;
+    }
+
+    let native = win_widget.native()?;
+    let renderer = native.renderer()?;
+    if !renderer.is_realized() {
+        return None;
+    }
+
+    let scale = native
+        .surface()
+        .map(|s| s.scale())
+        .filter(|&s| s.is_finite() && s > 0.0)
+        .unwrap_or_else(|| (win_widget.scale_factor().max(1)) as f64);
+
+    let paintable = gtk4::WidgetPaintable::new(Some(win_widget));
+    let snapshot = gtk4::Snapshot::new();
+    snapshot.scale(scale as f32, scale as f32);
+    paintable.snapshot(&snapshot, win_w as f64, win_h as f64);
+    let node = snapshot.to_node()?;
+
+    let bounds = target_overlay
+        .compute_bounds(win_widget)
+        .filter(|b| b.width() > 0.0 && b.height() > 0.0)?;
+
+    let viewport = graphene::Rect::new(
+        bounds.x() * scale as f32,
+        bounds.y() * scale as f32,
+        bounds.width() * scale as f32,
+        bounds.height() * scale as f32,
+    );
+
+    let texture = renderer.render_texture(&node, Some(&viewport));
+    if texture.width() <= 0 || texture.height() <= 0 {
+        return None;
+    }
+    Some(texture)
+}
+
+fn rgba_with_alpha(rgb: (f64, f64, f64), alpha: f64) -> gdk::RGBA {
+    gdk::RGBA::new(
+        rgb.0 as f32,
+        rgb.1 as f32,
+        rgb.2 as f32,
+        alpha.clamp(0.0, 1.0) as f32,
+    )
+}
+
+fn build_reveal_mask_stops(radius: f64) -> (f32, Vec<gsk::ColorStop>) {
+    if radius <= 0.0 {
+        let zero = gdk::RGBA::new(0.0, 0.0, 0.0, 0.0);
+        return (
+            1.0,
+            vec![
+                gsk::ColorStop::new(0.0, zero),
+                gsk::ColorStop::new(1.0, zero),
+            ],
+        );
+    }
+
+    if radius <= REVEAL_FEATHER_PX {
+        let center_a = (radius / REVEAL_FEATHER_PX).clamp(0.0, 1.0) as f32;
+        return (
+            radius.max(0.5) as f32,
+            vec![
+                gsk::ColorStop::new(0.0, gdk::RGBA::new(0.0, 0.0, 0.0, center_a)),
+                gsk::ColorStop::new(1.0, gdk::RGBA::new(0.0, 0.0, 0.0, 0.0)),
+            ],
+        );
+    }
+
+    let inner_off = ((radius - REVEAL_FEATHER_PX) / radius).clamp(0.0001, 0.9999) as f32;
+    let solid = gdk::RGBA::new(0.0, 0.0, 0.0, 1.0);
+    let clear = gdk::RGBA::new(0.0, 0.0, 0.0, 0.0);
+    (
+        radius as f32,
+        vec![
+            gsk::ColorStop::new(0.0, solid),
+            gsk::ColorStop::new(inner_off, solid),
+            gsk::ColorStop::new(1.0, clear),
+        ],
+    )
+}
+
+fn append_rim_ring_node(
+    snapshot: &gtk4::Snapshot,
+    bounds: &graphene::Rect,
+    center: &graphene::Point,
+    radius: f64,
+    alpha: f64,
+    pal: &tokens::Palette,
+) {
+    let alpha = alpha.clamp(0.0, REVEAL_RIM_MAX_ALPHA);
+    if radius <= 1.0 || alpha <= 0.001 {
+        return;
+    }
+
+    let inner_r = (radius - 3.0).max(0.0);
+    let core_r = radius;
+    let gold_r = radius + 1.5;
+    let outer_r = radius + 4.0;
+
+    let azure = pal.azure.rgb();
+    let gold = pal.gold.rgb();
+
+    let stops = [
+        gsk::ColorStop::new((inner_r / outer_r) as f32, rgba_with_alpha(azure, 0.0)),
+        gsk::ColorStop::new((core_r / outer_r) as f32, rgba_with_alpha(azure, alpha)),
+        gsk::ColorStop::new((gold_r / outer_r) as f32, rgba_with_alpha(gold, alpha)),
+        gsk::ColorStop::new(1.0, rgba_with_alpha(gold, 0.0)),
+    ];
+    snapshot.append_radial_gradient(
+        bounds,
+        center,
+        outer_r as f32,
+        outer_r as f32,
+        0.0,
+        1.0,
+        &stops,
+    );
+}
+
+fn append_trail_ring_node(
+    snapshot: &gtk4::Snapshot,
+    bounds: &graphene::Rect,
+    center: &graphene::Point,
+    radius: f64,
+    half_width: f64,
+    alpha: f64,
+    rgb: (f64, f64, f64),
+) {
+    if radius <= 1.0 || half_width <= 0.0 || alpha <= 0.001 {
+        return;
+    }
+
+    let outer_r = radius + half_width;
+    let inner_r = (radius - half_width).max(0.0);
+    if outer_r <= radius || inner_r >= radius {
+        return;
+    }
+
+    let stops = [
+        gsk::ColorStop::new((inner_r / outer_r) as f32, rgba_with_alpha(rgb, 0.0)),
+        gsk::ColorStop::new((radius / outer_r) as f32, rgba_with_alpha(rgb, alpha)),
+        gsk::ColorStop::new(1.0, rgba_with_alpha(rgb, 0.0)),
+    ];
+    snapshot.append_radial_gradient(
+        bounds,
+        center,
+        outer_r as f32,
+        outer_r as f32,
+        0.0,
+        1.0,
+        &stops,
+    );
+}
+
+/// Record the GSK circular reveal mask and gradient ring nodes into `snapshot`.
+///
+/// Uses `MaskMode::InvertedAlpha` (`source * (1 - mask.alpha)`), so the mask gradient
+/// is opaque (`alpha = 1.0`) inside `radius - 8 px` and feathered to transparent outside
+/// `radius`, cutting an expanding circular hole through `texture`.
+pub fn snapshot_reveal_nodes(
+    snapshot: &gtk4::Snapshot,
+    texture: &gdk::Texture,
     width: f64,
     height: f64,
-    elapsed_ms: f64,
+    progress: f64,
     pal: &tokens::Palette,
 ) {
     if width <= 0.0 || height <= 0.0 {
         return;
     }
 
-    let frame = compute_ripple_frame(elapsed_ms);
-    if frame.finished || (frame.ring_alpha <= 0.0 && frame.inner_glow_alpha <= 0.0) {
-        return;
+    let w = width as f32;
+    let h = height as f32;
+    let bounds = graphene::Rect::new(0.0, 0.0, w, h);
+    let center = graphene::Point::new(0.5 * w, 0.5 * h);
+    let radius = reveal_radius(progress, width, height);
+
+    snapshot.push_mask(gsk::MaskMode::InvertedAlpha);
+    let (grad_r, mask_stops) = build_reveal_mask_stops(radius);
+    snapshot.append_radial_gradient(&bounds, &center, grad_r, grad_r, 0.0, 1.0, &mask_stops);
+    snapshot.pop();
+
+    snapshot.append_texture(texture, &bounds);
+    snapshot.pop();
+
+    let alphas = ring_alphas(progress);
+    if radius > 0.0 {
+        append_rim_ring_node(snapshot, &bounds, &center, radius, alphas.rim, pal);
+        append_trail_ring_node(
+            snapshot,
+            &bounds,
+            &center,
+            radius * 0.60,
+            2.5,
+            alphas.outer_trail,
+            pal.azure.rgb(),
+        );
+        append_trail_ring_node(
+            snapshot,
+            &bounds,
+            &center,
+            radius * 0.35,
+            2.0,
+            alphas.inner_trail,
+            pal.sky.rgb(),
+        );
+    }
+}
+
+mod imp {
+    use super::*;
+
+    #[derive(Default)]
+    pub struct RevealOverlay {
+        pub texture: RefCell<Option<gdk::Texture>>,
+        pub progress: Cell<f64>,
     }
 
-    let origin_x = width;
-    let origin_y = 0.0;
-    let max_radius = (width * width + height * height).sqrt() * 1.04;
-    let radius = max_radius * frame.radius_frac;
-    if radius <= 0.5 {
-        return;
+    #[glib::object_subclass]
+    impl ObjectSubclass for RevealOverlay {
+        const NAME: &'static str = "StakhalRevealOverlay";
+        type Type = super::RevealOverlay;
+        type ParentType = gtk4::Widget;
     }
 
-    let (acc_r, acc_g, acc_b) = pal.accent.rgb();
-    // Quadrant inside (0..width, 0..height) relative to top-right origin (width, 0)
-    let angle_start = std::f64::consts::FRAC_PI_2 - 0.05;
-    let angle_end = std::f64::consts::PI + 0.05;
+    impl ObjectImpl for RevealOverlay {}
 
-    // Soft accent inner glow stroke (no full-window fill)
-    if frame.inner_glow_alpha > 0.0 {
-        let glow_r = (radius - 6.0).max(0.5);
-        cr.set_source_rgba(acc_r, acc_g, acc_b, frame.inner_glow_alpha);
-        cr.set_line_width(12.0);
-        cr.new_path();
-        cr.arc(origin_x, origin_y, glow_r, angle_start, angle_end);
-        let _ = cr.stroke();
+    impl WidgetImpl for RevealOverlay {
+        fn snapshot(&self, snapshot: &gtk4::Snapshot) {
+            let widget = self.obj();
+            let w = widget.width() as f64;
+            let h = widget.height() as f64;
+            if w <= 0.0 || h <= 0.0 {
+                return;
+            }
+            let tex_borrow = self.texture.borrow();
+            let Some(texture) = tex_borrow.as_ref() else {
+                return;
+            };
+            snapshot_reveal_nodes(
+                snapshot,
+                texture,
+                w,
+                h,
+                self.progress.get(),
+                &tokens::Palette::STAGE,
+            );
+        }
+    }
+}
+
+glib::wrapper! {
+    /// Pass-through widget displaying the pre-unlock texture while a circular reveal expands.
+    pub struct RevealOverlay(ObjectSubclass<imp::RevealOverlay>)
+        @extends gtk4::Widget,
+        @implements gtk4::Accessible, gtk4::Buildable, gtk4::ConstraintTarget;
+}
+
+impl RevealOverlay {
+    pub fn new(texture: gdk::Texture) -> Self {
+        let obj: Self = glib::Object::builder().build();
+        obj.imp().texture.replace(Some(texture));
+        obj.set_hexpand(true);
+        obj.set_vexpand(true);
+        obj.set_can_target(false);
+        obj.set_can_focus(false);
+        obj
     }
 
-    // Stroked azure leading ring
-    if frame.ring_alpha > 0.0 {
-        cr.set_source_rgba(acc_r, acc_g, acc_b, frame.ring_alpha);
-        cr.set_line_width(2.5);
-        cr.new_path();
-        cr.arc(origin_x, origin_y, radius, angle_start, angle_end);
-        let _ = cr.stroke();
+    pub fn set_progress(&self, progress: f64) {
+        self.imp().progress.set(progress);
+        self.queue_draw();
     }
 }
 
@@ -266,7 +523,7 @@ pub fn draw_header_shimmer(
     let _ = cr.fill();
 }
 
-/// Manages the Stage unlock ripple and header bottom-edge shimmer overlays.
+/// Manages the Stage circular reveal transition and header bottom-edge shimmer overlays.
 #[derive(Clone)]
 pub struct SkinOverlayController {
     skin_overlay: gtk4::Overlay,
@@ -284,7 +541,7 @@ pub struct SkinOverlayController {
 
 impl SkinOverlayController {
     /// Wire the thin pass-through header shimmer overlay onto `header_overlay`,
-    /// retaining `skin_overlay` for the one-shot unlock ripple.
+    /// retaining `skin_overlay` for the one-shot circular unlock reveal.
     pub fn setup(
         window: &adw::ApplicationWindow,
         skin_overlay: &gtk4::Overlay,
@@ -383,92 +640,63 @@ impl SkinOverlayController {
         }
 
         if !tokens::motion::is_animations_enabled() {
-            // Reduced motion: instant skin swap, no ripple, no shimmer.
+            // Reduced motion: no capture, no overlay, instant swap, no shimmer.
             (self.on_skin_swap)();
             return;
         }
 
-        let ripple_area = gtk4::DrawingArea::builder()
-            .hexpand(true)
-            .vexpand(true)
-            .can_target(false)
-            .can_focus(false)
-            .build();
+        let Some(old_texture) = capture_window_texture(&self.window, &self.skin_overlay) else {
+            // Fallback when capture cannot run (e.g. unrealized or zero-size window):
+            // swap skin immediately without an overlay, never panic.
+            (self.on_skin_swap)();
+            self.effects_active.set(true);
+            self.sync_loop_state();
+            return;
+        };
+
+        let reveal_overlay = RevealOverlay::new(old_texture);
+        self.skin_overlay.add_overlay(&reveal_overlay);
+        reveal_overlay.set_progress(0.0);
+
+        // Apply the new skin immediately beneath the old-texture reveal overlay.
+        (self.on_skin_swap)();
+        self.effects_active.set(true);
+        self.sync_loop_state();
 
         let start_time: Rc<Cell<Option<Instant>>> = Rc::new(Cell::new(None));
-        let swapped = Rc::new(Cell::new(false));
-
-        {
-            let start_draw = Rc::clone(&start_time);
-            ripple_area.set_draw_func(move |_, cr, w, h| {
-                let elapsed_ms = match start_draw.get() {
-                    Some(start) => {
-                        Instant::now()
-                            .saturating_duration_since(start)
-                            .as_secs_f64()
-                            * 1000.0
-                    }
-                    None => 0.0,
-                };
-                draw_ripple_frame(cr, w as f64, h as f64, elapsed_ms, &tokens::Palette::STAGE);
-            });
-        }
-
         let overlay_weak = self.skin_overlay.downgrade();
-        let area_weak = ripple_area.downgrade();
-        let start_tick = Rc::clone(&start_time);
-        let swapped_tick = Rc::clone(&swapped);
-        let on_swap = Rc::clone(&self.on_skin_swap);
         let ctrl_tick = self.clone();
 
-        ripple_area.add_tick_callback(move |area, _| {
+        reveal_overlay.add_tick_callback(move |overlay, _| {
             let now = Instant::now();
-            let start = match start_tick.get() {
+            let start = match start_time.get() {
                 Some(s) => s,
                 None => {
-                    start_tick.set(Some(now));
+                    start_time.set(Some(now));
                     now
                 }
             };
 
-            if ctrl_tick.closed.get() || overlay_weak.upgrade().is_none() {
-                if let (Some(ov), Some(ar)) = (overlay_weak.upgrade(), area_weak.upgrade()) {
-                    ov.remove_overlay(&ar);
-                }
+            let Some(ov) = overlay_weak.upgrade() else {
                 return glib::ControlFlow::Break;
-            }
+            };
 
-            if !tokens::motion::is_animations_enabled() {
-                if !swapped_tick.replace(true) {
-                    (on_swap)();
-                }
-                if let (Some(ov), Some(ar)) = (overlay_weak.upgrade(), area_weak.upgrade()) {
-                    ov.remove_overlay(&ar);
-                }
+            if ctrl_tick.closed.get() || !tokens::motion::is_animations_enabled() {
+                ov.remove_overlay(overlay);
                 return glib::ControlFlow::Break;
             }
 
             let elapsed_ms = now.saturating_duration_since(start).as_secs_f64() * 1000.0;
-            let frame = compute_ripple_frame(elapsed_ms);
+            let progress = (elapsed_ms / REVEAL_DURATION_MS).clamp(0.0, 1.0);
+            overlay.set_progress(progress);
 
-            if frame.should_swap_skin && !swapped_tick.replace(true) {
-                (on_swap)();
-                ctrl_tick.effects_active.set(true);
-                ctrl_tick.sync_loop_state();
-            }
-
-            if frame.finished {
-                if let (Some(ov), Some(ar)) = (overlay_weak.upgrade(), area_weak.upgrade()) {
-                    ov.remove_overlay(&ar);
-                }
+            if elapsed_ms >= REVEAL_DURATION_MS {
+                ov.remove_overlay(overlay);
                 return glib::ControlFlow::Break;
             }
 
-            area.queue_draw();
             glib::ControlFlow::Continue
         });
-
-        self.skin_overlay.add_overlay(&ripple_area);
     }
 
     /// Synchronize the header shimmer tick loop with window active/visible state.
@@ -554,74 +782,93 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_ripple_frame_timeline_and_swap_midpoint() {
-        let f0 = compute_ripple_frame(0.0);
-        assert_eq!(f0.radius_frac, 0.0);
-        assert!(!f0.should_swap_skin);
-        assert!(!f0.finished);
-        assert!(f0.ring_alpha <= RIPPLE_MAX_RING_ALPHA);
-        assert!(f0.inner_glow_alpha <= RIPPLE_MAX_GLOW_ALPHA);
+    fn test_reveal_radius_progression_and_edge_cases() {
+        let w = 1280.0;
+        let h = 820.0;
+        assert_eq!(reveal_radius(0.0, w, h), 0.0);
+        assert_eq!(reveal_radius(-0.25, w, h), 0.0);
 
-        // At 225ms (half of 450ms expansion): ease_out_cubic(0.5) = 0.875
-        let f_mid_expand = compute_ripple_frame(225.0);
-        assert!((f_mid_expand.radius_frac - 0.875).abs() < 1e-6);
-        assert!(!f_mid_expand.should_swap_skin);
-        assert!(!f_mid_expand.finished);
-        assert!(f_mid_expand.ring_alpha <= 0.35);
-        assert!(f_mid_expand.inner_glow_alpha <= 0.10);
+        // Full coverage at t=1.0: reaches farthest corner from center plus feather width
+        let farthest_corner = (0.5 * w).hypot(0.5 * h);
+        let r_end = reveal_radius(1.0, w, h);
+        assert!(
+            r_end >= farthest_corner + REVEAL_FEATHER_PX - 1e-6,
+            "reveal_radius at t=1 must cover farthest corner ({farthest_corner}) + feather ({REVEAL_FEATHER_PX}), got {r_end}"
+        );
+        assert!((r_end - (farthest_corner + REVEAL_FEATHER_PX)).abs() < 1e-6);
 
-        // At 450ms (50% progress of 900ms lifecycle): ring fully expanded, swap triggers
-        let f_swap = compute_ripple_frame(450.0);
-        assert!((f_swap.progress - 0.5).abs() < 1e-6);
-        assert!((f_swap.radius_frac - 1.0).abs() < 1e-6);
-        assert!(f_swap.should_swap_skin);
-        assert!(!f_swap.finished);
-        assert!(f_swap.ring_alpha <= 0.35);
-        assert!(f_swap.inner_glow_alpha <= 0.10);
+        // Ease-out cubic property at midpoint: ease_out_cubic(0.5) == 0.875
+        let r_mid = reveal_radius(0.5, w, h);
+        assert!((r_mid - 0.875 * r_end).abs() < 1e-6);
 
-        // At 675ms: overlay fading out cleanly
-        let f_fade = compute_ripple_frame(675.0);
-        assert!(f_fade.ring_alpha < f_swap.ring_alpha);
-        assert!(f_fade.ring_alpha > 0.0);
-        assert!(f_fade.inner_glow_alpha < f_swap.inner_glow_alpha);
-        assert!(f_fade.should_swap_skin);
-        assert!(!f_fade.finished);
+        // Monotonically non-decreasing over [0.0, 1.0]
+        let mut prev = 0.0;
+        for step in 0..=100 {
+            let t = step as f64 / 100.0;
+            let r = reveal_radius(t, w, h);
+            assert!(r.is_finite());
+            assert!(
+                r >= prev,
+                "reveal_radius must be monotonic at t={t}: {r} < {prev}"
+            );
+            prev = r;
+        }
 
-        // At 900ms: fade complete and finished
-        let f_end = compute_ripple_frame(900.0);
-        assert_eq!(f_end.ring_alpha, 0.0);
-        assert_eq!(f_end.inner_glow_alpha, 0.0);
-        assert!(f_end.finished);
+        // Clamps above 1.0 cleanly
+        assert!((reveal_radius(2.5, w, h) - r_end).abs() < 1e-6);
 
-        // Out-of-range times clamp cleanly without panics
-        let f_neg = compute_ripple_frame(-20.0);
-        assert_eq!(f_neg.progress, 0.0);
-        assert!(!f_neg.finished);
-        let f_over = compute_ripple_frame(1500.0);
-        assert_eq!(f_over.progress, 1.0);
-        assert_eq!(f_over.ring_alpha, 0.0);
-        assert_eq!(f_over.inner_glow_alpha, 0.0);
-        assert!(f_over.finished);
+        // Zero-size, negative, and non-finite inputs remain finite (0.0) without panicking
+        for (tw, th) in [
+            (0.0, 0.0),
+            (0.0, 300.0),
+            (400.0, 0.0),
+            (-10.0, 200.0),
+            (f64::NAN, 100.0),
+            (f64::INFINITY, 100.0),
+        ] {
+            let r = reveal_radius(0.5, tw, th);
+            assert!(r.is_finite(), "radius for ({tw}, {th}) must be finite");
+            assert_eq!(r, 0.0);
+        }
+        assert_eq!(reveal_radius(f64::NAN, w, h), 0.0);
+        assert!((reveal_radius(f64::INFINITY, w, h) - r_end).abs() < 1e-6);
     }
 
     #[test]
-    fn test_draw_ripple_frame_no_full_window_fill() {
-        let mut surface = cairo::ImageSurface::create(cairo::Format::ARgb32, 400, 300).unwrap();
-        {
-            let cr = cairo::Context::new(&surface).unwrap();
-            // Render near t=225ms where radius ~ 455px covers almost the entire surface
-            draw_ripple_frame(&cr, 400.0, 300.0, 225.0, &tokens::Palette::STAGE);
-            surface.flush();
+    fn test_ring_alphas_bounds_and_finite_inputs() {
+        let a0 = ring_alphas(0.0);
+        assert_eq!(a0.rim, 0.0);
+        assert_eq!(a0.outer_trail, 0.0);
+        assert_eq!(a0.inner_trail, 0.0);
+
+        let a1 = ring_alphas(1.0);
+        assert_eq!(a1.rim, 0.0);
+        assert_eq!(a1.outer_trail, 0.0);
+        assert_eq!(a1.inner_trail, 0.0);
+
+        let mut max_rim = 0.0_f64;
+        let mut max_outer = 0.0_f64;
+        let mut max_inner = 0.0_f64;
+        for step in 0..=200 {
+            let t = step as f64 / 200.0;
+            let a = ring_alphas(t);
+            assert!(a.rim.is_finite() && (0.0..=0.6).contains(&a.rim));
+            assert!(a.outer_trail.is_finite() && (0.0..=0.25).contains(&a.outer_trail));
+            assert!(a.inner_trail.is_finite() && (0.0..=0.15).contains(&a.inner_trail));
+            max_rim = max_rim.max(a.rim);
+            max_outer = max_outer.max(a.outer_trail);
+            max_inner = max_inner.max(a.inner_trail);
         }
-        let stride = surface.stride() as usize;
-        let data = surface.data().unwrap();
-        // Top-right corner region (x=380, y=20) is well inside the ring radius and must stay transparent (no fill wash)
-        let off = 20 * stride + 380 * 4;
-        assert_eq!(
-            &data[off..off + 4],
-            &[0, 0, 0, 0],
-            "Ripple must stroke the ring only with no full-window interior fill"
-        );
+        assert!(max_rim > 0.5 && max_rim <= 0.6);
+        assert!(max_outer > 0.2 && max_outer <= 0.25);
+        assert!(max_inner > 0.1 && max_inner <= 0.15);
+
+        for extreme in [-1.0, 2.0, f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+            let a = ring_alphas(extreme);
+            assert!(a.rim.is_finite() && (0.0..=0.6).contains(&a.rim));
+            assert!(a.outer_trail.is_finite() && (0.0..=0.25).contains(&a.outer_trail));
+            assert!(a.inner_trail.is_finite() && (0.0..=0.15).contains(&a.inner_trail));
+        }
     }
 
     #[test]
@@ -687,17 +934,15 @@ mod tests {
     }
 
     #[test]
-    fn test_cairo_draws_ripple_and_shimmer_safely() {
+    fn test_cairo_draws_shimmer_safely() {
         let surface = cairo::ImageSurface::create(cairo::Format::ARgb32, 320, 200).unwrap();
         let cr = cairo::Context::new(&surface).unwrap();
         let stage = tokens::Palette::STAGE;
 
-        draw_ripple_frame(&cr, 320.0, 200.0, 200.0, &stage);
-        draw_ripple_frame(&cr, 320.0, 200.0, 600.0, &stage);
         draw_header_shimmer(&cr, 320.0, 2.0, 0.5, &stage);
 
-        // Zero and negative dimensions must not panic
-        draw_ripple_frame(&cr, 0.0, 0.0, 100.0, &stage);
+        // Zero dimensions must not panic
+        draw_header_shimmer(&cr, 0.0, 0.0, 0.5, &stage);
         draw_header_shimmer(&cr, 320.0, 0.0, 0.5, &stage);
         surface.flush();
     }
