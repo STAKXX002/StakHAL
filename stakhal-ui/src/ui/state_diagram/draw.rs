@@ -13,6 +13,35 @@ fn mix_rgb(a: (f64, f64, f64), b: (f64, f64, f64), t: f64) -> (f64, f64, f64) {
     )
 }
 
+const STAGE_EDGE_WIDTH: f64 = 1.5;
+const STAGE_NODE_BORDER_WIDTH: f64 = 1.5;
+const STAGE_SELECTED_BORDER_WIDTH: f64 = 2.0;
+const STAGE_SELECTED_GLOW_WIDTH: f64 = 6.0;
+const STAGE_SELECTED_GLOW_ALPHA: f64 = 0.16;
+const STAGE_RIBBON_WIDTH: f64 = 3.0;
+
+fn trace_rounded_rect(cr: &cairo::Context, x: f64, y: f64, w: f64, h: f64, radius: f64) {
+    let r = radius.clamp(0.0, (w * 0.5).min(h * 0.5).max(0.0));
+    cr.new_path();
+    cr.arc(x + w - r, y + r, r, -std::f64::consts::FRAC_PI_2, 0.0);
+    cr.arc(x + w - r, y + h - r, r, 0.0, std::f64::consts::FRAC_PI_2);
+    cr.arc(
+        x + r,
+        y + h - r,
+        r,
+        std::f64::consts::FRAC_PI_2,
+        std::f64::consts::PI,
+    );
+    cr.arc(
+        x + r,
+        y + r,
+        r,
+        std::f64::consts::PI,
+        3.0 * std::f64::consts::FRAC_PI_2,
+    );
+    cr.close_path();
+}
+
 struct DiagramColors {
     is_default: bool,
     canvas_bg: (f64, f64, f64),
@@ -32,9 +61,14 @@ struct DiagramColors {
     pill_fill: (f64, f64, f64, f64),
     pill_border: (f64, f64, f64),
     bg_panel: (f64, f64, f64),
+    bg_raised: (f64, f64, f64),
     text_primary: (f64, f64, f64),
     text_muted: (f64, f64, f64),
     accent: (f64, f64, f64),
+    azure: (f64, f64, f64),
+    gold: (f64, f64, f64),
+    edge_width: f64,
+    node_border_width: f64,
     lane_alpha_selected: f64,
     lane_alpha_normal: f64,
     edge_alpha_default: f64,
@@ -45,6 +79,7 @@ struct DiagramColors {
     dimmed_text_alpha: f64,
     dimmed_tag_alpha: f64,
     pill_fill_dimmed_alpha: f64,
+    pill_border_alpha: f64,
 }
 
 impl DiagramColors {
@@ -66,35 +101,41 @@ impl DiagramColors {
             // Preserve historical default FAULT node fill for pixel-identical snapshots
             (45.0 / 255.0, 16.0 / 255.0, 18.0 / 255.0, 0.95)
         } else {
-            let m = mix_rgb(pal.bg_panel.rgb(), pal.state_error.rgb(), 0.10);
-            (m.0, m.1, m.2, 0.95)
+            let m = mix_rgb(pal.bg_panel.rgb(), pal.state_error.rgb(), 0.08);
+            (m.0, m.1, m.2, 1.0)
+        };
+
+        let node_fill_default = if is_default {
+            (pal.bg_panel.0, pal.bg_panel.1, pal.bg_panel.2, 0.95)
+        } else {
+            (pal.bg_panel.0, pal.bg_panel.1, pal.bg_panel.2, 1.0)
         };
 
         let node_fill_initial = if is_default {
             // Preserve historical default INITIAL node fill for pixel-identical snapshots
             (24.0 / 255.0, 30.0 / 255.0, 36.0 / 255.0, 0.95)
         } else {
-            (pal.bg_raised.0, pal.bg_raised.1, pal.bg_raised.2, 0.95)
+            (pal.bg_raised.0, pal.bg_raised.1, pal.bg_raised.2, 1.0)
         };
 
         let node_fill_hover = if is_default {
             // Preserve historical default HOVER node fill for pixel-identical snapshots
             (28.0 / 255.0, 36.0 / 255.0, 44.0 / 255.0, 0.95)
         } else {
-            (pal.bg_raised.0, pal.bg_raised.1, pal.bg_raised.2, 0.95)
+            (pal.bg_raised.0, pal.bg_raised.1, pal.bg_raised.2, 1.0)
         };
 
         let node_fill_selected = if is_default {
             // Preserve historical default SELECTED node fill for pixel-identical snapshots
             (20.0 / 255.0, 32.0 / 255.0, 38.0 / 255.0, 0.95)
         } else {
-            (pal.bg_raised.0, pal.bg_raised.1, pal.bg_raised.2, 0.95)
+            (pal.bg_raised.0, pal.bg_raised.1, pal.bg_raised.2, 1.0)
         };
 
         let node_fill_dimmed = if is_default {
             (pal.bg_void.0, pal.bg_void.1, pal.bg_void.2, 0.5)
         } else {
-            (pal.bg_void.0, pal.bg_void.1, pal.bg_void.2, 0.85)
+            (pal.bg_void.0, pal.bg_void.1, pal.bg_void.2, 1.0)
         };
 
         let border_initial = if is_default {
@@ -114,7 +155,7 @@ impl DiagramColors {
         let pill_fill = if is_default {
             (pal.bg_panel.0, pal.bg_panel.1, pal.bg_panel.2, 0.95)
         } else {
-            (pal.bg_raised.0, pal.bg_raised.1, pal.bg_raised.2, 0.95)
+            (pal.bg_panel.0, pal.bg_panel.1, pal.bg_panel.2, 1.0)
         };
 
         let pill_border = if is_default {
@@ -129,7 +170,7 @@ impl DiagramColors {
             dot_grid,
             fault_red: pal.state_error.rgb(),
             fault_fill,
-            node_fill_default: (pal.bg_panel.0, pal.bg_panel.1, pal.bg_panel.2, 0.95),
+            node_fill_default,
             node_fill_initial,
             node_fill_hover,
             node_fill_selected,
@@ -142,19 +183,33 @@ impl DiagramColors {
             pill_fill,
             pill_border,
             bg_panel: pal.bg_panel.rgb(),
+            bg_raised: pal.bg_raised.rgb(),
             text_primary: pal.text_primary.rgb(),
             text_muted: pal.text_muted.rgb(),
             accent: pal.accent.rgb(),
-            lane_alpha_selected: if is_default { 0.35 } else { 0.70 },
-            lane_alpha_normal: if is_default { 0.75 } else { 0.92 },
+            azure: pal.azure.rgb(),
+            gold: pal.gold.rgb(),
+            edge_width: if is_default {
+                tokens::shape::BORDER_WIDTH_HAIR
+            } else {
+                STAGE_EDGE_WIDTH
+            },
+            node_border_width: if is_default {
+                tokens::shape::BORDER_WIDTH_HAIR
+            } else {
+                STAGE_NODE_BORDER_WIDTH
+            },
+            lane_alpha_selected: if is_default { 0.35 } else { 1.0 },
+            lane_alpha_normal: if is_default { 0.75 } else { 1.0 },
             edge_alpha_default: if is_default { 0.85 } else { 0.95 },
-            edge_alpha_dimmed: if is_default { 0.25 } else { 0.50 },
+            edge_alpha_dimmed: if is_default { 0.25 } else { 0.55 },
             fault_edge_alpha_normal: if is_default { 0.85 } else { 0.95 },
-            fault_edge_alpha_dimmed: if is_default { 0.15 } else { 0.45 },
-            dimmed_border_alpha: if is_default { 0.35 } else { 0.55 },
-            dimmed_text_alpha: if is_default { 0.4 } else { 0.75 },
-            dimmed_tag_alpha: if is_default { 0.3 } else { 0.70 },
-            pill_fill_dimmed_alpha: if is_default { 0.4 } else { 0.75 },
+            fault_edge_alpha_dimmed: if is_default { 0.15 } else { 0.50 },
+            dimmed_border_alpha: if is_default { 0.35 } else { 0.60 },
+            dimmed_text_alpha: if is_default { 0.4 } else { 1.0 },
+            dimmed_tag_alpha: if is_default { 0.3 } else { 1.0 },
+            pill_fill_dimmed_alpha: if is_default { 0.4 } else { 0.95 },
+            pill_border_alpha: if is_default { 0.85 } else { 1.0 },
         }
     }
 }
@@ -453,7 +508,7 @@ pub fn draw_state_diagram(
         };
 
         cr.set_source_rgba(edge_r, edge_g, edge_b, edge_a);
-        cr.set_line_width(tokens::shape::BORDER_WIDTH_HAIR);
+        cr.set_line_width(colors.edge_width);
         if edge_reveal_progress < 1.0 {
             let visible_len = (total_len * edge_reveal_progress).max(0.1);
             cr.set_dash(&[visible_len, total_len * 2.0], 0.0);
@@ -479,7 +534,7 @@ pub fn draw_state_diagram(
             cr.set_dash(&[pulse_len, total_len * 2.0], -(pulse_t * total_len));
             let _ = cr.stroke();
             cr.set_dash(&[], 0.0);
-            cr.set_line_width(tokens::shape::BORDER_WIDTH_HAIR);
+            cr.set_line_width(colors.edge_width);
         }
 
         // Draw arrowhead at edge.end aligned with the final segment only if reveal is nearly complete
@@ -739,24 +794,53 @@ fn draw_rounded_node(
     flash_intensity: f64,
     colors: &DiagramColors,
 ) {
-    cr.new_path();
-    cr.arc(x + w - r, y + r, r, -std::f64::consts::FRAC_PI_2, 0.0);
-    cr.arc(x + w - r, y + h - r, r, 0.0, std::f64::consts::FRAC_PI_2);
-    cr.arc(
-        x + r,
-        y + h - r,
-        r,
-        std::f64::consts::FRAC_PI_2,
-        std::f64::consts::PI,
-    );
-    cr.arc(
-        x + r,
-        y + r,
-        r,
-        std::f64::consts::PI,
-        3.0 * std::f64::consts::FRAC_PI_2,
-    );
-    cr.close_path();
+    if !colors.is_default {
+        // Two offset translucent rounded rectangles for soft elevation without blur filters
+        let (a_far, a_near) = if is_dimmed {
+            (0.04, 0.06)
+        } else {
+            (0.07, 0.11)
+        };
+        trace_rounded_rect(cr, x + 1.0, y + 4.0, w, h, r);
+        cr.set_source_rgba(
+            colors.text_primary.0,
+            colors.text_primary.1,
+            colors.text_primary.2,
+            a_far,
+        );
+        let _ = cr.fill();
+
+        trace_rounded_rect(cr, x + 0.5, y + 2.0, w, h, r);
+        cr.set_source_rgba(
+            colors.text_primary.0,
+            colors.text_primary.1,
+            colors.text_primary.2,
+            a_near,
+        );
+        let _ = cr.fill();
+
+        // Selected node: 6px soft accent glow around outer edge (alpha <= 0.18)
+        if is_selected {
+            trace_rounded_rect(
+                cr,
+                x - STAGE_SELECTED_GLOW_WIDTH * 0.5,
+                y - STAGE_SELECTED_GLOW_WIDTH * 0.5,
+                w + STAGE_SELECTED_GLOW_WIDTH,
+                h + STAGE_SELECTED_GLOW_WIDTH,
+                r + STAGE_SELECTED_GLOW_WIDTH * 0.5,
+            );
+            cr.set_source_rgba(
+                colors.accent.0,
+                colors.accent.1,
+                colors.accent.2,
+                STAGE_SELECTED_GLOW_ALPHA,
+            );
+            cr.set_line_width(STAGE_SELECTED_GLOW_WIDTH);
+            let _ = cr.stroke();
+        }
+    }
+
+    trace_rounded_rect(cr, x, y, w, h, r);
 
     // Node fill
     if is_dimmed {
@@ -814,7 +898,26 @@ fn draw_rounded_node(
         let _ = cr.fill_preserve();
     }
 
-    // Node stroke (Strict 1px hairline)
+    // Stage: 3px left ribbon bar clipped cleanly inside the rounded node rectangle
+    if !colors.is_default {
+        if cr.save().is_ok() {
+            trace_rounded_rect(cr, x, y, w, h, r);
+            cr.clip();
+            let ribbon = if is_initial {
+                colors.gold
+            } else {
+                colors.azure
+            };
+            let ribbon_alpha = if is_dimmed { 0.55 } else { 1.0 };
+            cr.set_source_rgba(ribbon.0, ribbon.1, ribbon.2, ribbon_alpha);
+            cr.rectangle(x, y, STAGE_RIBBON_WIDTH, h);
+            let _ = cr.fill();
+            let _ = cr.restore();
+        }
+        trace_rounded_rect(cr, x, y, w, h, r);
+    }
+
+    // Node stroke
     if flash_intensity > 0.0 {
         cr.set_source_rgba(
             colors.accent.0,
@@ -828,6 +931,12 @@ fn draw_rounded_node(
             colors.border_default.1,
             colors.border_default.2,
             colors.dimmed_border_alpha,
+        );
+    } else if !colors.is_default && is_selected {
+        cr.set_source_rgb(
+            colors.border_selected.0,
+            colors.border_selected.1,
+            colors.border_selected.2,
         );
     } else if is_fault {
         cr.set_source_rgb(colors.fault_red.0, colors.fault_red.1, colors.fault_red.2);
@@ -856,7 +965,12 @@ fn draw_rounded_node(
             colors.border_default.2,
         );
     }
-    cr.set_line_width(tokens::shape::BORDER_WIDTH_HAIR);
+    let stroke_width = if !colors.is_default && is_selected {
+        STAGE_SELECTED_BORDER_WIDTH
+    } else {
+        colors.node_border_width
+    };
+    cr.set_line_width(stroke_width);
     let _ = cr.stroke();
 }
 
@@ -948,7 +1062,7 @@ fn draw_node_badge(
         let badge_fill = if colors.is_default {
             colors.bg_panel
         } else {
-            (colors.pill_fill.0, colors.pill_fill.1, colors.pill_fill.2)
+            colors.bg_raised
         };
         if is_dimmed {
             cr.set_source_rgba(badge_fill.0, badge_fill.1, badge_fill.2, dimmed_fill_alpha);
@@ -1117,7 +1231,7 @@ fn draw_guard_badge(
             colors.pill_border.0,
             colors.pill_border.1,
             colors.pill_border.2,
-            0.85,
+            colors.pill_border_alpha,
         );
     }
     cr.set_line_width(tokens::shape::BORDER_WIDTH_HAIR);
@@ -1449,6 +1563,8 @@ mod tests {
                 0.95
             )
         );
+        assert_eq!(def.edge_width, tokens::shape::BORDER_WIDTH_HAIR);
+        assert_eq!(def.node_border_width, tokens::shape::BORDER_WIDTH_HAIR);
         assert_eq!(def.edge_alpha_default, 0.85);
         assert_eq!(def.edge_alpha_dimmed, 0.25);
 
@@ -1459,14 +1575,25 @@ mod tests {
         assert_eq!(stg.border_selected, tokens::Palette::STAGE.accent.rgb());
         assert_eq!(stg.border_hover, tokens::Palette::STAGE.accent.rgb());
         assert_eq!(stg.pill_border, tokens::Palette::STAGE.line.rgb());
+        assert_eq!(stg.pill_border_alpha, 1.0);
         assert_eq!(stg.text_primary, tokens::Palette::STAGE.text_primary.rgb());
+        assert_eq!(stg.azure, tokens::Palette::STAGE.azure.rgb());
+        assert_eq!(stg.gold, tokens::Palette::STAGE.gold.rgb());
+        assert_eq!(stg.edge_width, 1.5);
+        assert_eq!(stg.node_border_width, 1.5);
+        assert_eq!(STAGE_SELECTED_BORDER_WIDTH, 2.0);
+        assert_eq!(STAGE_SELECTED_GLOW_WIDTH, 6.0);
+        const {
+            assert!(STAGE_SELECTED_GLOW_ALPHA <= 0.18);
+        }
+        assert_eq!(STAGE_RIBBON_WIDTH, 3.0);
         assert_eq!(
             stg.pill_fill,
             (
-                tokens::Palette::STAGE.bg_raised.0,
-                tokens::Palette::STAGE.bg_raised.1,
-                tokens::Palette::STAGE.bg_raised.2,
-                0.95
+                tokens::Palette::STAGE.bg_panel.0,
+                tokens::Palette::STAGE.bg_panel.1,
+                tokens::Palette::STAGE.bg_panel.2,
+                1.0
             )
         );
         assert_eq!(
@@ -1475,7 +1602,7 @@ mod tests {
                 tokens::Palette::STAGE.bg_panel.0,
                 tokens::Palette::STAGE.bg_panel.1,
                 tokens::Palette::STAGE.bg_panel.2,
-                0.95
+                1.0
             )
         );
         assert_eq!(
@@ -1484,29 +1611,190 @@ mod tests {
                 tokens::Palette::STAGE.bg_raised.0,
                 tokens::Palette::STAGE.bg_raised.1,
                 tokens::Palette::STAGE.bg_raised.2,
-                0.95
+                1.0
             )
         );
+    }
 
-        let fault_text_c = contrast_ratio(
-            stg.fault_red,
-            (stg.fault_fill.0, stg.fault_fill.1, stg.fault_fill.2),
-        );
-        assert!(
-            fault_text_c >= 4.5,
-            "Stage fault node text contrast {} must be >= 4.5",
-            fault_text_c
-        );
+    #[test]
+    fn test_stage_state_diagram_all_text_and_fill_contrast() {
+        let stg = DiagramColors::from_palette(tokens::Palette::STAGE);
+        let composite = |fg: (f64, f64, f64), alpha: f64, bg: (f64, f64, f64)| {
+            mix_rgb(bg, fg, alpha.clamp(0.0, 1.0))
+        };
 
-        let pill_text_c = contrast_ratio(
-            stg.text_primary,
+        let dim_pill_bg = composite(
             (stg.pill_fill.0, stg.pill_fill.1, stg.pill_fill.2),
+            stg.pill_fill_dimmed_alpha,
+            stg.canvas_bg,
         );
-        assert!(
-            pill_text_c >= 4.5,
-            "Stage guard pill text contrast {} must be >= 4.5",
-            pill_text_c
-        );
+        let dim_badge_bg = composite(stg.bg_raised, 0.65, stg.canvas_bg);
+        let fault_fill_rgb = (stg.fault_fill.0, stg.fault_fill.1, stg.fault_fill.2);
+        let dim_fault_badge_bg = composite(fault_fill_rgb, 0.65, stg.canvas_bg);
+
+        let pairs = [
+            (
+                "empty placeholder vs canvas_bg",
+                stg.text_muted,
+                stg.canvas_bg,
+            ),
+            (
+                "lane banner (normal) vs canvas_bg",
+                composite(stg.text_muted, stg.lane_alpha_normal, stg.canvas_bg),
+                stg.canvas_bg,
+            ),
+            (
+                "lane banner (selected node active) vs canvas_bg",
+                composite(stg.text_muted, stg.lane_alpha_selected, stg.canvas_bg),
+                stg.canvas_bg,
+            ),
+            (
+                "normal node label vs node_fill_default",
+                stg.text_primary,
+                (
+                    stg.node_fill_default.0,
+                    stg.node_fill_default.1,
+                    stg.node_fill_default.2,
+                ),
+            ),
+            (
+                "initial node label vs node_fill_initial",
+                stg.text_primary,
+                (
+                    stg.node_fill_initial.0,
+                    stg.node_fill_initial.1,
+                    stg.node_fill_initial.2,
+                ),
+            ),
+            (
+                "[INIT] tag vs node_fill_initial",
+                stg.text_muted,
+                (
+                    stg.node_fill_initial.0,
+                    stg.node_fill_initial.1,
+                    stg.node_fill_initial.2,
+                ),
+            ),
+            (
+                "selected node label vs node_fill_selected",
+                stg.text_primary,
+                (
+                    stg.node_fill_selected.0,
+                    stg.node_fill_selected.1,
+                    stg.node_fill_selected.2,
+                ),
+            ),
+            (
+                "hovered node label vs node_fill_hover",
+                stg.text_primary,
+                (
+                    stg.node_fill_hover.0,
+                    stg.node_fill_hover.1,
+                    stg.node_fill_hover.2,
+                ),
+            ),
+            (
+                "fault node label & [FAULT] tag vs fault_fill",
+                stg.fault_red,
+                fault_fill_rgb,
+            ),
+            (
+                "dimmed node label vs node_fill_dimmed",
+                composite(
+                    stg.text_muted,
+                    stg.dimmed_text_alpha,
+                    (
+                        stg.node_fill_dimmed.0,
+                        stg.node_fill_dimmed.1,
+                        stg.node_fill_dimmed.2,
+                    ),
+                ),
+                (
+                    stg.node_fill_dimmed.0,
+                    stg.node_fill_dimmed.1,
+                    stg.node_fill_dimmed.2,
+                ),
+            ),
+            (
+                "dimmed [INIT] tag vs node_fill_dimmed",
+                composite(
+                    stg.text_muted,
+                    stg.dimmed_tag_alpha,
+                    (
+                        stg.node_fill_dimmed.0,
+                        stg.node_fill_dimmed.1,
+                        stg.node_fill_dimmed.2,
+                    ),
+                ),
+                (
+                    stg.node_fill_dimmed.0,
+                    stg.node_fill_dimmed.1,
+                    stg.node_fill_dimmed.2,
+                ),
+            ),
+            (
+                "dimmed [FAULT] tag vs node_fill_dimmed",
+                composite(
+                    stg.fault_red,
+                    stg.dimmed_tag_alpha,
+                    (
+                        stg.node_fill_dimmed.0,
+                        stg.node_fill_dimmed.1,
+                        stg.node_fill_dimmed.2,
+                    ),
+                ),
+                (
+                    stg.node_fill_dimmed.0,
+                    stg.node_fill_dimmed.1,
+                    stg.node_fill_dimmed.2,
+                ),
+            ),
+            (
+                "edge guard pill (normal) vs pill_fill",
+                stg.text_primary,
+                (stg.pill_fill.0, stg.pill_fill.1, stg.pill_fill.2),
+            ),
+            (
+                "edge guard pill (fault) vs pill_fill",
+                stg.fault_red,
+                (stg.pill_fill.0, stg.pill_fill.1, stg.pill_fill.2),
+            ),
+            (
+                "edge guard pill (dimmed) vs dimmed pill_fill",
+                composite(stg.text_muted, stg.dimmed_tag_alpha, dim_pill_bg),
+                dim_pill_bg,
+            ),
+            (
+                "edge guard pill (dimmed fault) vs dimmed pill_fill",
+                composite(stg.fault_red, stg.dimmed_tag_alpha, dim_pill_bg),
+                dim_pill_bg,
+            ),
+            (
+                "node badge (normal) vs bg_raised",
+                stg.text_primary,
+                stg.bg_raised,
+            ),
+            (
+                "node badge (dimmed) vs dimmed badge bg",
+                composite(stg.text_muted, stg.dimmed_tag_alpha, dim_badge_bg),
+                dim_badge_bg,
+            ),
+            (
+                "fault node badge (dimmed) vs dimmed fault badge bg",
+                composite(stg.fault_red, stg.dimmed_tag_alpha, dim_fault_badge_bg),
+                dim_fault_badge_bg,
+            ),
+        ];
+
+        for (name, fg, bg) in pairs {
+            let ratio = contrast_ratio(fg, bg);
+            assert!(
+                ratio >= 4.5,
+                "Stage state diagram contrast for '{}' is {:.3}:1 (expected >= 4.5)",
+                name,
+                ratio
+            );
+        }
     }
 
     #[test]
@@ -1540,6 +1828,8 @@ mod tests {
         let mut saw_bg_void = false;
         let mut saw_bg_panel = false;
         let mut saw_node_border_or_line = false;
+        let mut saw_azure_ribbon = false;
+        let mut saw_gold_ribbon = false;
         // ARGB32 on little-endian stores bytes B, G, R, A
         for px in data.chunks_exact(4) {
             let (b, g, r) = (px[0], px[1], px[2]);
@@ -1553,6 +1843,20 @@ mod tests {
             if r < 110 && g < 150 && b > 140 {
                 saw_node_border_or_line = true;
             }
+            // Match Stage azure (#59A0CF) left ribbon bar on non-initial nodes
+            if (r as i32 - 0x59).abs() <= 4
+                && (g as i32 - 0xA0).abs() <= 4
+                && (b as i32 - 0xCF).abs() <= 4
+            {
+                saw_azure_ribbon = true;
+            }
+            // Match Stage gold (#C9A24F) left ribbon bar on initial node
+            if (r as i32 - 0xC9).abs() <= 4
+                && (g as i32 - 0xA2).abs() <= 4
+                && (b as i32 - 0x4F).abs() <= 4
+            {
+                saw_gold_ribbon = true;
+            }
         }
         assert!(
             saw_bg_void,
@@ -1563,5 +1867,102 @@ mod tests {
             saw_node_border_or_line,
             "Expected Stage blue/navy borders, edges, or accent strokes"
         );
+        assert!(
+            saw_azure_ribbon,
+            "Expected Stage azure 3px left ribbon on nodes"
+        );
+        assert!(
+            saw_gold_ribbon,
+            "Expected Stage gold 3px left ribbon on initial node"
+        );
+    }
+
+    #[test]
+    fn test_stage_node_shadow_ribbon_and_selection_glow() {
+        let stage = DiagramColors::from_palette(tokens::Palette::STAGE);
+        let default = DiagramColors::from_palette(tokens::Palette::DEFAULT);
+
+        let pixel_at = |surface: &mut cairo::ImageSurface, px_x: i32, px_y: i32| -> (u8, u8, u8) {
+            surface.flush();
+            let stride = surface.stride() as usize;
+            let data = surface.data().expect("surface data");
+            let off = px_y as usize * stride + px_x as usize * 4;
+            (data[off + 2], data[off + 1], data[off])
+        };
+
+        // Stage selected initial node at (40, 40, 175, 54) on bg_void canvas
+        let mut s_stg = cairo::ImageSurface::create(cairo::Format::ARgb32, 300, 160).unwrap();
+        {
+            let cr = cairo::Context::new(&s_stg).unwrap();
+            cr.set_source_rgb(stage.canvas_bg.0, stage.canvas_bg.1, stage.canvas_bg.2);
+            cr.rectangle(0.0, 0.0, 300.0, 160.0);
+            let _ = cr.fill();
+            draw_rounded_node(
+                &cr, 40.0, 40.0, 175.0, 54.0, 2.0, false, true, true, false, false, 0.0, &stage,
+            );
+        }
+        // Background outside node+glow+shadow stays exact bg_void
+        assert_eq!(pixel_at(&mut s_stg, 10, 10), (0xF4, 0xF9, 0xFD));
+        // Soft shadow below node (40..215, y=97 inside +2..+4 offset) is darker than bg_void
+        let shadow_px = pixel_at(&mut s_stg, 120, 97);
+        assert!(
+            shadow_px.0 < 0xF4 && shadow_px.1 < 0xF9,
+            "Expected soft shadow pixel below Stage node, got {:?}",
+            shadow_px
+        );
+        // 6px selection glow outside left border (x=36 is 4px outside x=40) is tinted toward accent
+        let glow_px = pixel_at(&mut s_stg, 36, 67);
+        assert!(
+            glow_px.0 < 0xF0 && glow_px.2 > glow_px.0,
+            "Expected 6px accent glow outside Stage selected node, got {:?}",
+            glow_px
+        );
+        // 3px left ribbon on initial node (x=42, y=67) is Stage gold (#C9A24F)
+        let ribbon_gold = pixel_at(&mut s_stg, 42, 67);
+        assert!(
+            (ribbon_gold.0 as i32 - 0xC9).abs() <= 2
+                && (ribbon_gold.1 as i32 - 0xA2).abs() <= 2
+                && (ribbon_gold.2 as i32 - 0x4F).abs() <= 2,
+            "Expected gold ribbon on Stage initial node, got {:?}",
+            ribbon_gold
+        );
+
+        // Stage non-initial unselected node shows azure ribbon at (42, 67)
+        let mut s_norm = cairo::ImageSurface::create(cairo::Format::ARgb32, 300, 160).unwrap();
+        {
+            let cr = cairo::Context::new(&s_norm).unwrap();
+            cr.set_source_rgb(stage.canvas_bg.0, stage.canvas_bg.1, stage.canvas_bg.2);
+            cr.rectangle(0.0, 0.0, 300.0, 160.0);
+            let _ = cr.fill();
+            draw_rounded_node(
+                &cr, 40.0, 40.0, 175.0, 54.0, 2.0, false, false, false, false, false, 0.0, &stage,
+            );
+        }
+        let ribbon_azure = pixel_at(&mut s_norm, 42, 67);
+        assert!(
+            (ribbon_azure.0 as i32 - 0x59).abs() <= 2
+                && (ribbon_azure.1 as i32 - 0xA0).abs() <= 2
+                && (ribbon_azure.2 as i32 - 0xCF).abs() <= 2,
+            "Expected azure ribbon on Stage normal node, got {:?}",
+            ribbon_azure
+        );
+
+        // Default skin: no shadow below node and no glow outside left border
+        let mut s_def = cairo::ImageSurface::create(cairo::Format::ARgb32, 300, 160).unwrap();
+        {
+            let cr = cairo::Context::new(&s_def).unwrap();
+            cr.set_source_rgb(
+                default.canvas_bg.0,
+                default.canvas_bg.1,
+                default.canvas_bg.2,
+            );
+            cr.rectangle(0.0, 0.0, 300.0, 160.0);
+            let _ = cr.fill();
+            draw_rounded_node(
+                &cr, 40.0, 40.0, 175.0, 54.0, 2.0, false, true, true, false, false, 0.0, &default,
+            );
+        }
+        assert_eq!(pixel_at(&mut s_def, 120, 97), (0x0A, 0x0D, 0x10));
+        assert_eq!(pixel_at(&mut s_def, 36, 67), (0x0A, 0x0D, 0x10));
     }
 }
