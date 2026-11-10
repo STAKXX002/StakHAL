@@ -5,6 +5,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 pub mod cli;
 pub mod config;
+pub mod easter_egg;
 pub mod state;
 pub mod toolchain;
 pub mod ui;
@@ -141,6 +142,7 @@ pub fn navigate_stack(
     }
 
     stack.set_visible_child_full(child_name, gtk4::StackTransitionType::Crossfade);
+    ui::skin_overlay::trigger_stack_header_flash(stack);
 }
 
 use state::{AppState, AppWidgets};
@@ -166,53 +168,78 @@ pub fn run() {
     app.run_with_args(&["stakhal-ui"]);
 }
 
-pub fn build_ui(app: &adw::Application) {
-    adw::StyleManager::default().set_color_scheme(adw::ColorScheme::ForceDark);
+pub fn build_css(p: &ui::tokens::Palette) -> String {
+    let bg_raised = if *p == ui::tokens::Palette::DEFAULT {
+        "#1a2026"
+    } else {
+        p.bg_raised.hex()
+    };
+    let accent_hover = if *p == ui::tokens::Palette::DEFAULT {
+        "#5fe3d7"
+    } else {
+        p.accent_hover.hex()
+    };
+    let accent_pressed = if *p == ui::tokens::Palette::DEFAULT {
+        "#3bb3a8"
+    } else {
+        p.accent_pressed.hex()
+    };
 
-    let css_provider = gtk4::CssProvider::new();
-    css_provider.load_from_string(r#"
-@define-color bg_void #0A0D10;
-@define-color bg_panel #14181C;
-@define-color border_hair #262C31;
-@define-color text_primary #E4E7EA;
-@define-color text_muted #6B7378;
-@define-color state_ready #34D399;
-@define-color state_active #F5A623;
-@define-color state_error #E5484D;
-@define-color accent #4FD1C5;
+    let bg_void = p.bg_void.hex();
+    let bg_panel = p.bg_panel.hex();
+    let border_hair = p.border_hair.hex();
+    let text_primary = p.text_primary.hex();
+    let text_muted = p.text_muted.hex();
+    let state_ready = p.state_ready.hex();
+    let state_active = p.state_active.hex();
+    let state_error = p.state_error.hex();
+    let accent = p.accent.hex();
+    let text_strong = p.text_strong.hex();
 
-* {
+    let mut css = format!(
+        r#"
+@define-color bg_void {bg_void};
+@define-color bg_panel {bg_panel};
+@define-color border_hair {border_hair};
+@define-color text_primary {text_primary};
+@define-color text_muted {text_muted};
+@define-color state_ready {state_ready};
+@define-color state_active {state_active};
+@define-color state_error {state_error};
+@define-color accent {accent};
+
+* {{
     font-family: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
     font-size: 13px;
     border-radius: 0px;
     box-shadow: none;
-}
+}}
 
-window, dialog {
+window, dialog {{
     background-color: @bg_void;
     color: @text_primary;
-}
+}}
 
-windowcontrols button {
+windowcontrols button {{
     border: none;
     background: transparent;
     border-radius: 0px;
-}
+}}
 
-windowcontrols button:hover {
+windowcontrols button:hover {{
     border: none;
     background: transparent;
-}
+}}
 
 /* Panel and Card Containers */
-.card, frame, scrolledwindow.card, box.card {
+.card, frame, scrolledwindow.card, box.card {{
     background-color: @bg_panel;
     border: 1px solid @border_hair;
     border-radius: 0px;
-}
+}}
 
 /* Buttons */
-button.stakhal-btn {
+button.stakhal-btn {{
     font-family: 'IBM Plex Sans', sans-serif;
     font-weight: 500;
     border: 1px solid @border_hair;
@@ -222,19 +249,19 @@ button.stakhal-btn {
                 background-color 100ms cubic-bezier(0.0, 0.0, 0.2, 1.0),
                 border-color 100ms cubic-bezier(0.0, 0.0, 0.2, 1.0);
     border-radius: 2px;
-}
+}}
 
-button.stakhal-btn:hover {
+button.stakhal-btn:hover {{
     border-color: @accent;
-    background-color: #1a2026;
-    color: #ffffff;
-}
+    background-color: {bg_raised};
+    color: {text_strong};
+}}
 
-button.stakhal-btn:active {
-    background-color: #262C31;
-}
+button.stakhal-btn:active {{
+    background-color: {border_hair};
+}}
 
-button.stakhal-btn.suggested-action {
+button.stakhal-btn.suggested-action {{
     border: 1px solid @accent;
     background-color: @accent;
     color: @bg_void;
@@ -243,19 +270,19 @@ button.stakhal-btn.suggested-action {
                 background-color 100ms cubic-bezier(0.0, 0.0, 0.2, 1.0),
                 border-color 100ms cubic-bezier(0.0, 0.0, 0.2, 1.0);
     border-radius: 2px;
-}
+}}
 
-button.stakhal-btn.suggested-action:hover {
-    border-color: #5fe3d7;
-    background-color: #5fe3d7;
+button.stakhal-btn.suggested-action:hover {{
+    border-color: {accent_hover};
+    background-color: {accent_hover};
     color: @bg_void;
-}
+}}
 
-button.stakhal-btn.suggested-action:active {
-    background-color: #3bb3a8;
-}
+button.stakhal-btn.suggested-action:active {{
+    background-color: {accent_pressed};
+}}
 
-button.stakhal-btn.flat {
+button.stakhal-btn.flat {{
     border: 1px solid transparent;
     background-color: transparent;
     color: @text_muted;
@@ -263,120 +290,761 @@ button.stakhal-btn.flat {
                 background-color 100ms cubic-bezier(0.0, 0.0, 0.2, 1.0),
                 border-color 100ms cubic-bezier(0.0, 0.0, 0.2, 1.0);
     border-radius: 2px;
-}
+}}
 
-button.stakhal-btn.flat:hover {
+button.stakhal-btn.flat:hover {{
     border-color: @border_hair;
     background-color: @bg_panel;
     color: @text_primary;
-}
+}}
 
-button.stakhal-btn.flat:active {
-    background-color: #1a2026;
-}
+button.stakhal-btn.flat:active {{
+    background-color: {bg_raised};
+}}
 
 /* Rows and ListBoxes */
-row, listboxrow, actionrow {
+row, listboxrow, actionrow {{
     border-radius: 0px;
     transition: none;
     border-bottom: 1px solid @border_hair;
-}
+}}
 
-.stagger-reveal-row {
+.stagger-reveal-row {{
     transition: opacity 180ms cubic-bezier(0.0, 0.0, 0.2, 1.0);
-}
+}}
 
-.clickable-row {
+.clickable-row {{
     transition: color 100ms cubic-bezier(0.0, 0.0, 0.2, 1.0),
                 background-color 100ms cubic-bezier(0.0, 0.0, 0.2, 1.0);
-}
+}}
 
-.clickable-row:hover {
-    background-color: #1a2026;
-}
+.clickable-row:hover {{
+    background-color: {bg_raised};
+}}
 
-.clickable-row:active {
-    background-color: #262C31;
-}
+.clickable-row:active {{
+    background-color: {border_hair};
+}}
 
 /* Data / Monospace Typography Split */
-textview, textview text, .data-mono, .data-mono * {
+textview, textview text, .data-mono, .data-mono * {{
     font-family: 'JetBrains Mono', 'DejaVu Sans Mono', 'Liberation Mono', monospace;
     font-size: 12px;
-}
+}}
 
-textview text {
+textview text {{
     background-color: @bg_panel;
     color: @text_primary;
-}
+}}
 
-.dim-label {
+.dim-label {{
     color: @text_muted;
-}
+}}
 
-.title-1, .title-2, .title-3, .title-4, .heading {
+.title-1, .title-2, .title-3, .title-4, .heading {{
     font-family: 'IBM Plex Sans', sans-serif;
     color: @text_primary;
     font-weight: 600;
-}
+}}
 
 /* Status Chips and Badges */
-label.card, .status-chip {
+label.card, .status-chip {{
     transition: color 180ms cubic-bezier(0.0, 0.0, 0.2, 1.0),
                 background-color 180ms cubic-bezier(0.0, 0.0, 0.2, 1.0),
                 border-color 180ms cubic-bezier(0.0, 0.0, 0.2, 1.0);
     padding: 2px 8px;
-}
+}}
 
 /* Strictly Reserved Status Classes (signal only, never decoration) */
-.status-ready, .status-ok {
+.status-ready, .status-ok {{
     color: @state_ready;
     font-weight: 600;
     transition: color 180ms cubic-bezier(0.0, 0.0, 0.2, 1.0),
                 background-color 180ms cubic-bezier(0.0, 0.0, 0.2, 1.0),
                 border-color 180ms cubic-bezier(0.0, 0.0, 0.2, 1.0);
-}
+}}
 
-.status-active, .status-busy, .status-warning {
+.status-active, .status-busy, .status-warning {{
     color: @state_active;
     font-weight: 600;
     transition: color 180ms cubic-bezier(0.0, 0.0, 0.2, 1.0),
                 background-color 180ms cubic-bezier(0.0, 0.0, 0.2, 1.0),
                 border-color 180ms cubic-bezier(0.0, 0.0, 0.2, 1.0);
-}
+}}
 
-.status-error, .status-fault {
+.status-error, .status-fault {{
     color: @state_error;
     font-weight: 600;
     transition: color 180ms cubic-bezier(0.0, 0.0, 0.2, 1.0),
                 background-color 180ms cubic-bezier(0.0, 0.0, 0.2, 1.0),
                 border-color 180ms cubic-bezier(0.0, 0.0, 0.2, 1.0);
-}
+}}
 
-.status-idle {
+.status-idle {{
     color: @text_muted;
     transition: color 180ms cubic-bezier(0.0, 0.0, 0.2, 1.0),
                 background-color 180ms cubic-bezier(0.0, 0.0, 0.2, 1.0),
                 border-color 180ms cubic-bezier(0.0, 0.0, 0.2, 1.0);
-}
+}}
 
-.implicit-badge {
+.implicit-badge {{
     font-family: 'JetBrains Mono', monospace;
     color: @text_muted;
-    background-color: #1a2026;
+    background-color: {bg_raised};
     border: 1px solid @border_hair;
     border-radius: 2px;
     padding: 2px 6px;
-}
+}}
 
-dropdown button {
+dropdown button {{
     border: 1px solid @border_hair;
     background-color: @bg_panel;
     color: @text_primary;
     border-radius: 2px;
     font-family: 'IBM Plex Sans', sans-serif;
+}}
+"#
+    );
+
+    if *p == ui::tokens::Palette::STAGE {
+        let header = p.header.hex();
+        let header_fg = p.header_fg.hex();
+        let gold = p.gold.hex();
+        let gold_light = p.gold_light.hex();
+        let gold_deep = p.gold_deep.hex();
+        let sky = p.sky.hex();
+        let azure = p.azure.hex();
+        css.push_str(&format!(
+            r#"
+@define-color bg_raised {bg_raised};
+@define-color header {header};
+@define-color header_fg {header_fg};
+@define-color gold {gold};
+@define-color gold_light {gold_light};
+@define-color gold_deep {gold_deep};
+@define-color sky {sky};
+@define-color azure {azure};
+
+@keyframes stage-shine-sweep {{
+    0% {{
+        background-position: 120% 0%;
+    }}
+    100% {{
+        background-position: -20% 0%;
+    }}
+}}
+
+@keyframes stage-active-breath {{
+    0% {{
+        box-shadow: 0 0 0 0 alpha(@gold_deep, 0);
+    }}
+    100% {{
+        box-shadow: 0 0 0 3px alpha(@gold_deep, 0.35);
+    }}
+}}
+
+@define-color window_bg_color @bg_void;
+@define-color window_fg_color @text_primary;
+@define-color view_bg_color @bg_panel;
+@define-color view_fg_color @text_primary;
+@define-color headerbar_bg_color @header;
+@define-color headerbar_fg_color @header_fg;
+@define-color headerbar_border_color @gold;
+@define-color headerbar_backdrop_color @header;
+@define-color card_bg_color @bg_panel;
+@define-color card_fg_color @text_primary;
+@define-color dialog_bg_color @bg_panel;
+@define-color dialog_fg_color @text_primary;
+@define-color popover_bg_color @bg_panel;
+@define-color popover_fg_color @text_primary;
+@define-color accent_bg_color @accent;
+@define-color accent_fg_color @bg_void;
+@define-color accent_color @accent;
+
+:root {{
+    --window-bg-color: @window_bg_color;
+    --window-fg-color: @window_fg_color;
+    --view-bg-color: @view_bg_color;
+    --view-fg-color: @view_fg_color;
+    --headerbar-bg-color: @headerbar_bg_color;
+    --headerbar-fg-color: @headerbar_fg_color;
+    --headerbar-border-color: @headerbar_border_color;
+    --headerbar-backdrop-color: @headerbar_backdrop_color;
+    --headerbar-shade-color: alpha(@gold, 0.25);
+    --card-bg-color: @card_bg_color;
+    --card-fg-color: @card_fg_color;
+    --dialog-bg-color: @dialog_bg_color;
+    --dialog-fg-color: @dialog_fg_color;
+    --popover-bg-color: @popover_bg_color;
+    --popover-fg-color: @popover_fg_color;
+    --accent-bg-color: @accent_bg_color;
+    --accent-fg-color: @accent_fg_color;
+    --accent-color: @accent_color;
+    --dim-opacity: 100%;
+    --disabled-opacity: 75%;
+}}
+
+window, dialog {{
+    background-color: @bg_void;
+    background-image: linear-gradient(180deg, @bg_panel 0%, mix(@bg_void, @azure, 0.28) 100%);
+    color: @text_primary;
+}}
+
+.title-3,
+.title-4 {{
+    background-image: linear-gradient(90deg, alpha(@sky, 0.65), alpha(@sky, 0));
+    border-left: 3px solid @gold;
+    padding: 4px 10px;
+    border-radius: 4px;
+    color: @text_primary;
+}}
+
+.card,
+box.card,
+list.boxed-list,
+frame,
+scrolledwindow.card {{
+    background-color: @bg_panel;
+    border: 1px solid @sky;
+    box-shadow: inset 0 2px 0 @azure,
+                0 1px 2px alpha(@text_primary, 0.08),
+                0 8px 20px alpha(@azure, 0.18);
+    transition: opacity 200ms cubic-bezier(0.0, 0.0, 0.2, 1.0),
+                transform 200ms cubic-bezier(0.0, 0.0, 0.2, 1.0);
+}}
+
+list, listview {{
+    background-color: @view_bg_color;
+    color: @view_fg_color;
+}}
+
+row,
+listboxrow,
+actionrow,
+row.stagger-reveal-row {{
+    background-color: @card_bg_color;
+    color: @card_fg_color;
+    border-bottom: 1px solid @border_hair;
+    box-shadow: inset 0 0 0 @accent;
+    transition: background-color 140ms cubic-bezier(0.0, 0.0, 0.2, 1.0),
+                box-shadow 140ms cubic-bezier(0.0, 0.0, 0.2, 1.0),
+                opacity 200ms cubic-bezier(0.0, 0.0, 0.2, 1.0),
+                transform 200ms cubic-bezier(0.0, 0.0, 0.2, 1.0);
+}}
+
+.stage-pre,
+row.stage-pre,
+listboxrow.stage-pre,
+actionrow.stage-pre,
+row.stagger-reveal-row.stage-pre,
+.card.stage-pre,
+box.card.stage-pre,
+list.boxed-list.stage-pre,
+frame.stage-pre,
+scrolledwindow.card.stage-pre {{
+    opacity: 0;
+    transform: translateY(6px);
+    transition: none;
+}}
+
+row:nth-child(even) {{
+    background-color: alpha(@sky, 0.18);
+}}
+
+row:hover,
+listboxrow:hover,
+row.activatable:hover,
+.clickable-row:hover {{
+    background-color: alpha(@azure, 0.14);
+    box-shadow: inset 3px 0 0 @accent;
+}}
+
+row:selected,
+listboxrow:selected,
+row:selected:hover,
+listboxrow:selected:hover,
+row.activatable:selected:hover {{
+    background-color: alpha(@azure, 0.22);
+    box-shadow: inset 3px 0 0 @accent;
+}}
+
+row .title,
+row label.title {{
+    opacity: 1;
+    color: @text_primary;
+}}
+
+.dim-label,
+.subtitle,
+row .subtitle,
+row .subtitle label,
+row label.subtitle {{
+    opacity: 1;
+    color: @text_muted;
+}}
+
+label.card,
+.status-chip {{
+    border-radius: 2px;
+    padding: 2px 8px;
+    box-shadow: none;
+    font-weight: 600;
+}}
+
+.status-idle,
+label.card.status-idle,
+.status-chip.status-idle {{
+    background-color: mix(@bg_panel, @sky, 0.28);
+    border: 1px solid @text_muted;
+    color: @text_muted;
+    border-radius: 2px;
+    padding: 2px 8px;
+    box-shadow: none;
+    animation: none;
+}}
+
+.status-ready,
+.status-ok,
+label.card.status-ready,
+.status-chip.status-ready {{
+    background-color: mix(@bg_panel, @state_ready, 0.16);
+    border: 1px solid @state_ready;
+    color: mix(@state_ready, @text_primary, 0.25);
+    border-radius: 2px;
+    padding: 2px 8px;
+    box-shadow: none;
+    animation: none;
+}}
+
+.status-active,
+.status-busy,
+.status-warning,
+label.card.status-active,
+.status-chip.status-active {{
+    background-color: mix(@bg_panel, @state_active, 0.16);
+    border: 1px solid @state_active;
+    color: mix(@state_active, @text_primary, 0.25);
+    border-radius: 2px;
+    padding: 2px 8px;
+    box-shadow: none;
+    animation: none;
+}}
+
+.status-active,
+label.card.status-active,
+.status-chip.status-active {{
+    animation: stage-active-breath 1.6s ease-in-out infinite alternate;
+}}
+
+.status-error,
+.status-fault,
+label.card.status-error,
+.status-chip.status-error {{
+    background-color: mix(@bg_panel, @state_error, 0.16);
+    border: 1px solid @state_error;
+    color: mix(@state_error, @text_primary, 0.25);
+    border-radius: 2px;
+    padding: 2px 8px;
+    box-shadow: none;
+    animation: none;
+}}
+
+toast,
+toast label,
+toast button {{
+    background-color: @header;
+    color: @header_fg;
+}}
+
+toast .heading,
+toast .dim-label,
+toast button label,
+toast image {{
+    background-color: transparent;
+    color: @header_fg;
+}}
+
+toast {{
+    background-image: none;
+    border-radius: 150px;
+    border: 1px solid alpha(@gold, 0.6);
+}}
+
+toast button:hover {{
+    background-color: alpha(@header_fg, 0.14);
+    color: @header_fg;
+}}
+
+toast button.circular {{
+    border-radius: 9999px;
+}}
+
+entry,
+entry text {{
+    background-color: @bg_panel;
+    color: @text_primary;
+}}
+
+entry {{
+    border: 1px solid @border_hair;
+    border-radius: 2px;
+    box-shadow: 0 0 0 0 alpha(@accent, 0);
+    transition: border-color 140ms cubic-bezier(0.0, 0.0, 0.2, 1.0),
+                box-shadow 140ms cubic-bezier(0.0, 0.0, 0.2, 1.0);
+}}
+
+entry:focus-within {{
+    border-color: @accent;
+    outline: none;
+    box-shadow: 0 0 0 3px alpha(@accent, 0.35);
+}}
+
+entry > text > placeholder,
+text > placeholder {{
+    color: @text_muted;
+    opacity: 1;
+}}
+
+dropdown button {{
+    border: 1px solid @sky;
+    background-color: @bg_panel;
+    color: @text_primary;
+    box-shadow: 0 0 0 0 alpha(@accent, 0);
+    transition: background-color 120ms cubic-bezier(0.0, 0.0, 0.2, 1.0),
+                border-color 140ms cubic-bezier(0.0, 0.0, 0.2, 1.0),
+                box-shadow 140ms cubic-bezier(0.0, 0.0, 0.2, 1.0),
+                transform 120ms cubic-bezier(0.0, 0.0, 0.2, 1.0);
+}}
+
+dropdown button:hover {{
+    border-color: @accent;
+    background-color: @bg_raised;
+}}
+
+dropdown button:focus-visible,
+dropdown button:focus-within {{
+    border-color: @accent;
+    outline: none;
+    box-shadow: 0 0 0 3px alpha(@accent, 0.35);
+}}
+
+button.flat:disabled,
+button.stakhal-btn.flat:disabled {{
+    filter: Opacity(var(--disabled-opacity));
+}}
+
+button.stakhal-btn,
+button.stakhal-btn.suggested-action,
+button.stakhal-btn.flat {{
+    box-shadow: 0 0 0 0 alpha(@accent, 0);
+    transition: background-color 120ms cubic-bezier(0.0, 0.0, 0.2, 1.0),
+                border-color 120ms cubic-bezier(0.0, 0.0, 0.2, 1.0),
+                color 120ms cubic-bezier(0.0, 0.0, 0.2, 1.0),
+                box-shadow 140ms cubic-bezier(0.0, 0.0, 0.2, 1.0),
+                transform 120ms cubic-bezier(0.0, 0.0, 0.2, 1.0);
+}}
+
+button.stakhal-btn:not(.suggested-action) {{
+    background-color: @bg_panel;
+    border: 1px solid @sky;
+    color: @accent;
+}}
+
+button.stakhal-btn.flat {{
+    background-color: alpha(@bg_panel, 0.78);
+    border: 1px solid alpha(@sky, 0.65);
+    color: @accent;
+}}
+
+button.stakhal-btn:not(.suggested-action):hover,
+button.stakhal-btn.flat:hover {{
+    background-color: @bg_panel;
+    background-image: linear-gradient(alpha(@sky, 0.35), alpha(@sky, 0.35));
+    border-color: @accent;
+    color: @accent;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 10px alpha(@accent, 0.25);
+}}
+
+button.stakhal-btn:not(.suggested-action):active,
+button.stakhal-btn.flat:active {{
+    background-color: @bg_panel;
+    background-image: linear-gradient(alpha(@sky, 0.45), alpha(@sky, 0.45));
+    border-color: @accent;
+    color: @text_primary;
+    transform: scale(0.98);
+    box-shadow: none;
+    transition-duration: 70ms;
+}}
+
+button.stakhal-btn image,
+button.flat image {{
+    color: @accent;
+}}
+
+button.stakhal-btn:not(.suggested-action):active image,
+button.stakhal-btn.flat:active image {{
+    color: @text_primary;
+}}
+
+button.stakhal-btn.suggested-action {{
+    border: 1px solid @accent;
+    background-color: @accent;
+    background-image: linear-gradient(180deg, mix(@accent, @bg_panel, 0.06), @accent);
+    color: @bg_panel;
+}}
+
+button.stakhal-btn.suggested-action image {{
+    color: @bg_panel;
+}}
+
+button.stakhal-btn.suggested-action:hover {{
+    border-color: {accent_hover};
+    background-image: none;
+    background-color: {accent_hover};
+    color: @bg_panel;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 10px alpha(@accent, 0.35);
+}}
+
+button.stakhal-btn.suggested-action:active {{
+    background-image: none;
+    border-color: {accent_pressed};
+    background-color: {accent_pressed};
+    color: @bg_panel;
+    transform: scale(0.98);
+    box-shadow: none;
+    transition-duration: 70ms;
+}}
+
+button.stakhal-btn.suggested-action.stage-shine {{
+    background-color: @accent;
+    background-image: linear-gradient(
+        105deg,
+        alpha(@gold_light, 0) 0%,
+        alpha(@gold_light, 0) 35%,
+        alpha(@gold_light, 0.48) 50%,
+        alpha(@gold_light, 0) 65%,
+        alpha(@gold_light, 0) 100%
+    );
+    background-size: 220% 100%;
+    background-repeat: no-repeat;
+    background-position: 120% 0%;
+    animation: stage-shine-sweep 700ms cubic-bezier(0.0, 0.0, 0.2, 1.0) 1;
+}}
+
+button.stakhal-btn:focus-visible,
+button.stakhal-btn.suggested-action:focus-visible,
+button.stakhal-btn.flat:focus-visible {{
+    outline: none;
+    border-color: @accent;
+    box-shadow: 0 0 0 3px alpha(@accent, 0.35);
+}}
+
+headerbar {{
+    background-color: @header;
+    background-image: linear-gradient(90deg, @header 0%, mix(@header, @accent, 0.6) 100%);
+    color: @header_fg;
+    border-bottom: 2px solid @gold;
+    box-shadow: none;
+}}
+
+headerbar label,
+headerbar .title,
+headerbar .subtitle,
+headerbar button,
+headerbar image {{
+    opacity: 1;
+    color: @header_fg;
+}}
+
+headerbar:backdrop {{
+    background-color: @header;
+    background-image: linear-gradient(90deg, @header 0%, mix(@header, @accent, 0.6) 100%);
+}}
+"#
+        ));
+    }
+
+    css
 }
-"#);
+
+pub fn apply_skin(provider: &gtk4::CssProvider, palette: ui::tokens::Palette) {
+    ui::tokens::set_palette(palette);
+    provider.load_from_string(&build_css(&palette));
+    if adw::is_initialized() {
+        let scheme = if palette == ui::tokens::Palette::STAGE {
+            adw::ColorScheme::ForceLight
+        } else {
+            adw::ColorScheme::ForceDark
+        };
+        adw::StyleManager::default().set_color_scheme(scheme);
+    }
+}
+
+pub fn queue_draw_all_canvases(
+    widgets: &AppWidgets,
+    launch_overlay_area: Option<&gtk4::DrawingArea>,
+) {
+    widgets.pinout_drawing_area.queue_draw();
+    widgets.diagram_drawing_area.queue_draw();
+    widgets.area_traceability_verify.queue_draw();
+    widgets.area_flash_verify.queue_draw();
+    if let Some(area) = launch_overlay_area {
+        if area.parent().is_some() && area.is_visible() {
+            area.queue_draw();
+        }
+    }
+}
+
+pub fn apply_skin_and_redraw(
+    provider: &gtk4::CssProvider,
+    palette: ui::tokens::Palette,
+    widgets: &AppWidgets,
+    launch_overlay_area: Option<&gtk4::DrawingArea>,
+) {
+    apply_skin(provider, palette);
+    queue_draw_all_canvases(widgets, launch_overlay_area);
+}
+
+/// Walk from the focused widget up through its parents and return `true` only
+/// if a widget is a `gtk4::Editable` or a `gtk4::TextView` whose `is_editable()` is true.
+pub fn is_text_input_focused(focused: Option<&gtk4::Widget>) -> bool {
+    let mut current = focused.cloned();
+    while let Some(widget) = current {
+        if widget.is::<gtk4::Editable>() {
+            return true;
+        }
+        if let Some(tv) = widget.downcast_ref::<gtk4::TextView>() {
+            if tv.is_editable() {
+                return true;
+            }
+        }
+        current = widget.parent();
+    }
+    false
+}
+
+/// Translate a GDK keyval and modifier state into a pure `DetectorKey`.
+pub fn gdk_key_to_detector_key(
+    key: gdk::Key,
+    modifiers: gdk::ModifierType,
+) -> easter_egg::DetectorKey {
+    let is_mod = matches!(
+        key,
+        gdk::Key::Shift_L
+            | gdk::Key::Shift_R
+            | gdk::Key::Control_L
+            | gdk::Key::Control_R
+            | gdk::Key::Alt_L
+            | gdk::Key::Alt_R
+            | gdk::Key::Super_L
+            | gdk::Key::Super_R
+            | gdk::Key::Meta_L
+            | gdk::Key::Meta_R
+            | gdk::Key::Hyper_L
+            | gdk::Key::Hyper_R
+            | gdk::Key::Caps_Lock
+            | gdk::Key::Shift_Lock
+            | gdk::Key::Num_Lock
+            | gdk::Key::Scroll_Lock
+            | gdk::Key::ISO_Level3_Shift
+            | gdk::Key::ISO_Level5_Shift
+    );
+    if is_mod {
+        return easter_egg::DetectorKey::Modifier;
+    }
+
+    let shortcut_mask = gdk::ModifierType::CONTROL_MASK
+        | gdk::ModifierType::ALT_MASK
+        | gdk::ModifierType::SUPER_MASK;
+    if modifiers.intersects(shortcut_mask) {
+        return easter_egg::DetectorKey::Other;
+    }
+
+    match key {
+        gdk::Key::Up | gdk::Key::KP_Up => easter_egg::DetectorKey::Up,
+        gdk::Key::Down | gdk::Key::KP_Down => easter_egg::DetectorKey::Down,
+        gdk::Key::Left | gdk::Key::KP_Left => easter_egg::DetectorKey::Left,
+        gdk::Key::Right | gdk::Key::KP_Right => easter_egg::DetectorKey::Right,
+        other => match other.to_unicode() {
+            Some(ch) if !ch.is_control() => easter_egg::DetectorKey::Char(ch),
+            _ => easter_egg::DetectorKey::Other,
+        },
+    }
+}
+
+/// Attach a capture-phase key controller to the main window to detect the Konami code.
+/// Always returns `glib::Propagation::Proceed` so normal shortcuts and navigation are unaffected.
+pub fn setup_konami_key_controller(
+    window: &adw::ApplicationWindow,
+    state: &Rc<RefCell<AppState>>,
+    widgets: &Rc<AppWidgets>,
+    skin_ctrl: &ui::skin_overlay::SkinOverlayController,
+) {
+    let key_ctrl = gtk4::EventControllerKey::new();
+    key_ctrl.set_propagation_phase(gtk4::PropagationPhase::Capture);
+
+    let detector = Rc::new(RefCell::new(easter_egg::SequenceDetector::new()));
+    let win_weak = window.downgrade();
+    let state_rc = Rc::clone(state);
+    let widgets_rc = Rc::clone(widgets);
+    let skin_ctrl_cloned = skin_ctrl.clone();
+
+    key_ctrl.connect_key_pressed(move |_, keyval, _, modifiers| {
+        let Some(win) = win_weak.upgrade() else {
+            return glib::Propagation::Proceed;
+        };
+
+        let focused = gtk4::prelude::RootExt::focus(&win);
+        if is_text_input_focused(focused.as_ref()) {
+            return glib::Propagation::Proceed;
+        }
+
+        let already_unlocked = state_rc
+            .try_borrow()
+            .map(|st| st.easter_egg_unlocked)
+            .unwrap_or(true);
+        if already_unlocked {
+            return glib::Propagation::Proceed;
+        }
+
+        let key = gdk_key_to_detector_key(keyval, modifiers);
+        let triggered = match detector.try_borrow_mut() {
+            Ok(mut det) => det.feed(key),
+            Err(_) => return glib::Propagation::Proceed,
+        };
+
+        if triggered {
+            if let Ok(mut st) = state_rc.try_borrow_mut() {
+                if !st.easter_egg_unlocked {
+                    st.easter_egg_unlocked = true;
+                    drop(st);
+                    skin_ctrl_cloned.trigger_unlock();
+                    let toast = adw::Toast::new("Skin unlocked");
+                    widgets_rc.toast_overlay.add_toast(toast);
+                }
+            }
+        }
+
+        glib::Propagation::Proceed
+    });
+
+    window.add_controller(key_ctrl);
+}
+
+pub fn build_ui(app: &adw::Application) {
+    adw::StyleManager::default().set_color_scheme(adw::ColorScheme::ForceDark);
+
+    let css_provider = gtk4::CssProvider::new();
+    css_provider.connect_parsing_error(|_, section, error| {
+        eprintln!(
+            "CSS parse error at {}:{}: {error}",
+            section.start_location().lines() + 1,
+            section.start_location().line_bytes() + 1
+        );
+    });
+    apply_skin(&css_provider, ui::tokens::Palette::DEFAULT);
 
     if let Some(display) = gdk::Display::default() {
         gtk4::style_context_add_provider_for_display(
@@ -462,17 +1130,23 @@ dropdown button {
     stack.set_visible_child_name("overview");
 
     let header_bar = adw::HeaderBar::new();
+    let header_overlay = gtk4::Overlay::new();
+    header_overlay.set_child(Some(&header_bar));
+
     let toast_overlay = adw::ToastOverlay::new();
 
     let content_box = gtk4::Box::builder()
         .orientation(gtk4::Orientation::Vertical)
         .build();
-    content_box.append(&header_bar);
+    content_box.append(&header_overlay);
     content_box.append(&stack);
 
+    let skin_overlay = gtk4::Overlay::new();
+    skin_overlay.set_child(Some(&content_box));
+
     let launch_overlay = gtk4::Overlay::new();
-    launch_overlay.set_child(Some(&content_box));
-    ui::launch_overlay::setup_launch_overlay(&launch_overlay);
+    launch_overlay.set_child(Some(&skin_overlay));
+    let launch_overlay_area = ui::launch_overlay::setup_launch_overlay(&launch_overlay);
 
     toast_overlay.set_child(Some(&launch_overlay));
 
@@ -553,6 +1227,27 @@ dropdown button {
 
     // Connect Serial Monitor Controls
     ui::setup_serial::setup_serial_handlers(&state, &widgets);
+
+    // Wire skin overlay controller and main-window Konami key controller
+    let css_provider_swap = css_provider.clone();
+    let widgets_swap = Rc::clone(&widgets);
+    let launch_area_swap = launch_overlay_area.clone();
+    let skin_ctrl = ui::skin_overlay::SkinOverlayController::setup(
+        &window,
+        &skin_overlay,
+        &header_overlay,
+        Rc::new(move || {
+            apply_skin_and_redraw(
+                &css_provider_swap,
+                ui::tokens::Palette::STAGE,
+                &widgets_swap,
+                launch_area_swap.as_ref(),
+            );
+        }),
+    );
+    skin_ctrl.set_shine_target(&widgets.btn_build_flash);
+    ui::skin_overlay::register_stack_header_flash(&stack, &skin_ctrl);
+    setup_konami_key_controller(&window, &state, &widgets, &skin_ctrl);
 
     window.present();
 
@@ -1253,5 +1948,444 @@ mod tests {
             });
         }
         assert!(st.with_canvas_state(|c| c.edge_pulse_animation.is_none()));
+    }
+
+    #[test]
+    fn test_build_css_default_palette_byte_identical() {
+        const CURRENT_CSS: &str = r#"
+@define-color bg_void #0A0D10;
+@define-color bg_panel #14181C;
+@define-color border_hair #262C31;
+@define-color text_primary #E4E7EA;
+@define-color text_muted #6B7378;
+@define-color state_ready #34D399;
+@define-color state_active #F5A623;
+@define-color state_error #E5484D;
+@define-color accent #4FD1C5;
+
+* {
+    font-family: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    font-size: 13px;
+    border-radius: 0px;
+    box-shadow: none;
+}
+
+window, dialog {
+    background-color: @bg_void;
+    color: @text_primary;
+}
+
+windowcontrols button {
+    border: none;
+    background: transparent;
+    border-radius: 0px;
+}
+
+windowcontrols button:hover {
+    border: none;
+    background: transparent;
+}
+
+/* Panel and Card Containers */
+.card, frame, scrolledwindow.card, box.card {
+    background-color: @bg_panel;
+    border: 1px solid @border_hair;
+    border-radius: 0px;
+}
+
+/* Buttons */
+button.stakhal-btn {
+    font-family: 'IBM Plex Sans', sans-serif;
+    font-weight: 500;
+    border: 1px solid @border_hair;
+    background-color: @bg_panel;
+    color: @text_primary;
+    transition: color 100ms cubic-bezier(0.0, 0.0, 0.2, 1.0),
+                background-color 100ms cubic-bezier(0.0, 0.0, 0.2, 1.0),
+                border-color 100ms cubic-bezier(0.0, 0.0, 0.2, 1.0);
+    border-radius: 2px;
+}
+
+button.stakhal-btn:hover {
+    border-color: @accent;
+    background-color: #1a2026;
+    color: #ffffff;
+}
+
+button.stakhal-btn:active {
+    background-color: #262C31;
+}
+
+button.stakhal-btn.suggested-action {
+    border: 1px solid @accent;
+    background-color: @accent;
+    color: @bg_void;
+    font-weight: 600;
+    transition: color 100ms cubic-bezier(0.0, 0.0, 0.2, 1.0),
+                background-color 100ms cubic-bezier(0.0, 0.0, 0.2, 1.0),
+                border-color 100ms cubic-bezier(0.0, 0.0, 0.2, 1.0);
+    border-radius: 2px;
+}
+
+button.stakhal-btn.suggested-action:hover {
+    border-color: #5fe3d7;
+    background-color: #5fe3d7;
+    color: @bg_void;
+}
+
+button.stakhal-btn.suggested-action:active {
+    background-color: #3bb3a8;
+}
+
+button.stakhal-btn.flat {
+    border: 1px solid transparent;
+    background-color: transparent;
+    color: @text_muted;
+    transition: color 100ms cubic-bezier(0.0, 0.0, 0.2, 1.0),
+                background-color 100ms cubic-bezier(0.0, 0.0, 0.2, 1.0),
+                border-color 100ms cubic-bezier(0.0, 0.0, 0.2, 1.0);
+    border-radius: 2px;
+}
+
+button.stakhal-btn.flat:hover {
+    border-color: @border_hair;
+    background-color: @bg_panel;
+    color: @text_primary;
+}
+
+button.stakhal-btn.flat:active {
+    background-color: #1a2026;
+}
+
+/* Rows and ListBoxes */
+row, listboxrow, actionrow {
+    border-radius: 0px;
+    transition: none;
+    border-bottom: 1px solid @border_hair;
+}
+
+.stagger-reveal-row {
+    transition: opacity 180ms cubic-bezier(0.0, 0.0, 0.2, 1.0);
+}
+
+.clickable-row {
+    transition: color 100ms cubic-bezier(0.0, 0.0, 0.2, 1.0),
+                background-color 100ms cubic-bezier(0.0, 0.0, 0.2, 1.0);
+}
+
+.clickable-row:hover {
+    background-color: #1a2026;
+}
+
+.clickable-row:active {
+    background-color: #262C31;
+}
+
+/* Data / Monospace Typography Split */
+textview, textview text, .data-mono, .data-mono * {
+    font-family: 'JetBrains Mono', 'DejaVu Sans Mono', 'Liberation Mono', monospace;
+    font-size: 12px;
+}
+
+textview text {
+    background-color: @bg_panel;
+    color: @text_primary;
+}
+
+.dim-label {
+    color: @text_muted;
+}
+
+.title-1, .title-2, .title-3, .title-4, .heading {
+    font-family: 'IBM Plex Sans', sans-serif;
+    color: @text_primary;
+    font-weight: 600;
+}
+
+/* Status Chips and Badges */
+label.card, .status-chip {
+    transition: color 180ms cubic-bezier(0.0, 0.0, 0.2, 1.0),
+                background-color 180ms cubic-bezier(0.0, 0.0, 0.2, 1.0),
+                border-color 180ms cubic-bezier(0.0, 0.0, 0.2, 1.0);
+    padding: 2px 8px;
+}
+
+/* Strictly Reserved Status Classes (signal only, never decoration) */
+.status-ready, .status-ok {
+    color: @state_ready;
+    font-weight: 600;
+    transition: color 180ms cubic-bezier(0.0, 0.0, 0.2, 1.0),
+                background-color 180ms cubic-bezier(0.0, 0.0, 0.2, 1.0),
+                border-color 180ms cubic-bezier(0.0, 0.0, 0.2, 1.0);
+}
+
+.status-active, .status-busy, .status-warning {
+    color: @state_active;
+    font-weight: 600;
+    transition: color 180ms cubic-bezier(0.0, 0.0, 0.2, 1.0),
+                background-color 180ms cubic-bezier(0.0, 0.0, 0.2, 1.0),
+                border-color 180ms cubic-bezier(0.0, 0.0, 0.2, 1.0);
+}
+
+.status-error, .status-fault {
+    color: @state_error;
+    font-weight: 600;
+    transition: color 180ms cubic-bezier(0.0, 0.0, 0.2, 1.0),
+                background-color 180ms cubic-bezier(0.0, 0.0, 0.2, 1.0),
+                border-color 180ms cubic-bezier(0.0, 0.0, 0.2, 1.0);
+}
+
+.status-idle {
+    color: @text_muted;
+    transition: color 180ms cubic-bezier(0.0, 0.0, 0.2, 1.0),
+                background-color 180ms cubic-bezier(0.0, 0.0, 0.2, 1.0),
+                border-color 180ms cubic-bezier(0.0, 0.0, 0.2, 1.0);
+}
+
+.implicit-badge {
+    font-family: 'JetBrains Mono', monospace;
+    color: @text_muted;
+    background-color: #1a2026;
+    border: 1px solid @border_hair;
+    border-radius: 2px;
+    padding: 2px 6px;
+}
+
+dropdown button {
+    border: 1px solid @border_hair;
+    background-color: @bg_panel;
+    color: @text_primary;
+    border-radius: 2px;
+    font-family: 'IBM Plex Sans', sans-serif;
+}
+"#;
+
+        let generated = build_css(&ui::tokens::Palette::DEFAULT);
+        assert_eq!(generated, CURRENT_CSS);
+        assert_eq!(generated.as_bytes(), CURRENT_CSS.as_bytes());
+    }
+
+    #[test]
+    fn test_build_css_stage_contains_adwaita_overrides_and_uses_text_strong() {
+        let stage = ui::tokens::Palette::STAGE;
+        let css = build_css(&stage);
+
+        assert!(
+            !css.contains("color: #ffffff;"),
+            "Stage CSS must replace hover literal #ffffff with text_strong"
+        );
+        assert!(
+            css.contains(&format!("color: {};", stage.text_strong.hex())),
+            "Stage CSS must use Palette::STAGE.text_strong in button hover"
+        );
+
+        for name in [
+            "window_bg_color",
+            "window_fg_color",
+            "view_bg_color",
+            "view_fg_color",
+            "headerbar_bg_color",
+            "headerbar_fg_color",
+            "headerbar_border_color",
+            "headerbar_backdrop_color",
+            "card_bg_color",
+            "card_fg_color",
+            "dialog_bg_color",
+            "dialog_fg_color",
+            "popover_bg_color",
+            "popover_fg_color",
+            "accent_bg_color",
+            "accent_fg_color",
+            "accent_color",
+        ] {
+            assert!(
+                css.contains(&format!("@define-color {name} ")),
+                "Stage CSS must override libadwaita named color {name}"
+            );
+        }
+
+        assert!(
+            css.contains(":root {") && css.contains("--headerbar-bg-color: @headerbar_bg_color;"),
+            "Stage CSS must override libadwaita :root custom properties"
+        );
+        assert!(
+            css.contains("linear-gradient(180deg, @bg_panel 0%, mix(@bg_void, @azure, 0.28) 100%)"),
+            "Stage CSS must include static vertical window gradient via mix()"
+        );
+        assert!(
+            css.contains("border-bottom: 2px solid @gold;"),
+            "Stage CSS must style headerbar bottom border from gold"
+        );
+    }
+
+    #[test]
+    fn test_build_css_stage_contrast_fixes() {
+        let css = build_css(&ui::tokens::Palette::STAGE);
+        for needle in [
+            "--dim-opacity: 100%;",
+            "--disabled-opacity: 75%;",
+            ".dim-label,",
+            "row label.subtitle",
+            "toast label,",
+            "toast .heading,",
+            "border-radius: 150px;",
+            "entry text",
+            "entry:focus-within",
+            "entry > text > placeholder",
+            "opacity: 1;",
+            "linear-gradient(90deg, @header 0%, mix(@header, @accent, 0.6) 100%)",
+            ".title-3,",
+            "inset 0 2px 0 @azure",
+            "row:nth-child(even)",
+            "inset 3px 0 0 @accent;",
+            ".status-idle,",
+            ".status-ready,",
+            ".status-active,",
+            ".status-error,",
+            "mix(@accent, @bg_panel, 0.06)",
+            "button.stakhal-btn image",
+        ] {
+            assert!(
+                css.contains(needle),
+                "Stage CSS missing contrast rule fragment: {needle}"
+            );
+        }
+
+        let def = build_css(&ui::tokens::Palette::DEFAULT);
+        assert!(
+            !def.contains("--dim-opacity"),
+            "DEFAULT CSS must remain unchanged"
+        );
+        assert!(
+            !def.contains("toast {"),
+            "DEFAULT CSS must remain unchanged"
+        );
+    }
+
+    #[test]
+    fn test_build_css_stage_responsive_interactions() {
+        let css = build_css(&ui::tokens::Palette::STAGE);
+        for needle in [
+            "@keyframes stage-active-breath",
+            "0 0 0 3px alpha(@gold_deep, 0.35);",
+            "box-shadow: inset 0 0 0 @accent;",
+            "background-color 140ms",
+            "box-shadow 140ms",
+            "box-shadow: 0 0 0 0 alpha(@accent, 0);",
+            "box-shadow: 0 0 0 3px alpha(@accent, 0.35);",
+            "transform: translateY(-1px);",
+            "0 4px 10px alpha(@accent, 0.25);",
+            "0 4px 10px alpha(@accent, 0.35);",
+            "transform: scale(0.98);",
+            "transition-duration: 70ms;",
+            "border: 1px solid alpha(@gold, 0.6);",
+            "dropdown button:focus-visible,",
+            "animation: stage-active-breath 1.6s ease-in-out infinite alternate;",
+            "animation: none;",
+        ] {
+            assert!(
+                css.contains(needle),
+                "Stage CSS missing responsive interaction rule: {needle}"
+            );
+        }
+
+        let def = build_css(&ui::tokens::Palette::DEFAULT);
+        for stage_only in [
+            "stage-active-breath",
+            "stage-shine-sweep",
+            "stage-pre",
+            "translateY(-1px)",
+            "scale(0.98)",
+        ] {
+            assert!(
+                !def.contains(stage_only),
+                "DEFAULT CSS must not contain Stage rule {stage_only}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_stage_accent_background_wcag_contrast() {
+        let stage = ui::tokens::Palette::STAGE;
+        let bg_void = stage.bg_void.rgb();
+        let accent = stage.accent.rgb();
+        let accent_hover = stage.accent_hover.rgb();
+        let accent_pressed = stage.accent_pressed.rgb();
+
+        fn srgb_to_linear(c: f64) -> f64 {
+            if c <= 0.04045 {
+                c / 12.92
+            } else {
+                ((c + 0.055) / 1.055).powf(2.4)
+            }
+        }
+
+        fn relative_luminance(rgb: (f64, f64, f64)) -> f64 {
+            let r = srgb_to_linear(rgb.0);
+            let g = srgb_to_linear(rgb.1);
+            let b = srgb_to_linear(rgb.2);
+            0.2126 * r + 0.7152 * g + 0.0722 * b
+        }
+
+        fn contrast_ratio(c1: (f64, f64, f64), c2: (f64, f64, f64)) -> f64 {
+            let l1 = relative_luminance(c1);
+            let l2 = relative_luminance(c2);
+            let lighter = l1.max(l2);
+            let darker = l1.min(l2);
+            (lighter + 0.05) / (darker + 0.05)
+        }
+
+        let ratio_acc = contrast_ratio(bg_void, accent);
+        let ratio_hover = contrast_ratio(bg_void, accent_hover);
+        let ratio_pressed = contrast_ratio(bg_void, accent_pressed);
+
+        assert!(
+            ratio_acc >= 4.5,
+            "bg_void vs accent must be >= 4.5, got {ratio_acc}"
+        );
+        assert!(
+            ratio_hover >= 4.5,
+            "bg_void vs accent_hover must be >= 4.5, got {ratio_hover}"
+        );
+        assert!(
+            ratio_pressed >= 4.5,
+            "bg_void vs accent_pressed must be >= 4.5, got {ratio_pressed}"
+        );
+    }
+
+    #[test]
+    fn test_gdk_key_to_detector_key_mapping() {
+        assert_eq!(
+            gdk_key_to_detector_key(gdk::Key::Up, gdk::ModifierType::empty()),
+            easter_egg::DetectorKey::Up
+        );
+        assert_eq!(
+            gdk_key_to_detector_key(gdk::Key::Down, gdk::ModifierType::empty()),
+            easter_egg::DetectorKey::Down
+        );
+        assert_eq!(
+            gdk_key_to_detector_key(gdk::Key::Left, gdk::ModifierType::empty()),
+            easter_egg::DetectorKey::Left
+        );
+        assert_eq!(
+            gdk_key_to_detector_key(gdk::Key::Right, gdk::ModifierType::empty()),
+            easter_egg::DetectorKey::Right
+        );
+        assert_eq!(
+            gdk_key_to_detector_key(gdk::Key::b, gdk::ModifierType::empty()),
+            easter_egg::DetectorKey::Char('b')
+        );
+        assert_eq!(
+            gdk_key_to_detector_key(gdk::Key::A, gdk::ModifierType::SHIFT_MASK),
+            easter_egg::DetectorKey::Char('A')
+        );
+        assert_eq!(
+            gdk_key_to_detector_key(gdk::Key::Shift_L, gdk::ModifierType::empty()),
+            easter_egg::DetectorKey::Modifier
+        );
+        assert_eq!(
+            gdk_key_to_detector_key(gdk::Key::a, gdk::ModifierType::CONTROL_MASK),
+            easter_egg::DetectorKey::Other
+        );
     }
 }

@@ -36,14 +36,14 @@ pub fn reset_launch_animation_for_testing() {
 /// Sets up the one-time launch animation atop the given overlay container.
 /// If reduced motion is requested or the animation has already played,
 /// this function is a no-op and the normal window content is displayed immediately.
-pub fn setup_launch_overlay(overlay: &gtk4::Overlay) {
+pub fn setup_launch_overlay(overlay: &gtk4::Overlay) -> Option<gtk4::DrawingArea> {
     if !tokens::motion::is_animations_enabled() {
         LAUNCH_ANIMATION_PLAYED.store(true, Ordering::SeqCst);
-        return;
+        return None;
     }
 
     if LAUNCH_ANIMATION_PLAYED.swap(true, Ordering::SeqCst) {
-        return;
+        return None;
     }
 
     let drawing_area = gtk4::DrawingArea::builder()
@@ -91,6 +91,7 @@ pub fn setup_launch_overlay(overlay: &gtk4::Overlay) {
     });
 
     overlay.add_overlay(&drawing_area);
+    Some(drawing_area)
 }
 
 /// Render a single frame of the launch animation given elapsed milliseconds.
@@ -113,7 +114,8 @@ pub fn draw_launch_frame(cr: &cairo::Context, width: f64, height: f64, elapsed_m
     }
 
     // 2. Background void fill
-    let (bg_r, bg_g, bg_b) = tokens::color::BG_VOID;
+    let pal = tokens::palette();
+    let (bg_r, bg_g, bg_b) = pal.bg_void.rgb();
     cr.set_source_rgba(bg_r, bg_g, bg_b, global_alpha);
     cr.rectangle(0.0, 0.0, width, height);
     let _ = cr.fill();
@@ -131,8 +133,8 @@ pub fn draw_launch_frame(cr: &cairo::Context, width: f64, height: f64, elapsed_m
     let current_arm = max_arm * reveal_p;
     let offset_slide = 16.0 * (1.0 - reveal_p);
 
-    let (acc_r, acc_g, acc_b) = tokens::color::ACCENT;
-    let (text_r, text_g, text_b) = tokens::color::TEXT_PRIMARY;
+    let (acc_r, acc_g, acc_b) = pal.accent.rgb();
+    let (text_r, text_g, text_b) = pal.text_primary.rgb();
 
     // 4. Draw Corner Brackets (stroke width 4.0, ease-out draw in)
     cr.set_line_width(4.0);

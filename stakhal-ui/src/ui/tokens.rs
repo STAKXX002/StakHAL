@@ -29,6 +29,132 @@ pub mod color {
     pub const ACCENT: (f64, f64, f64) = (79.0 / 255.0, 209.0 / 255.0, 197.0 / 255.0);
 }
 
+/// Token representing a single color in both hex and normalized RGB formats.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ColorToken {
+    pub hex: &'static str,
+    pub rgb: (f64, f64, f64),
+}
+
+impl ColorToken {
+    pub const fn new(hex: &'static str, rgb: (f64, f64, f64)) -> Self {
+        Self { hex, rgb }
+    }
+
+    pub const fn hex(&self) -> &'static str {
+        self.hex
+    }
+
+    pub const fn rgb(&self) -> (f64, f64, f64) {
+        self.rgb
+    }
+}
+
+impl std::ops::Deref for ColorToken {
+    type Target = (f64, f64, f64);
+    fn deref(&self) -> &Self::Target {
+        &self.rgb
+    }
+}
+
+/// Cohesive color palette for StakHAL UI styling.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Palette {
+    pub bg_void: ColorToken,
+    pub bg_panel: ColorToken,
+    pub bg_raised: ColorToken,
+    pub border_hair: ColorToken,
+    pub text_primary: ColorToken,
+    pub text_muted: ColorToken,
+    pub state_ready: ColorToken,
+    pub state_active: ColorToken,
+    pub state_error: ColorToken,
+    pub accent: ColorToken,
+    pub accent_hover: ColorToken,
+    pub accent_pressed: ColorToken,
+    pub gold: ColorToken,
+    pub gold_light: ColorToken,
+    pub gold_deep: ColorToken,
+    pub header: ColorToken,
+    pub header_fg: ColorToken,
+    pub line: ColorToken,
+    pub node_border: ColorToken,
+    pub text_strong: ColorToken,
+    pub sky: ColorToken,
+    pub azure: ColorToken,
+    pub pin_active: ColorToken,
+}
+
+impl Palette {
+    /// The default dark industrial palette.
+    pub const DEFAULT: Self = Self {
+        bg_void: ColorToken::new(color::BG_VOID_HEX, color::BG_VOID),
+        bg_panel: ColorToken::new(color::BG_PANEL_HEX, color::BG_PANEL),
+        bg_raised: ColorToken::new("#1A2026", (26.0 / 255.0, 32.0 / 255.0, 38.0 / 255.0)),
+        border_hair: ColorToken::new(color::BORDER_HAIR_HEX, color::BORDER_HAIR),
+        text_primary: ColorToken::new(color::TEXT_PRIMARY_HEX, color::TEXT_PRIMARY),
+        text_muted: ColorToken::new(color::TEXT_MUTED_HEX, color::TEXT_MUTED),
+        state_ready: ColorToken::new(color::STATE_READY_HEX, color::STATE_READY),
+        state_active: ColorToken::new(color::STATE_ACTIVE_HEX, color::STATE_ACTIVE),
+        state_error: ColorToken::new(color::STATE_ERROR_HEX, color::STATE_ERROR),
+        accent: ColorToken::new(color::ACCENT_HEX, color::ACCENT),
+        accent_hover: ColorToken::new("#5FE3D7", (95.0 / 255.0, 227.0 / 255.0, 215.0 / 255.0)),
+        accent_pressed: ColorToken::new("#3BB3A8", (59.0 / 255.0, 179.0 / 255.0, 168.0 / 255.0)),
+        gold: ColorToken::new(color::STATE_ACTIVE_HEX, color::STATE_ACTIVE),
+        gold_light: ColorToken::new(color::STATE_ACTIVE_HEX, color::STATE_ACTIVE),
+        gold_deep: ColorToken::new(color::ACCENT_HEX, color::ACCENT),
+        header: ColorToken::new(color::BG_PANEL_HEX, color::BG_PANEL),
+        header_fg: ColorToken::new(color::TEXT_PRIMARY_HEX, color::TEXT_PRIMARY),
+        line: ColorToken::new(color::BORDER_HAIR_HEX, color::BORDER_HAIR),
+        node_border: ColorToken::new(color::BORDER_HAIR_HEX, color::BORDER_HAIR),
+        text_strong: ColorToken::new("#ffffff", (1.0, 1.0, 1.0)),
+        sky: ColorToken::new(color::BORDER_HAIR_HEX, color::BORDER_HAIR),
+        azure: ColorToken::new(color::ACCENT_HEX, color::ACCENT),
+        pin_active: ColorToken::new(color::STATE_READY_HEX, color::STATE_READY),
+    };
+
+    /// The light Stage secret theme palette.
+    pub const STAGE: Self = Self {
+        bg_void: ColorToken::new("#F4F9FD", (244.0 / 255.0, 249.0 / 255.0, 253.0 / 255.0)),
+        bg_panel: ColorToken::new("#FFFFFF", (1.0, 1.0, 1.0)),
+        bg_raised: ColorToken::new("#E8F2F9", (232.0 / 255.0, 242.0 / 255.0, 249.0 / 255.0)),
+        border_hair: ColorToken::new("#C3D7E6", (195.0 / 255.0, 215.0 / 255.0, 230.0 / 255.0)),
+        text_primary: ColorToken::new("#1B2559", (27.0 / 255.0, 37.0 / 255.0, 89.0 / 255.0)),
+        text_muted: ColorToken::new("#4A5B86", (74.0 / 255.0, 91.0 / 255.0, 134.0 / 255.0)),
+        state_ready: ColorToken::new("#0A7A66", (10.0 / 255.0, 122.0 / 255.0, 102.0 / 255.0)),
+        state_active: ColorToken::new("#8F6700", (143.0 / 255.0, 103.0 / 255.0, 0.0)),
+        state_error: ColorToken::new("#C62F4D", (198.0 / 255.0, 47.0 / 255.0, 77.0 / 255.0)),
+        accent: ColorToken::new("#2E6DB4", (46.0 / 255.0, 109.0 / 255.0, 180.0 / 255.0)),
+        accent_hover: ColorToken::new("#285FA0", (40.0 / 255.0, 95.0 / 255.0, 160.0 / 255.0)),
+        accent_pressed: ColorToken::new("#1F4E86", (31.0 / 255.0, 78.0 / 255.0, 134.0 / 255.0)),
+        gold: ColorToken::new("#C9A24F", (201.0 / 255.0, 162.0 / 255.0, 79.0 / 255.0)),
+        gold_light: ColorToken::new("#F5E3A8", (245.0 / 255.0, 227.0 / 255.0, 168.0 / 255.0)),
+        gold_deep: ColorToken::new("#A8770F", (168.0 / 255.0, 119.0 / 255.0, 15.0 / 255.0)),
+        header: ColorToken::new("#1F2960", (31.0 / 255.0, 41.0 / 255.0, 96.0 / 255.0)),
+        header_fg: ColorToken::new("#F4F9FD", (244.0 / 255.0, 249.0 / 255.0, 253.0 / 255.0)),
+        line: ColorToken::new("#4F76AE", (79.0 / 255.0, 118.0 / 255.0, 174.0 / 255.0)),
+        node_border: ColorToken::new("#3F5FA0", (63.0 / 255.0, 95.0 / 255.0, 160.0 / 255.0)),
+        text_strong: ColorToken::new("#1B2559", (27.0 / 255.0, 37.0 / 255.0, 89.0 / 255.0)),
+        sky: ColorToken::new("#A0D3EA", (160.0 / 255.0, 211.0 / 255.0, 234.0 / 255.0)),
+        azure: ColorToken::new("#59A0CF", (89.0 / 255.0, 160.0 / 255.0, 207.0 / 255.0)),
+        pin_active: ColorToken::new("#2E6DB4", (46.0 / 255.0, 109.0 / 255.0, 180.0 / 255.0)),
+    };
+}
+
+thread_local! {
+    static CURRENT_PALETTE: std::cell::RefCell<Palette> = const { std::cell::RefCell::new(Palette::DEFAULT) };
+}
+
+/// Retrieve the active thread-local palette.
+pub fn palette() -> Palette {
+    CURRENT_PALETTE.with(|p| *p.borrow())
+}
+
+/// Set the active thread-local palette.
+pub fn set_palette(palette: Palette) {
+    CURRENT_PALETTE.with(|p| *p.borrow_mut() = palette);
+}
+
 pub mod font {
     pub const SANS_FAMILY: &str = "'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif";
     pub const MONO_FAMILY: &str =
@@ -101,6 +227,43 @@ pub mod motion {
         true
     }
 
+    /// Exponential hover approach time constant (seconds)
+    pub const HOVER_EASE_TAU_SECONDS: f64 = 0.08;
+    /// Target settle threshold for exponential hover easing
+    pub const HOVER_EASE_EPSILON: f64 = 0.01;
+
+    /// Exponentially approach `target` from `current` with time constant `tau` over `dt_seconds`.
+    /// Clamped strictly to [0.0, 1.0] and guaranteed finite for `dt == 0.0`, negative `dt`,
+    /// zero/non-positive `tau`, and arbitrarily large `dt`.
+    pub fn ease_toward(current: f64, target: f64, dt_seconds: f64, tau: f64) -> f64 {
+        let tgt = if target.is_nan() {
+            0.0
+        } else {
+            target.clamp(0.0, 1.0)
+        };
+        let cur = if current.is_nan() {
+            tgt
+        } else {
+            current.clamp(0.0, 1.0)
+        };
+        if dt_seconds.is_nan() || dt_seconds <= 0.0 {
+            return cur;
+        }
+        if tau.is_nan() || tau <= 0.0 || dt_seconds.is_infinite() {
+            return tgt;
+        }
+        if tau.is_infinite() {
+            return cur;
+        }
+        let factor = 1.0 - (-dt_seconds / tau).exp();
+        let next = cur + (tgt - cur) * factor;
+        if next.is_nan() {
+            tgt
+        } else {
+            next.clamp(0.0, 1.0)
+        }
+    }
+
     /// Return effective animation duration in milliseconds, collapsing to 0 if animations are disabled.
     pub fn effective_duration_ms(base_duration_ms: u64) -> u64 {
         if is_animations_enabled() {
@@ -120,6 +283,67 @@ pub mod motion {
             assert_eq!(DURATION_SHORT_MS, 180);
             assert_eq!(DURATION_MEDIUM_MS, 350);
             assert_eq!(EASING_CSS, "cubic-bezier(0.0, 0.0, 0.2, 1.0)");
+            assert!((HOVER_EASE_TAU_SECONDS - 0.08).abs() < 1e-12);
+            assert!((HOVER_EASE_EPSILON - 0.01).abs() < 1e-12);
+        }
+
+        #[test]
+        fn test_ease_toward_edge_cases_and_exponential_approach() {
+            // dt == 0 and negative dt stay at clamped current
+            let v0 = ease_toward(0.35, 1.0, 0.0, HOVER_EASE_TAU_SECONDS);
+            assert!(v0.is_finite());
+            assert!((v0 - 0.35).abs() < 1e-12);
+
+            let v_neg = ease_toward(0.4, 0.9, -0.05, HOVER_EASE_TAU_SECONDS);
+            assert!(v_neg.is_finite());
+            assert!((v_neg - 0.4).abs() < 1e-12);
+
+            // Huge dt (and infinity) converge cleanly to target with no NaN
+            for huge_dt in [1.0e3, 1.0e9, 1.0e300, f64::MAX, f64::INFINITY] {
+                let up = ease_toward(0.0, 1.0, huge_dt, HOVER_EASE_TAU_SECONDS);
+                let down = ease_toward(1.0, 0.0, huge_dt, HOVER_EASE_TAU_SECONDS);
+                assert!(up.is_finite() && (up - 1.0).abs() < 1e-12);
+                assert!(down.is_finite() && down.abs() < 1e-12);
+            }
+
+            // tau <= 0 snaps immediately to clamped target
+            assert!((ease_toward(0.2, 0.8, 0.016, 0.0) - 0.8).abs() < 1e-12);
+            assert!((ease_toward(0.2, 0.8, 0.016, -1.0) - 0.8).abs() < 1e-12);
+
+            // Clamping outside [0.0, 1.0]
+            assert!((ease_toward(-0.5, 2.0, 0.0, HOVER_EASE_TAU_SECONDS) - 0.0).abs() < 1e-12);
+            assert!((ease_toward(1.5, 2.0, 0.0, HOVER_EASE_TAU_SECONDS) - 1.0).abs() < 1e-12);
+            assert!((ease_toward(0.5, 2.0, 10.0, HOVER_EASE_TAU_SECONDS) - 1.0).abs() < 1e-12);
+            assert!((ease_toward(0.5, -1.0, 10.0, HOVER_EASE_TAU_SECONDS) - 0.0).abs() < 1e-12);
+
+            // NaN resilience
+            let n1 = ease_toward(f64::NAN, 1.0, 0.016, 0.08);
+            let n2 = ease_toward(0.5, f64::NAN, 0.016, 0.08);
+            let n3 = ease_toward(0.5, 1.0, f64::NAN, 0.08);
+            let n4 = ease_toward(0.5, 1.0, 0.016, f64::NAN);
+            assert!(n1.is_finite() && n2.is_finite() && n3.is_finite() && n4.is_finite());
+
+            // Exact 1 - e^-1 at dt == tau rising, e^-1 falling
+            let tau = HOVER_EASE_TAU_SECONDS;
+            let expected_rise = 1.0 - (-1.0_f64).exp();
+            let expected_fall = (-1.0_f64).exp();
+            assert!((ease_toward(0.0, 1.0, tau, tau) - expected_rise).abs() < 1e-12);
+            assert!((ease_toward(1.0, 0.0, tau, tau) - expected_fall).abs() < 1e-12);
+
+            // Time-step invariance: two steps of dt/2 equal one step of dt
+            let single = ease_toward(0.15, 0.9, 0.032, tau);
+            let half1 = ease_toward(0.15, 0.9, 0.016, tau);
+            let half2 = ease_toward(half1, 0.9, 0.016, tau);
+            assert!((single - half2).abs() < 1e-12);
+
+            // Monotonic approach within [0.0, 1.0]
+            let mut val = 0.0;
+            for _ in 0..40 {
+                let next = ease_toward(val, 1.0, 0.016, tau);
+                assert!(next >= val && (0.0..=1.0).contains(&next));
+                val = next;
+            }
+            assert!(val > 0.99);
         }
 
         #[test]
@@ -166,6 +390,253 @@ pub mod motion {
                 assert_eq!(effective_duration_ms(DURATION_SHORT_MS), 0);
                 assert_eq!(effective_duration_ms(DURATION_MEDIUM_MS), 0);
             }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_palette_default_equals_constants() {
+        let def = Palette::DEFAULT;
+        assert_eq!(def.bg_void.hex(), color::BG_VOID_HEX);
+        assert_eq!(def.bg_void.rgb(), color::BG_VOID);
+        assert_eq!(def.bg_panel.hex(), color::BG_PANEL_HEX);
+        assert_eq!(def.bg_panel.rgb(), color::BG_PANEL);
+        assert_eq!(def.border_hair.hex(), color::BORDER_HAIR_HEX);
+        assert_eq!(def.border_hair.rgb(), color::BORDER_HAIR);
+        assert_eq!(def.text_primary.hex(), color::TEXT_PRIMARY_HEX);
+        assert_eq!(def.text_primary.rgb(), color::TEXT_PRIMARY);
+        assert_eq!(def.text_muted.hex(), color::TEXT_MUTED_HEX);
+        assert_eq!(def.text_muted.rgb(), color::TEXT_MUTED);
+        assert_eq!(def.state_ready.hex(), color::STATE_READY_HEX);
+        assert_eq!(def.state_ready.rgb(), color::STATE_READY);
+        assert_eq!(def.state_active.hex(), color::STATE_ACTIVE_HEX);
+        assert_eq!(def.state_active.rgb(), color::STATE_ACTIVE);
+        assert_eq!(def.state_error.hex(), color::STATE_ERROR_HEX);
+        assert_eq!(def.state_error.rgb(), color::STATE_ERROR);
+        assert_eq!(def.accent.hex(), color::ACCENT_HEX);
+        assert_eq!(def.accent.rgb(), color::ACCENT);
+
+        assert_eq!(def.bg_raised.hex(), "#1A2026");
+        assert_eq!(def.accent_hover.hex(), "#5FE3D7");
+        assert_eq!(def.accent_pressed.hex(), "#3BB3A8");
+        assert_eq!(def.gold.hex(), color::STATE_ACTIVE_HEX);
+        assert_eq!(def.gold.rgb(), color::STATE_ACTIVE);
+        assert_eq!(def.gold_light, def.gold);
+        assert_eq!(def.gold_deep, def.accent);
+        assert_eq!(def.header.hex(), color::BG_PANEL_HEX);
+        assert_eq!(def.header.rgb(), color::BG_PANEL);
+        assert_eq!(def.header_fg.hex(), color::TEXT_PRIMARY_HEX);
+        assert_eq!(def.header_fg.rgb(), color::TEXT_PRIMARY);
+        assert_eq!(def.line.hex(), color::BORDER_HAIR_HEX);
+        assert_eq!(def.line.rgb(), color::BORDER_HAIR);
+        assert_eq!(def.node_border.hex(), color::BORDER_HAIR_HEX);
+        assert_eq!(def.node_border.rgb(), color::BORDER_HAIR);
+        assert_eq!(def.text_strong.hex(), "#ffffff");
+        assert_eq!(def.text_strong.rgb(), (1.0, 1.0, 1.0));
+        assert_eq!(def.sky.hex(), color::BORDER_HAIR_HEX);
+        assert_eq!(def.sky.rgb(), color::BORDER_HAIR);
+        assert_eq!(def.azure.hex(), color::ACCENT_HEX);
+        assert_eq!(def.azure.rgb(), color::ACCENT);
+        assert_eq!(def.pin_active.hex(), color::STATE_READY_HEX);
+        assert_eq!(def.pin_active.rgb(), color::STATE_READY);
+
+        let stage = Palette::STAGE;
+        assert_eq!(stage.text_muted.hex(), "#4A5B86");
+        assert_eq!(stage.sky.hex(), "#A0D3EA");
+        assert_eq!(stage.azure.hex(), "#59A0CF");
+        assert_eq!(stage.pin_active, stage.accent);
+        assert_eq!(stage.gold_light.hex(), "#F5E3A8");
+        assert_eq!(stage.gold_deep.hex(), "#A8770F");
+
+        // Thread local get and set
+        assert_eq!(palette(), Palette::DEFAULT);
+        set_palette(Palette::STAGE);
+        assert_eq!(palette(), Palette::STAGE);
+        set_palette(Palette::DEFAULT);
+        assert_eq!(palette(), Palette::DEFAULT);
+    }
+
+    fn srgb_to_linear(c: f64) -> f64 {
+        if c <= 0.04045 {
+            c / 12.92
+        } else {
+            ((c + 0.055) / 1.055).powf(2.4)
+        }
+    }
+
+    fn relative_luminance(rgb: (f64, f64, f64)) -> f64 {
+        let r = srgb_to_linear(rgb.0);
+        let g = srgb_to_linear(rgb.1);
+        let b = srgb_to_linear(rgb.2);
+        0.2126 * r + 0.7152 * g + 0.0722 * b
+    }
+
+    fn contrast_ratio(c1: (f64, f64, f64), c2: (f64, f64, f64)) -> f64 {
+        let l1 = relative_luminance(c1);
+        let l2 = relative_luminance(c2);
+        let lighter = l1.max(l2);
+        let darker = l1.min(l2);
+        (lighter + 0.05) / (darker + 0.05)
+    }
+
+    fn mix_rgb(a: (f64, f64, f64), b: (f64, f64, f64), t: f64) -> (f64, f64, f64) {
+        (
+            a.0 * (1.0 - t) + b.0 * t,
+            a.1 * (1.0 - t) + b.1 * t,
+            a.2 * (1.0 - t) + b.2 * t,
+        )
+    }
+
+    #[test]
+    fn test_stage_palette_wcag_contrast() {
+        let s = Palette::STAGE;
+        let win_end = mix_rgb(s.bg_void.rgb(), s.azure.rgb(), 0.28);
+        let checks = [
+            (
+                "text_primary vs bg_void",
+                s.text_primary.rgb(),
+                s.bg_void.rgb(),
+                4.5,
+            ),
+            (
+                "text_primary vs bg_panel",
+                s.text_primary.rgb(),
+                s.bg_panel.rgb(),
+                4.5,
+            ),
+            (
+                "text_primary vs bg_raised",
+                s.text_primary.rgb(),
+                s.bg_raised.rgb(),
+                4.5,
+            ),
+            (
+                "text_primary vs window end",
+                s.text_primary.rgb(),
+                win_end,
+                4.5,
+            ),
+            (
+                "text_muted vs bg_void",
+                s.text_muted.rgb(),
+                s.bg_void.rgb(),
+                4.5,
+            ),
+            (
+                "text_muted vs bg_panel",
+                s.text_muted.rgb(),
+                s.bg_panel.rgb(),
+                4.5,
+            ),
+            (
+                "text_muted vs bg_raised",
+                s.text_muted.rgb(),
+                s.bg_raised.rgb(),
+                4.5,
+            ),
+            ("text_muted vs window end", s.text_muted.rgb(), win_end, 4.5),
+            ("accent vs bg_void", s.accent.rgb(), s.bg_void.rgb(), 4.5),
+            ("accent vs bg_panel", s.accent.rgb(), s.bg_panel.rgb(), 4.5),
+            ("bg_void vs accent", s.bg_void.rgb(), s.accent.rgb(), 4.5),
+            (
+                "bg_void vs accent_hover",
+                s.bg_void.rgb(),
+                s.accent_hover.rgb(),
+                4.5,
+            ),
+            (
+                "bg_void vs accent_pressed",
+                s.bg_void.rgb(),
+                s.accent_pressed.rgb(),
+                4.5,
+            ),
+            (
+                "state_ready vs bg_void",
+                s.state_ready.rgb(),
+                s.bg_void.rgb(),
+                4.5,
+            ),
+            (
+                "state_ready vs bg_panel",
+                s.state_ready.rgb(),
+                s.bg_panel.rgb(),
+                4.5,
+            ),
+            (
+                "state_active vs bg_void",
+                s.state_active.rgb(),
+                s.bg_void.rgb(),
+                4.5,
+            ),
+            (
+                "state_active vs bg_panel",
+                s.state_active.rgb(),
+                s.bg_panel.rgb(),
+                4.5,
+            ),
+            (
+                "state_error vs bg_void",
+                s.state_error.rgb(),
+                s.bg_void.rgb(),
+                4.5,
+            ),
+            (
+                "state_error vs bg_panel",
+                s.state_error.rgb(),
+                s.bg_panel.rgb(),
+                4.5,
+            ),
+            ("line vs bg_void", s.line.rgb(), s.bg_void.rgb(), 3.0),
+            ("line vs bg_panel", s.line.rgb(), s.bg_panel.rgb(), 3.0),
+            (
+                "node_border vs bg_void",
+                s.node_border.rgb(),
+                s.bg_void.rgb(),
+                3.0,
+            ),
+            (
+                "node_border vs bg_panel",
+                s.node_border.rgb(),
+                s.bg_panel.rgb(),
+                3.0,
+            ),
+            (
+                "header_fg vs header",
+                s.header_fg.rgb(),
+                s.header.rgb(),
+                4.5,
+            ),
+            ("gold vs header", s.gold.rgb(), s.header.rgb(), 3.0),
+            (
+                "gold_deep vs bg_void",
+                s.gold_deep.rgb(),
+                s.bg_void.rgb(),
+                3.0,
+            ),
+            (
+                "gold_deep vs bg_panel",
+                s.gold_deep.rgb(),
+                s.bg_panel.rgb(),
+                3.0,
+            ),
+            (
+                "gold_deep vs bg_raised",
+                s.gold_deep.rgb(),
+                s.bg_raised.rgb(),
+                3.0,
+            ),
+        ];
+
+        for (label, fg, bg, min_ratio) in checks {
+            let ratio = contrast_ratio(fg, bg);
+            assert!(
+                ratio >= min_ratio,
+                "{label} contrast must be >= {min_ratio}, got {ratio}"
+            );
         }
     }
 }

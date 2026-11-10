@@ -1,10 +1,20 @@
 use crate::state::{AppState, AppWidgets};
 use crate::ui::tokens;
 use gtk4::cairo;
+use gtk4::glib;
 use gtk4::prelude::*;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
+
+fn mix_rgb(a: (f64, f64, f64), b: (f64, f64, f64), t: f64) -> (f64, f64, f64) {
+    let t = t.clamp(0.0, 1.0);
+    (
+        (a.0 + (b.0 - a.0) * t).clamp(0.0, 1.0),
+        (a.1 + (b.1 - a.1) * t).clamp(0.0, 1.0),
+        (a.2 + (b.2 - a.2) * t).clamp(0.0, 1.0),
+    )
+}
 
 pub struct PinDef {
     pub pin_num: u8,
@@ -756,13 +766,25 @@ pub fn draw_nucleo_pinout(
     height: f64,
     state: &Rc<RefCell<AppState>>,
 ) {
-    let (hovered_pin, hovered_mouse, is_filtering_module) = state.borrow().with_canvas_state(|c| {
-        (
-            c.hovered_pinout_pin.clone(),
-            c.hovered_pinout_mouse,
-            c.selected_pinout_module.is_some(),
-        )
-    });
+    let pal = tokens::palette();
+    let is_default = pal == tokens::Palette::DEFAULT;
+    let (hovered_pin, hovered_mouse, is_filtering_module, pin_hover_entries) =
+        state.borrow().with_canvas_state(|c| {
+            let entries: Vec<(String, u8, f64)> = if is_default {
+                Vec::new()
+            } else {
+                c.pin_hover_amounts
+                    .iter()
+                    .map(|((cn, pn), v)| (cn.clone(), *pn, *v))
+                    .collect()
+            };
+            (
+                c.hovered_pinout_pin.clone(),
+                c.hovered_pinout_mouse,
+                c.selected_pinout_module.is_some(),
+                entries,
+            )
+        });
     let highlights = get_active_pin_highlights(&state.borrow());
     let hovered_pin = hovered_pin.as_ref();
 
@@ -810,36 +832,25 @@ pub fn draw_nucleo_pinout(
     let col_cn5 = col_cn10_0 - 16.0 - cell_w;
 
     // Canvas Background
-    cr.set_source_rgb(
-        tokens::color::BG_VOID.0,
-        tokens::color::BG_VOID.1,
-        tokens::color::BG_VOID.2,
-    );
+    cr.set_source_rgb(pal.bg_void.0, pal.bg_void.1, pal.bg_void.2);
     cr.rectangle(0.0, 0.0, canvas_w, canvas_h);
     let _ = cr.fill();
 
     // 1. Board Silhouette (PCB Outline) - Surface BG_PANEL, hairline border BORDER_HAIR, 0px sharp corners
-    cr.set_source_rgb(
-        tokens::color::BG_PANEL.0,
-        tokens::color::BG_PANEL.1,
-        tokens::color::BG_PANEL.2,
-    );
+    cr.set_source_rgb(pal.bg_panel.0, pal.bg_panel.1, pal.bg_panel.2);
     cr.rectangle(board_x, board_y, board_w, board_h);
     let _ = cr.fill_preserve();
-    cr.set_source_rgb(
-        tokens::color::BORDER_HAIR.0,
-        tokens::color::BORDER_HAIR.1,
-        tokens::color::BORDER_HAIR.2,
-    );
+    cr.set_source_rgb(pal.border_hair.0, pal.border_hair.1, pal.border_hair.2);
     cr.set_line_width(tokens::shape::BORDER_WIDTH_HAIR);
     let _ = cr.stroke();
 
     // Subtle PCB Grid Accent Texture Lines
+    let grid_alpha = if is_default { 0.25 } else { 0.65 };
     cr.set_source_rgba(
-        tokens::color::BORDER_HAIR.0,
-        tokens::color::BORDER_HAIR.1,
-        tokens::color::BORDER_HAIR.2,
-        0.25,
+        pal.border_hair.0,
+        pal.border_hair.1,
+        pal.border_hair.2,
+        grid_alpha,
     );
     cr.set_line_width(tokens::shape::BORDER_WIDTH_HAIR);
     let mut gy = board_y + 40.0;
@@ -854,18 +865,20 @@ pub fn draw_nucleo_pinout(
     let notch_w = (board_w * 0.24).clamp(220.0, 380.0);
     let notch_x = board_x + (board_w - notch_w) / 2.0;
     let notch_y = board_y + 8.0;
-    cr.set_source_rgb(
-        tokens::color::BG_VOID.0,
-        tokens::color::BG_VOID.1,
-        tokens::color::BG_VOID.2,
-    );
+    let inset_fill = if is_default {
+        pal.bg_void
+    } else {
+        pal.bg_raised
+    };
+    let inset_border = if is_default {
+        pal.border_hair
+    } else {
+        pal.line
+    };
+    cr.set_source_rgb(inset_fill.0, inset_fill.1, inset_fill.2);
     cr.rectangle(notch_x, notch_y, notch_w, 20.0);
     let _ = cr.fill_preserve();
-    cr.set_source_rgb(
-        tokens::color::BORDER_HAIR.0,
-        tokens::color::BORDER_HAIR.1,
-        tokens::color::BORDER_HAIR.2,
-    );
+    cr.set_source_rgb(inset_border.0, inset_border.1, inset_border.2);
     cr.set_line_width(tokens::shape::BORDER_WIDTH_HAIR);
     let _ = cr.stroke();
 
@@ -875,11 +888,7 @@ pub fn draw_nucleo_pinout(
         cairo::FontWeight::Bold,
     );
     cr.set_font_size(9.0);
-    cr.set_source_rgb(
-        tokens::color::TEXT_MUTED.0,
-        tokens::color::TEXT_MUTED.1,
-        tokens::color::TEXT_MUTED.2,
-    );
+    cr.set_source_rgb(pal.text_muted.0, pal.text_muted.1, pal.text_muted.2);
     if let Ok(ext) = cr.text_extents("ST-LINK V2-1 ON-BOARD DEBUGGER") {
         cr.move_to(notch_x + (notch_w - ext.width()) / 2.0, notch_y + 14.0);
         let _ = cr.show_text("ST-LINK V2-1 ON-BOARD DEBUGGER");
@@ -892,11 +901,7 @@ pub fn draw_nucleo_pinout(
         cairo::FontWeight::Bold,
     );
     cr.set_font_size(16.0);
-    cr.set_source_rgb(
-        tokens::color::TEXT_PRIMARY.0,
-        tokens::color::TEXT_PRIMARY.1,
-        tokens::color::TEXT_PRIMARY.2,
-    );
+    cr.set_source_rgb(pal.text_primary.0, pal.text_primary.1, pal.text_primary.2);
     let title_str = "STMicroelectronics NUCLEO-F446RE";
     let title_y = board_y + 46.0;
     if let Ok(ext) = cr.text_extents(title_str) {
@@ -910,11 +915,7 @@ pub fn draw_nucleo_pinout(
         cairo::FontWeight::Normal,
     );
     cr.set_font_size(10.5);
-    cr.set_source_rgb(
-        tokens::color::TEXT_MUTED.0,
-        tokens::color::TEXT_MUTED.1,
-        tokens::color::TEXT_MUTED.2,
-    );
+    cr.set_source_rgb(pal.text_muted.0, pal.text_muted.1, pal.text_muted.2);
     let subtitle_str = "ARM® Cortex®-M4 MCU @ 180MHz • Physical 64-Pin Connector Pinout";
     let subtitle_y = title_y + 20.0;
     if let Ok(ext) = cr.text_extents(subtitle_str) {
@@ -928,9 +929,9 @@ pub fn draw_nucleo_pinout(
             .iter()
             .any(|(_, r)| r.severity == stakhal_core::nucleo_pinout::ReservedSeverity::Critical);
         let (cr_r, cr_g, cr_b) = if has_critical {
-            tokens::color::STATE_ERROR
+            pal.state_error.rgb()
         } else {
-            tokens::color::STATE_ACTIVE
+            pal.state_active.rgb()
         };
 
         let banner_str = if count == 1 {
@@ -965,28 +966,16 @@ pub fn draw_nucleo_pinout(
     let mcu_y = row_start_y + 7.5 * row_h;
     let mcu_h = (4.5 * row_h).clamp(100.0, 180.0);
 
-    // MCU LQFP64 Chip Frame - Sharp 0px corners, BG_VOID fill, 1px BORDER_HAIR
-    cr.set_source_rgb(
-        tokens::color::BG_VOID.0,
-        tokens::color::BG_VOID.1,
-        tokens::color::BG_VOID.2,
-    );
+    // MCU LQFP64 Chip Frame - Sharp 0px corners, inset fill & hairline border
+    cr.set_source_rgb(inset_fill.0, inset_fill.1, inset_fill.2);
     cr.rectangle(mcu_x, mcu_y, mcu_w, mcu_h);
     let _ = cr.fill_preserve();
-    cr.set_source_rgb(
-        tokens::color::BORDER_HAIR.0,
-        tokens::color::BORDER_HAIR.1,
-        tokens::color::BORDER_HAIR.2,
-    );
+    cr.set_source_rgb(inset_border.0, inset_border.1, inset_border.2);
     cr.set_line_width(tokens::shape::BORDER_WIDTH_HAIR);
     let _ = cr.stroke();
 
     // MCU Orientation Pin 1 Dot
-    cr.set_source_rgb(
-        tokens::color::TEXT_MUTED.0,
-        tokens::color::TEXT_MUTED.1,
-        tokens::color::TEXT_MUTED.2,
-    );
+    cr.set_source_rgb(pal.text_muted.0, pal.text_muted.1, pal.text_muted.2);
     cr.arc(
         mcu_x + 14.0,
         mcu_y + 14.0,
@@ -1003,31 +992,19 @@ pub fn draw_nucleo_pinout(
         cairo::FontWeight::Bold,
     );
     cr.set_font_size(11.0);
-    cr.set_source_rgb(
-        tokens::color::TEXT_PRIMARY.0,
-        tokens::color::TEXT_PRIMARY.1,
-        tokens::color::TEXT_PRIMARY.2,
-    );
+    cr.set_source_rgb(pal.text_primary.0, pal.text_primary.1, pal.text_primary.2);
     if let Ok(ext) = cr.text_extents("STM32F446") {
         cr.move_to(mcu_x + (mcu_w - ext.width()) / 2.0, mcu_y + mcu_h * 0.42);
         let _ = cr.show_text("STM32F446");
     }
     cr.set_font_size(10.0);
-    cr.set_source_rgb(
-        tokens::color::TEXT_PRIMARY.0,
-        tokens::color::TEXT_PRIMARY.1,
-        tokens::color::TEXT_PRIMARY.2,
-    );
+    cr.set_source_rgb(pal.text_primary.0, pal.text_primary.1, pal.text_primary.2);
     if let Ok(ext) = cr.text_extents("RET6") {
         cr.move_to(mcu_x + (mcu_w - ext.width()) / 2.0, mcu_y + mcu_h * 0.55);
         let _ = cr.show_text("RET6");
     }
     cr.set_font_size(9.0);
-    cr.set_source_rgb(
-        tokens::color::TEXT_MUTED.0,
-        tokens::color::TEXT_MUTED.1,
-        tokens::color::TEXT_MUTED.2,
-    );
+    cr.set_source_rgb(pal.text_muted.0, pal.text_muted.1, pal.text_muted.2);
     if let Ok(ext) = cr.text_extents("LQFP64") {
         cr.move_to(mcu_x + (mcu_w - ext.width()) / 2.0, mcu_y + mcu_h * 0.68);
         let _ = cr.show_text("LQFP64");
@@ -1038,28 +1015,16 @@ pub fn draw_nucleo_pinout(
         highlights.contains_key(&("CN10", 11)) || highlights.contains_key(&("CN5", 6));
     let led_y = row_start_y + 2.0 * row_h;
     let led_h = (1.2 * row_h).clamp(30.0, 42.0);
-    cr.set_source_rgb(
-        tokens::color::BG_PANEL.0,
-        tokens::color::BG_PANEL.1,
-        tokens::color::BG_PANEL.2,
-    );
+    cr.set_source_rgb(pal.bg_panel.0, pal.bg_panel.1, pal.bg_panel.2);
     cr.rectangle(mcu_x, led_y, mcu_w, led_h);
     let _ = cr.fill_preserve();
 
     if is_pa5_active {
-        cr.set_source_rgb(
-            tokens::color::STATE_READY.0,
-            tokens::color::STATE_READY.1,
-            tokens::color::STATE_READY.2,
-        );
+        cr.set_source_rgb(pal.state_ready.0, pal.state_ready.1, pal.state_ready.2);
         cr.set_line_width(tokens::shape::BORDER_WIDTH_HAIR);
         let _ = cr.stroke();
 
-        cr.set_source_rgb(
-            tokens::color::STATE_READY.0,
-            tokens::color::STATE_READY.1,
-            tokens::color::STATE_READY.2,
-        );
+        cr.set_source_rgb(pal.state_ready.0, pal.state_ready.1, pal.state_ready.2);
         cr.arc(
             mcu_x + 18.0,
             led_y + led_h / 2.0,
@@ -1075,27 +1040,15 @@ pub fn draw_nucleo_pinout(
             cairo::FontWeight::Bold,
         );
         cr.set_font_size(10.0);
-        cr.set_source_rgb(
-            tokens::color::STATE_READY.0,
-            tokens::color::STATE_READY.1,
-            tokens::color::STATE_READY.2,
-        );
+        cr.set_source_rgb(pal.state_ready.0, pal.state_ready.1, pal.state_ready.2);
         cr.move_to(mcu_x + 32.0, led_y + led_h / 2.0 + 4.0);
         let _ = cr.show_text("LD2 [ON]");
     } else {
-        cr.set_source_rgb(
-            tokens::color::BORDER_HAIR.0,
-            tokens::color::BORDER_HAIR.1,
-            tokens::color::BORDER_HAIR.2,
-        );
+        cr.set_source_rgb(pal.border_hair.0, pal.border_hair.1, pal.border_hair.2);
         cr.set_line_width(tokens::shape::BORDER_WIDTH_HAIR);
         let _ = cr.stroke();
 
-        cr.set_source_rgb(
-            tokens::color::BORDER_HAIR.0,
-            tokens::color::BORDER_HAIR.1,
-            tokens::color::BORDER_HAIR.2,
-        );
+        cr.set_source_rgb(pal.border_hair.0, pal.border_hair.1, pal.border_hair.2);
         cr.arc(
             mcu_x + 18.0,
             led_y + led_h / 2.0,
@@ -1111,11 +1064,7 @@ pub fn draw_nucleo_pinout(
             cairo::FontWeight::Normal,
         );
         cr.set_font_size(9.5);
-        cr.set_source_rgb(
-            tokens::color::TEXT_MUTED.0,
-            tokens::color::TEXT_MUTED.1,
-            tokens::color::TEXT_MUTED.2,
-        );
+        cr.set_source_rgb(pal.text_muted.0, pal.text_muted.1, pal.text_muted.2);
         cr.move_to(mcu_x + 32.0, led_y + led_h / 2.0 + 4.0);
         let _ = cr.show_text("LD2 (PA5)");
     }
@@ -1126,18 +1075,10 @@ pub fn draw_nucleo_pinout(
     let b1_w = (mcu_w - 6.0) / 2.0;
 
     // B1 Button (PC13)
-    cr.set_source_rgb(
-        tokens::color::BG_PANEL.0,
-        tokens::color::BG_PANEL.1,
-        tokens::color::BG_PANEL.2,
-    );
+    cr.set_source_rgb(pal.bg_panel.0, pal.bg_panel.1, pal.bg_panel.2);
     cr.rectangle(mcu_x, btn_y, b1_w, btn_h);
     let _ = cr.fill_preserve();
-    cr.set_source_rgb(
-        tokens::color::BORDER_HAIR.0,
-        tokens::color::BORDER_HAIR.1,
-        tokens::color::BORDER_HAIR.2,
-    );
+    cr.set_source_rgb(pal.border_hair.0, pal.border_hair.1, pal.border_hair.2);
     cr.set_line_width(tokens::shape::BORDER_WIDTH_HAIR);
     let _ = cr.stroke();
     cr.select_font_face(
@@ -1146,27 +1087,15 @@ pub fn draw_nucleo_pinout(
         cairo::FontWeight::Bold,
     );
     cr.set_font_size(9.0);
-    cr.set_source_rgb(
-        tokens::color::TEXT_PRIMARY.0,
-        tokens::color::TEXT_PRIMARY.1,
-        tokens::color::TEXT_PRIMARY.2,
-    );
+    cr.set_source_rgb(pal.text_primary.0, pal.text_primary.1, pal.text_primary.2);
     cr.move_to(mcu_x + 8.0, btn_y + btn_h / 2.0 + 3.0);
     let _ = cr.show_text("B1 USER");
 
     // B2 Button (RESET)
-    cr.set_source_rgb(
-        tokens::color::BG_PANEL.0,
-        tokens::color::BG_PANEL.1,
-        tokens::color::BG_PANEL.2,
-    );
+    cr.set_source_rgb(pal.bg_panel.0, pal.bg_panel.1, pal.bg_panel.2);
     cr.rectangle(mcu_x + b1_w + 6.0, btn_y, b1_w, btn_h);
     let _ = cr.fill_preserve();
-    cr.set_source_rgb(
-        tokens::color::BORDER_HAIR.0,
-        tokens::color::BORDER_HAIR.1,
-        tokens::color::BORDER_HAIR.2,
-    );
+    cr.set_source_rgb(pal.border_hair.0, pal.border_hair.1, pal.border_hair.2);
     cr.set_line_width(tokens::shape::BORDER_WIDTH_HAIR);
     let _ = cr.stroke();
     cr.select_font_face(
@@ -1175,11 +1104,7 @@ pub fn draw_nucleo_pinout(
         cairo::FontWeight::Bold,
     );
     cr.set_font_size(9.0);
-    cr.set_source_rgb(
-        tokens::color::TEXT_PRIMARY.0,
-        tokens::color::TEXT_PRIMARY.1,
-        tokens::color::TEXT_PRIMARY.2,
-    );
+    cr.set_source_rgb(pal.text_primary.0, pal.text_primary.1, pal.text_primary.2);
     cr.move_to(mcu_x + b1_w + 10.0, btn_y + btn_h / 2.0 + 3.0);
     let _ = cr.show_text("B2 RESET");
 
@@ -1224,11 +1149,7 @@ pub fn draw_nucleo_pinout(
             cairo::FontWeight::Bold,
         );
         cr.set_font_size(10.5);
-        cr.set_source_rgb(
-            tokens::color::TEXT_PRIMARY.0,
-            tokens::color::TEXT_PRIMARY.1,
-            tokens::color::TEXT_PRIMARY.2,
-        );
+        cr.set_source_rgb(pal.text_primary.0, pal.text_primary.1, pal.text_primary.2);
 
         if conn.name == "CN10" {
             let morpho_right_edge = col_cn10_1 + cell_w;
@@ -1252,39 +1173,64 @@ pub fn draw_nucleo_pinout(
             let is_hl = highlights.get(&(conn.name, p.pin_num));
             let is_hovered = hovered_pin
                 .is_some_and(|(c_name, p_num)| c_name == conn.name && *p_num == p.pin_num);
+            let pin_hover_amount = if is_default {
+                0.0
+            } else {
+                pin_hover_entries
+                    .iter()
+                    .find(|(c_name, p_num, _)| c_name == conn.name && *p_num == p.pin_num)
+                    .map(|(_, _, v)| *v)
+                    .unwrap_or(if is_hovered { 1.0 } else { 0.0 })
+                    .clamp(0.0, 1.0)
+            };
 
             if let Some(hl_info) = is_hl {
                 let reserved_info = stakhal_core::nucleo_pinout::check_reserved(p.mcu_pin);
                 let (hl_r, hl_g, hl_b) = match reserved_info {
                     Some(res) => match res.severity {
                         stakhal_core::nucleo_pinout::ReservedSeverity::Critical => {
-                            tokens::color::STATE_ERROR
+                            pal.state_error.rgb()
                         }
                         stakhal_core::nucleo_pinout::ReservedSeverity::Caution => {
-                            tokens::color::STATE_ACTIVE
+                            pal.state_active.rgb()
                         }
                     },
-                    None => tokens::color::STATE_READY,
+                    None => pal.pin_active.rgb(),
                 };
 
                 // Highlighted Pin (Active in loaded project) - background BG_PANEL
-                cr.set_source_rgb(
-                    tokens::color::BG_PANEL.0,
-                    tokens::color::BG_PANEL.1,
-                    tokens::color::BG_PANEL.2,
-                );
+                cr.set_source_rgb(pal.bg_panel.0, pal.bg_panel.1, pal.bg_panel.2);
                 cr.rectangle(cell_x, cell_y, cell_w, cell_h);
                 let _ = cr.fill_preserve();
 
-                // Interactive/Selection ONLY uses ACCENT
-                if is_hovered {
-                    cr.set_source_rgb(
-                        tokens::color::ACCENT.0,
-                        tokens::color::ACCENT.1,
-                        tokens::color::ACCENT.2,
-                    );
+                let muted_alpha = if is_default { 0.35 } else { 0.55 };
+                let muted_badge_fill = if is_default {
+                    pal.bg_void
+                } else {
+                    pal.bg_raised
+                };
+
+                // Default uses static ACCENT; Stage blends toward gold_deep by eased hover amount
+                if is_default {
+                    if is_hovered {
+                        cr.set_source_rgb(pal.accent.0, pal.accent.1, pal.accent.2);
+                    } else if hl_info.is_muted {
+                        cr.set_source_rgba(hl_r, hl_g, hl_b, muted_alpha);
+                    } else {
+                        cr.set_source_rgb(hl_r, hl_g, hl_b);
+                    }
+                } else if pin_hover_amount > 0.0 {
+                    let base_a = if hl_info.is_muted { muted_alpha } else { 1.0 };
+                    let blended =
+                        mix_rgb((hl_r, hl_g, hl_b), pal.gold_deep.rgb(), pin_hover_amount);
+                    let blended_a = base_a + (1.0 - base_a) * pin_hover_amount;
+                    if blended_a < 1.0 {
+                        cr.set_source_rgba(blended.0, blended.1, blended.2, blended_a);
+                    } else {
+                        cr.set_source_rgb(blended.0, blended.1, blended.2);
+                    }
                 } else if hl_info.is_muted {
-                    cr.set_source_rgba(hl_r, hl_g, hl_b, 0.35);
+                    cr.set_source_rgba(hl_r, hl_g, hl_b, muted_alpha);
                 } else {
                     cr.set_source_rgb(hl_r, hl_g, hl_b);
                 }
@@ -1294,14 +1240,10 @@ pub fn draw_nucleo_pinout(
                 // Pin Number Badge Box - sharp 0px corners
                 let badge_w = (cell_w * 0.16).clamp(24.0, 32.0);
                 if hl_info.is_muted {
-                    cr.set_source_rgb(
-                        tokens::color::BG_VOID.0,
-                        tokens::color::BG_VOID.1,
-                        tokens::color::BG_VOID.2,
-                    );
+                    cr.set_source_rgb(muted_badge_fill.0, muted_badge_fill.1, muted_badge_fill.2);
                     cr.rectangle(cell_x + 3.0, cell_y + 3.0, badge_w, cell_h - 6.0);
                     let _ = cr.fill_preserve();
-                    cr.set_source_rgba(hl_r, hl_g, hl_b, 0.35);
+                    cr.set_source_rgba(hl_r, hl_g, hl_b, muted_alpha);
                     cr.set_line_width(tokens::shape::BORDER_WIDTH_HAIR);
                     let _ = cr.stroke();
 
@@ -1311,13 +1253,26 @@ pub fn draw_nucleo_pinout(
                         cairo::FontWeight::Normal,
                     );
                     cr.set_font_size(9.5);
-                    cr.set_source_rgb(
-                        tokens::color::TEXT_MUTED.0,
-                        tokens::color::TEXT_MUTED.1,
-                        tokens::color::TEXT_MUTED.2,
-                    );
+                    cr.set_source_rgb(pal.text_muted.0, pal.text_muted.1, pal.text_muted.2);
                 } else {
-                    cr.set_source_rgb(hl_r, hl_g, hl_b);
+                    let is_caution = !is_default
+                        && reserved_info.is_some_and(|res| {
+                            res.severity == stakhal_core::nucleo_pinout::ReservedSeverity::Caution
+                        });
+                    let (tab_r, tab_g, tab_b) = if is_caution {
+                        pal.gold.rgb()
+                    } else {
+                        (hl_r, hl_g, hl_b)
+                    };
+                    let (tab_txt_r, tab_txt_g, tab_txt_b) = if is_default {
+                        pal.bg_void.rgb()
+                    } else if is_caution {
+                        pal.text_primary.rgb()
+                    } else {
+                        pal.bg_panel.rgb()
+                    };
+
+                    cr.set_source_rgb(tab_r, tab_g, tab_b);
                     cr.rectangle(cell_x + 3.0, cell_y + 3.0, badge_w, cell_h - 6.0);
                     let _ = cr.fill();
 
@@ -1327,11 +1282,7 @@ pub fn draw_nucleo_pinout(
                         cairo::FontWeight::Bold,
                     );
                     cr.set_font_size(9.5);
-                    cr.set_source_rgb(
-                        tokens::color::BG_VOID.0,
-                        tokens::color::BG_VOID.1,
-                        tokens::color::BG_VOID.2,
-                    );
+                    cr.set_source_rgb(tab_txt_r, tab_txt_g, tab_txt_b);
                 }
 
                 let pnum_str = format!("{}", p.pin_num);
@@ -1344,17 +1295,9 @@ pub fn draw_nucleo_pinout(
                 // MCU Pin Text
                 cr.set_font_size(9.5);
                 if hl_info.is_muted {
-                    cr.set_source_rgb(
-                        tokens::color::TEXT_MUTED.0,
-                        tokens::color::TEXT_MUTED.1,
-                        tokens::color::TEXT_MUTED.2,
-                    );
+                    cr.set_source_rgb(pal.text_muted.0, pal.text_muted.1, pal.text_muted.2);
                 } else {
-                    cr.set_source_rgb(
-                        tokens::color::TEXT_PRIMARY.0,
-                        tokens::color::TEXT_PRIMARY.1,
-                        tokens::color::TEXT_PRIMARY.2,
-                    );
+                    cr.set_source_rgb(pal.text_primary.0, pal.text_primary.1, pal.text_primary.2);
                 }
                 let mcu_pin_x = cell_x + badge_w + 8.0;
                 cr.move_to(mcu_pin_x, cell_y + cell_h * 0.64);
@@ -1384,11 +1327,7 @@ pub fn draw_nucleo_pinout(
                         cairo::FontWeight::Normal,
                     );
                     cr.set_font_size(9.0);
-                    cr.set_source_rgb(
-                        tokens::color::TEXT_MUTED.0,
-                        tokens::color::TEXT_MUTED.1,
-                        tokens::color::TEXT_MUTED.2,
-                    );
+                    cr.set_source_rgb(pal.text_muted.0, pal.text_muted.1, pal.text_muted.2);
                 } else {
                     cr.select_font_face(
                         tokens::font::CAIRO_MONO,
@@ -1407,37 +1346,38 @@ pub fn draw_nucleo_pinout(
                 }
             } else {
                 // Neutral / Unused Pin - background BG_PANEL, border BORDER_HAIR
-                cr.set_source_rgb(
-                    tokens::color::BG_PANEL.0,
-                    tokens::color::BG_PANEL.1,
-                    tokens::color::BG_PANEL.2,
-                );
+                cr.set_source_rgb(pal.bg_panel.0, pal.bg_panel.1, pal.bg_panel.2);
                 cr.rectangle(cell_x, cell_y, cell_w, cell_h);
                 let _ = cr.fill_preserve();
 
-                // Interactive/Selection ONLY uses ACCENT
-                if is_hovered {
-                    cr.set_source_rgb(
-                        tokens::color::ACCENT.0,
-                        tokens::color::ACCENT.1,
-                        tokens::color::ACCENT.2,
-                    );
+                // Default uses static ACCENT; Stage blends toward gold_deep by eased hover amount
+                if is_default {
+                    if is_hovered {
+                        cr.set_source_rgb(pal.accent.0, pal.accent.1, pal.accent.2);
+                    } else {
+                        cr.set_source_rgb(pal.border_hair.0, pal.border_hair.1, pal.border_hair.2);
+                    }
+                } else if pin_hover_amount > 0.0 {
+                    let blended =
+                        mix_rgb(pal.border_hair.rgb(), pal.gold_deep.rgb(), pin_hover_amount);
+                    cr.set_source_rgb(blended.0, blended.1, blended.2);
                 } else {
-                    cr.set_source_rgb(
-                        tokens::color::BORDER_HAIR.0,
-                        tokens::color::BORDER_HAIR.1,
-                        tokens::color::BORDER_HAIR.2,
-                    );
+                    cr.set_source_rgb(pal.border_hair.0, pal.border_hair.1, pal.border_hair.2);
                 }
                 cr.set_line_width(tokens::shape::BORDER_WIDTH_HAIR);
                 let _ = cr.stroke();
 
                 // Pin Number Box for Neutral Cell - sharp 0px corners
                 let badge_w = (cell_w * 0.16).clamp(26.0, 34.0);
+                let neutral_badge_fill = if is_default {
+                    pal.bg_void
+                } else {
+                    pal.bg_raised
+                };
                 cr.set_source_rgb(
-                    tokens::color::BG_VOID.0,
-                    tokens::color::BG_VOID.1,
-                    tokens::color::BG_VOID.2,
+                    neutral_badge_fill.0,
+                    neutral_badge_fill.1,
+                    neutral_badge_fill.2,
                 );
                 cr.rectangle(cell_x + 4.0, cell_y + 4.0, badge_w, cell_h - 8.0);
                 let _ = cr.fill();
@@ -1449,17 +1389,9 @@ pub fn draw_nucleo_pinout(
                 );
                 cr.set_font_size(9.5);
                 if is_hovered {
-                    cr.set_source_rgb(
-                        tokens::color::TEXT_PRIMARY.0,
-                        tokens::color::TEXT_PRIMARY.1,
-                        tokens::color::TEXT_PRIMARY.2,
-                    );
+                    cr.set_source_rgb(pal.text_primary.0, pal.text_primary.1, pal.text_primary.2);
                 } else {
-                    cr.set_source_rgb(
-                        tokens::color::TEXT_MUTED.0,
-                        tokens::color::TEXT_MUTED.1,
-                        tokens::color::TEXT_MUTED.2,
-                    );
+                    cr.set_source_rgb(pal.text_muted.0, pal.text_muted.1, pal.text_muted.2);
                 }
                 let pnum_str = format!("{}", p.pin_num);
                 if let Ok(ext) = cr.text_extents(&pnum_str) {
@@ -1469,11 +1401,7 @@ pub fn draw_nucleo_pinout(
                 }
 
                 // MCU Pin & Label Text
-                cr.set_source_rgb(
-                    tokens::color::TEXT_PRIMARY.0,
-                    tokens::color::TEXT_PRIMARY.1,
-                    tokens::color::TEXT_PRIMARY.2,
-                );
+                cr.set_source_rgb(pal.text_primary.0, pal.text_primary.1, pal.text_primary.2);
                 let label_part = match p.default_label {
                     Some(lbl) => format!(" ({})", lbl),
                     None => "".to_string(),
@@ -1498,19 +1426,11 @@ pub fn draw_nucleo_pinout(
     let leg_x = board_x + (board_w * 0.02).max(16.0);
 
     // Active Signal Legend
-    cr.set_source_rgb(
-        tokens::color::STATE_READY.0,
-        tokens::color::STATE_READY.1,
-        tokens::color::STATE_READY.2,
-    );
+    cr.set_source_rgb(pal.pin_active.0, pal.pin_active.1, pal.pin_active.2);
     cr.rectangle(leg_x, legend_y, 14.0, 14.0);
     let _ = cr.fill();
 
-    cr.set_source_rgb(
-        tokens::color::TEXT_PRIMARY.0,
-        tokens::color::TEXT_PRIMARY.1,
-        tokens::color::TEXT_PRIMARY.2,
-    );
+    cr.set_source_rgb(pal.text_primary.0, pal.text_primary.1, pal.text_primary.2);
     cr.move_to(leg_x + 22.0, legend_y + 11.0);
     let active_label = if is_filtering_module {
         "Active in Module"
@@ -1521,27 +1441,19 @@ pub fn draw_nucleo_pinout(
 
     if is_filtering_module {
         let leg_x2 = leg_x + 150.0;
-        cr.set_source_rgb(
-            tokens::color::BG_PANEL.0,
-            tokens::color::BG_PANEL.1,
-            tokens::color::BG_PANEL.2,
-        );
+        cr.set_source_rgb(pal.bg_panel.0, pal.bg_panel.1, pal.bg_panel.2);
         cr.rectangle(leg_x2, legend_y, 14.0, 14.0);
         let _ = cr.fill_preserve();
         cr.set_source_rgba(
-            tokens::color::STATE_READY.0,
-            tokens::color::STATE_READY.1,
-            tokens::color::STATE_READY.2,
-            0.35,
+            pal.pin_active.0,
+            pal.pin_active.1,
+            pal.pin_active.2,
+            if is_default { 0.35 } else { 0.55 },
         );
         cr.set_line_width(tokens::shape::BORDER_WIDTH_HAIR);
         let _ = cr.stroke();
 
-        cr.set_source_rgb(
-            tokens::color::TEXT_MUTED.0,
-            tokens::color::TEXT_MUTED.1,
-            tokens::color::TEXT_MUTED.2,
-        );
+        cr.set_source_rgb(pal.text_muted.0, pal.text_muted.1, pal.text_muted.2);
         cr.move_to(leg_x2 + 22.0, legend_y + 11.0);
         let _ = cr.show_text("Active Elsewhere in Project");
     }
@@ -1629,11 +1541,7 @@ pub fn draw_nucleo_pinout(
                 }
 
                 // Card Background BG_PANEL, sharp 0px corners
-                cr.set_source_rgb(
-                    tokens::color::BG_PANEL.0,
-                    tokens::color::BG_PANEL.1,
-                    tokens::color::BG_PANEL.2,
-                );
+                cr.set_source_rgb(pal.bg_panel.0, pal.bg_panel.1, pal.bg_panel.2);
                 cr.rectangle(tt_x, tt_y, tt_w, tt_h);
                 let _ = cr.fill_preserve();
 
@@ -1641,17 +1549,19 @@ pub fn draw_nucleo_pinout(
                 let (border_r, border_g, border_b) = match reserved_info {
                     Some(res) => match res.severity {
                         stakhal_core::nucleo_pinout::ReservedSeverity::Critical => {
-                            tokens::color::STATE_ERROR
+                            pal.state_error.rgb()
                         }
                         stakhal_core::nucleo_pinout::ReservedSeverity::Caution => {
-                            tokens::color::STATE_ACTIVE
+                            pal.state_active.rgb()
                         }
                     },
                     None => {
                         if is_hl.is_some() {
-                            tokens::color::STATE_READY
+                            pal.pin_active.rgb()
+                        } else if is_default {
+                            pal.border_hair.rgb()
                         } else {
-                            tokens::color::BORDER_HAIR
+                            pal.line.rgb()
                         }
                     }
                 };
@@ -1667,11 +1577,7 @@ pub fn draw_nucleo_pinout(
                     cairo::FontWeight::Bold,
                 );
                 cr.set_font_size(10.0);
-                cr.set_source_rgb(
-                    tokens::color::TEXT_PRIMARY.0,
-                    tokens::color::TEXT_PRIMARY.1,
-                    tokens::color::TEXT_PRIMARY.2,
-                );
+                cr.set_source_rgb(pal.text_primary.0, pal.text_primary.1, pal.text_primary.2);
                 cr.move_to(tt_x + 10.0, tt_y + 16.0);
                 let _ = cr.show_text(&line1);
 
@@ -1685,11 +1591,7 @@ pub fn draw_nucleo_pinout(
                 if is_hl.is_some() {
                     cr.set_source_rgb(border_r, border_g, border_b);
                 } else {
-                    cr.set_source_rgb(
-                        tokens::color::TEXT_MUTED.0,
-                        tokens::color::TEXT_MUTED.1,
-                        tokens::color::TEXT_MUTED.2,
-                    );
+                    cr.set_source_rgb(pal.text_muted.0, pal.text_muted.1, pal.text_muted.2);
                 }
                 cr.move_to(tt_x + 10.0, tt_y + 32.0);
                 let _ = cr.show_text(&line2);
@@ -1711,6 +1613,41 @@ pub fn draw_nucleo_pinout(
     }
 }
 
+/// Attach the Stage pinout hover-easing frame-clock tick callback on demand while
+/// any cell hover amount is not yet settled at its target.
+pub fn ensure_pinout_hover_tick(drawing_area: &gtk4::DrawingArea, state: &Rc<RefCell<AppState>>) {
+    let should_attach = state.borrow().with_canvas_state_mut(|st| {
+        if st.pinout_tick_active || !st.has_unsettled_pin_hover() {
+            return false;
+        }
+        st.pinout_tick_active = true;
+        true
+    });
+    if !should_attach {
+        return;
+    }
+
+    let state_tick = Rc::clone(state);
+    drawing_area.add_tick_callback(move |area, _| {
+        let is_stage = tokens::palette() != tokens::Palette::DEFAULT;
+        let animations_enabled = tokens::motion::is_animations_enabled();
+        let now = std::time::Instant::now();
+        let (needs_redraw, keep_running) = state_tick
+            .borrow()
+            .with_canvas_state_mut(|st| st.step_pinout_tick(is_stage, animations_enabled, now));
+
+        if needs_redraw {
+            area.queue_draw();
+        }
+
+        if keep_running {
+            glib::ControlFlow::Continue
+        } else {
+            glib::ControlFlow::Break
+        }
+    });
+}
+
 pub fn setup_nucleo_pinout_drawing_and_gestures(
     state: &Rc<RefCell<AppState>>,
     widgets: &Rc<AppWidgets>,
@@ -1730,6 +1667,9 @@ pub fn setup_nucleo_pinout_drawing_and_gestures(
         let area = &widgets_motion.pinout_drawing_area;
         let cw = area.width().max(800) as f64;
         let ch = area.height().max(600) as f64;
+        let is_stage_animated = tokens::palette() != tokens::Palette::DEFAULT
+            && tokens::motion::is_animations_enabled();
+        let now = std::time::Instant::now();
 
         let mut hit_pin: Option<(&'static str, u8, &'static str, Option<&'static str>)> = None;
 
@@ -1749,35 +1689,51 @@ pub fn setup_nucleo_pinout_drawing_and_gestures(
 
         match hit_pin {
             Some((conn_name, pin_num, _mcu_pin, _default_label)) => {
-                let mut needs_draw = false;
                 state_motion.borrow().with_canvas_state_mut(|c| {
-                    let current_hovered = c.hovered_pinout_pin.clone();
-                    let new_hovered = Some((conn_name.to_string(), pin_num));
-
                     c.hovered_pinout_mouse = Some((x, y));
-
-                    if current_hovered != new_hovered {
-                        c.hovered_pinout_pin = new_hovered;
-                    }
-                    needs_draw = true;
+                    c.set_pinout_hovered_pin(
+                        Some((conn_name.to_string(), pin_num)),
+                        is_stage_animated,
+                        now,
+                    );
                 });
-                if needs_draw {
-                    area.queue_draw();
+                if is_stage_animated {
+                    ensure_pinout_hover_tick(area, &state_motion);
                 }
+                area.queue_draw();
             }
             None => {
-                let mut needs_draw = false;
-                state_motion.borrow().with_canvas_state_mut(|c| {
-                    if c.hovered_pinout_pin.is_some() || c.hovered_pinout_mouse.is_some() {
-                        c.hovered_pinout_pin = None;
-                        c.hovered_pinout_mouse = None;
-                        needs_draw = true;
-                    }
+                let needs_draw = state_motion.borrow().with_canvas_state_mut(|c| {
+                    let had_mouse = c.hovered_pinout_mouse.take().is_some();
+                    let hover_changed = c.set_pinout_hovered_pin(None, is_stage_animated, now);
+                    had_mouse || hover_changed
                 });
                 if needs_draw {
+                    if is_stage_animated {
+                        ensure_pinout_hover_tick(area, &state_motion);
+                    }
                     area.queue_draw();
                 }
             }
+        }
+    });
+
+    let state_leave = Rc::clone(state);
+    let area_leave = widgets.pinout_drawing_area.clone();
+    motion.connect_leave(move |_| {
+        let is_stage_animated = tokens::palette() != tokens::Palette::DEFAULT
+            && tokens::motion::is_animations_enabled();
+        let now = std::time::Instant::now();
+        let needs_draw = state_leave.borrow().with_canvas_state_mut(|c| {
+            let had_mouse = c.hovered_pinout_mouse.take().is_some();
+            let hover_changed = c.set_pinout_hovered_pin(None, is_stage_animated, now);
+            had_mouse || hover_changed
+        });
+        if needs_draw {
+            if is_stage_animated {
+                ensure_pinout_hover_tick(&area_leave, &state_leave);
+            }
+            area_leave.queue_draw();
         }
     });
 
@@ -1938,5 +1894,277 @@ mod tests {
         let rc_state = Rc::new(RefCell::new(hatch_state));
         draw_nucleo_pinout(&cr, 1200.0, 750.0, &rc_state);
         surface.flush();
+    }
+
+    struct PaletteResetGuard(tokens::Palette);
+    impl Drop for PaletteResetGuard {
+        fn drop(&mut self) {
+            tokens::set_palette(self.0);
+        }
+    }
+
+    fn rel_luminance(rgb: (f64, f64, f64)) -> f64 {
+        fn lin(c: f64) -> f64 {
+            if c <= 0.04045 {
+                c / 12.92
+            } else {
+                ((c + 0.055) / 1.055).powf(2.4)
+            }
+        }
+        0.2126 * lin(rgb.0) + 0.7152 * lin(rgb.1) + 0.0722 * lin(rgb.2)
+    }
+
+    fn contrast_ratio(a: (f64, f64, f64), b: (f64, f64, f64)) -> f64 {
+        let la = rel_luminance(a);
+        let lb = rel_luminance(b);
+        let (hi, lo) = if la >= lb { (la, lb) } else { (lb, la) };
+        (hi + 0.05) / (lo + 0.05)
+    }
+
+    #[test]
+    fn test_stage_pinout_text_and_fill_contrast_pairs() {
+        let s = tokens::Palette::STAGE;
+        let pairs = [
+            (
+                "board title/headers/active MCU/neutral label vs bg_panel",
+                s.text_primary.rgb(),
+                s.bg_panel.rgb(),
+            ),
+            (
+                "board subtitle/muted pins/legend/unused tooltip vs bg_panel",
+                s.text_muted.rgb(),
+                s.bg_panel.rgb(),
+            ),
+            (
+                "MCU chip part label vs bg_raised",
+                s.text_primary.rgb(),
+                s.bg_raised.rgb(),
+            ),
+            (
+                "ST-LINK/MCU sublabel/inactive & muted pin tab vs bg_raised",
+                s.text_muted.rgb(),
+                s.bg_raised.rgb(),
+            ),
+            (
+                "lit active pin tab number vs pin_active",
+                s.bg_panel.rgb(),
+                s.pin_active.rgb(),
+            ),
+            (
+                "lit active signal label & tooltip vs bg_panel",
+                s.pin_active.rgb(),
+                s.bg_panel.rgb(),
+            ),
+            (
+                "caution (OSC) pin tab number vs gold",
+                s.text_primary.rgb(),
+                s.gold.rgb(),
+            ),
+            (
+                "caution (OSC) signal label/conflict banner/tooltip vs bg_panel",
+                s.state_active.rgb(),
+                s.bg_panel.rgb(),
+            ),
+            (
+                "critical (SWD) pin tab number vs state_error",
+                s.bg_panel.rgb(),
+                s.state_error.rgb(),
+            ),
+            (
+                "critical (SWD) signal label/conflict banner/tooltip vs bg_panel",
+                s.state_error.rgb(),
+                s.bg_panel.rgb(),
+            ),
+            (
+                "LD2 active label vs bg_panel",
+                s.state_ready.rgb(),
+                s.bg_panel.rgb(),
+            ),
+        ];
+
+        for (desc, fg, bg) in pairs {
+            let ratio = contrast_ratio(fg, bg);
+            assert!(
+                ratio >= 4.5,
+                "Stage pinout contrast for '{}' is {:.3}:1 (expected >= 4.5)",
+                desc,
+                ratio
+            );
+        }
+    }
+
+    #[test]
+    fn test_stage_palette_nucleo_pinout_rendering_and_contrast() {
+        let stage = tokens::Palette::STAGE;
+        let _guard = PaletteResetGuard(tokens::palette());
+        tokens::set_palette(stage);
+
+        let mut surface = cairo::ImageSurface::create(cairo::Format::ARgb32, 1200, 750)
+            .expect("Failed to create surface");
+        {
+            let cr = cairo::Context::new(&surface).expect("Failed to create context");
+            let state = Rc::new(RefCell::new(AppState::default()));
+
+            let fixture_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../stakhal-core/tests/fixtures/aa_ns_stm_port");
+            let ioc_path = fixture_dir.join("aa_ns_stm_port.ioc");
+            let main_c_path = fixture_dir.join("Core/Src/main.c");
+            let mut project = stakhal_core::ir::schema::load_project(&ioc_path, &main_c_path)
+                .expect("Failed to load aa_ns_stm_port");
+
+            // Include both an SWD critical conflict (PA13) and an oscillator caution conflict (PH0)
+            project.pins.push(stakhal_core::ioc::parser::PinConfig {
+                pin: "PA13".to_string(),
+                signal: "GPIO_Output".to_string(),
+                label: Some("DBG_SWDIO".to_string()),
+                modules: Vec::new(),
+            });
+            project.pins.push(stakhal_core::ioc::parser::PinConfig {
+                pin: "PH0".to_string(),
+                signal: "RCC_OSC_IN".to_string(),
+                label: Some("OSC_TEST".to_string()),
+                modules: Vec::new(),
+            });
+
+            state.borrow().project.borrow_mut().loaded_project = Some(project);
+            state.borrow().with_canvas_state_mut(|c| {
+                c.hovered_pinout_pin = Some(("CN7".to_string(), 1));
+                c.hovered_pinout_mouse = Some((120.0, 220.0));
+            });
+
+            draw_nucleo_pinout(&cr, 1200.0, 750.0, &state);
+            surface.flush();
+        }
+
+        let stride = surface.stride() as usize;
+        let data = surface.data().expect("surface pixel data");
+        let mut saw_bg_void = false;
+        let mut saw_bg_panel = false;
+        let mut saw_bg_raised = false;
+        let mut saw_pin_active = false;
+        let mut saw_gold = false;
+        let mut saw_error = false;
+        let mut saw_active = false;
+
+        for px in data.chunks_exact(4) {
+            let (b, g, r) = (px[0], px[1], px[2]);
+            match (r, g, b) {
+                (0xF4, 0xF9, 0xFD) => saw_bg_void = true,
+                (0xFF, 0xFF, 0xFF) => saw_bg_panel = true,
+                (0xE8, 0xF2, 0xF9) => saw_bg_raised = true,
+                (0x2E, 0x6D, 0xB4) => saw_pin_active = true,
+                (0xC9, 0xA2, 0x4F) => saw_gold = true,
+                (0xC6, 0x2F, 0x4D) => saw_error = true,
+                (0x8F, 0x67, 0x00) => saw_active = true,
+                _ => {}
+            }
+        }
+
+        // Verify ST-LINK top border at y=34.25 (row 34 gets 75% `line` #4F76AE + 25% `bg_raised` #E8F2F9 = ~(117, 149, 193))
+        let off = 34 * stride + 600 * 4;
+        let (sb, sg, sr) = (data[off], data[off + 1], data[off + 2]);
+        assert!(
+            (sr as i32 - 117).abs() <= 2
+                && (sg as i32 - 149).abs() <= 2
+                && (sb as i32 - 193).abs() <= 2,
+            "Expected Stage `line` border tint on ST-LINK notch edge, got ({}, {}, {})",
+            sr,
+            sg,
+            sb
+        );
+
+        assert!(saw_bg_void, "Expected Stage light bg_void canvas");
+        assert!(saw_bg_panel, "Expected Stage white board/cell panel");
+        assert!(saw_bg_raised, "Expected Stage bg_raised badge/MCU fill");
+        assert!(
+            saw_pin_active,
+            "Expected Stage pin_active active pin cell/legend"
+        );
+        assert!(saw_gold, "Expected Stage gold caution (OSC) pin tab");
+        assert!(saw_error, "Expected Stage state_error SWD pin cell");
+        assert!(saw_active, "Expected Stage state_active OSC text/border");
+    }
+
+    #[test]
+    fn test_stage_pinout_hover_border_blends_to_gold_deep() {
+        let stage = tokens::Palette::STAGE;
+        let _guard = PaletteResetGuard(tokens::palette());
+        tokens::set_palette(stage);
+
+        let state = Rc::new(RefCell::new(AppState::default()));
+        let fixture_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../stakhal-core/tests/fixtures/aa_ns_stm_port");
+        let project = stakhal_core::ir::schema::load_project(
+            &fixture_dir.join("aa_ns_stm_port.ioc"),
+            &fixture_dir.join("Core/Src/main.c"),
+        )
+        .expect("Failed to load aa_ns_stm_port");
+        state.borrow().project.borrow_mut().loaded_project = Some(project);
+
+        // Pin cell CN7 index 1 (pin 2) top border pixel
+        let (cell_x, cell_y, cell_w, _) = get_pin_cell_rect("CN7", 1, 1200.0, 750.0);
+        let sample_x = (cell_x + cell_w * 0.5).round() as usize;
+        let sample_y = cell_y.round() as usize;
+
+        let render_border_px = |amount: f64| -> (u8, u8, u8) {
+            state.borrow().with_canvas_state_mut(|c| {
+                c.pin_hover_amounts.clear();
+                c.hovered_pinout_pin = if amount >= 0.5 {
+                    Some(("CN7".to_string(), 2))
+                } else {
+                    None
+                };
+                if amount > 0.0 {
+                    c.pin_hover_amounts.insert(("CN7".to_string(), 2), amount);
+                }
+            });
+            let mut s = cairo::ImageSurface::create(cairo::Format::ARgb32, 1200, 750).unwrap();
+            {
+                let cr = cairo::Context::new(&s).unwrap();
+                draw_nucleo_pinout(&cr, 1200.0, 750.0, &state);
+            }
+            s.flush();
+            let stride = s.stride() as usize;
+            let data = s.data().unwrap();
+            let off = sample_y * stride + sample_x * 4;
+            (data[off + 2], data[off + 1], data[off])
+        };
+
+        let px_0 = render_border_px(0.0);
+        let px_mid = render_border_px(0.5);
+        let px_1 = render_border_px(1.0);
+
+        // Border shifts smoothly from cool blue toward warm gold_deep (#A8770F: high R, low B)
+        assert!(
+            px_0.2 > px_mid.2 && px_mid.2 > px_1.2,
+            "Pin border B channel must blend down toward gold_deep: {px_0:?} -> {px_mid:?} -> {px_1:?}"
+        );
+
+        // Default skin ignores pin_hover_amounts and renders pixel-identical frames
+        tokens::set_palette(tokens::Palette::DEFAULT);
+        state.borrow().with_canvas_state_mut(|c| {
+            c.hovered_pinout_pin = Some(("CN7".to_string(), 2));
+            c.pin_hover_amounts.clear();
+        });
+        let mut s_def_a = cairo::ImageSurface::create(cairo::Format::ARgb32, 1200, 750).unwrap();
+        {
+            let cr = cairo::Context::new(&s_def_a).unwrap();
+            draw_nucleo_pinout(&cr, 1200.0, 750.0, &state);
+        }
+        state.borrow().with_canvas_state_mut(|c| {
+            c.pin_hover_amounts.insert(("CN7".to_string(), 2), 0.45);
+        });
+        let mut s_def_b = cairo::ImageSurface::create(cairo::Format::ARgb32, 1200, 750).unwrap();
+        {
+            let cr = cairo::Context::new(&s_def_b).unwrap();
+            draw_nucleo_pinout(&cr, 1200.0, 750.0, &state);
+        }
+        s_def_a.flush();
+        s_def_b.flush();
+        assert_eq!(
+            s_def_a.data().unwrap().as_ref(),
+            s_def_b.data().unwrap().as_ref(),
+            "Default skin pinout canvas must stay pixel-identical"
+        );
     }
 }

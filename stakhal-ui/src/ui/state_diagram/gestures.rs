@@ -1,9 +1,49 @@
 use super::draw::draw_state_diagram_canvas;
 use crate::state::AppState;
+use crate::ui::tokens;
 use gtk4::glib;
 use gtk4::prelude::*;
 use std::cell::RefCell;
 use std::rc::Rc;
+
+/// Attach the state diagram frame-clock tick callback on demand when at least one
+/// diagram animation (`node_flash_animation`, `edge_reveal_animation`, `edge_pulse_animation`,
+/// or Stage node hover easing) is active. Automatically breaks when all complete.
+pub fn ensure_diagram_animation_tick(
+    drawing_area: &gtk4::DrawingArea,
+    state: &Rc<RefCell<AppState>>,
+) {
+    let should_attach = state.borrow().with_canvas_state_mut(|st| {
+        if st.diagram_tick_active || !st.has_active_diagram_animations() {
+            return false;
+        }
+        st.diagram_tick_active = true;
+        true
+    });
+    if !should_attach {
+        return;
+    }
+
+    let state_tick = Rc::clone(state);
+    drawing_area.add_tick_callback(move |area, _| {
+        let is_stage = tokens::palette() != tokens::Palette::DEFAULT;
+        let animations_enabled = tokens::motion::is_animations_enabled();
+        let now = std::time::Instant::now();
+        let (needs_redraw, keep_running) = state_tick
+            .borrow()
+            .with_canvas_state_mut(|st| st.step_diagram_tick(is_stage, animations_enabled, now));
+
+        if needs_redraw {
+            area.queue_draw();
+        }
+
+        if keep_running {
+            glib::ControlFlow::Continue
+        } else {
+            glib::ControlFlow::Break
+        }
+    });
+}
 
 pub fn setup_state_diagram_drawing_and_gestures(
     drawing_area: &gtk4::DrawingArea,
@@ -17,51 +57,8 @@ pub fn setup_state_diagram_drawing_and_gestures(
         draw_state_diagram_canvas(area, cr, w as f64, h as f64, &state_draw);
     });
 
-    // Tick callback for manual Cairo frame interpolation (node flash and edge reveal)
-    let state_tick = Rc::clone(&state);
-    drawing_area.add_tick_callback(move |area, _| {
-        let mut needs_redraw = false;
-        state_tick.borrow().with_canvas_state_mut(|st| {
-            if let Some((_, start)) = st.node_flash_animation {
-                let elapsed = start.elapsed().as_millis() as u64;
-                if elapsed >= crate::ui::tokens::motion::DURATION_SHORT_MS
-                    || !crate::ui::tokens::motion::is_animations_enabled()
-                {
-                    st.node_flash_animation = None;
-                }
-                needs_redraw = true;
-            }
-
-            if let Some((_, start)) = st.edge_reveal_animation {
-                let elapsed = start.elapsed().as_millis() as u64;
-                if elapsed >= crate::ui::tokens::motion::DURATION_MEDIUM_MS
-                    || !crate::ui::tokens::motion::is_animations_enabled()
-                {
-                    st.edge_reveal_animation = None;
-                }
-                needs_redraw = true;
-            }
-
-            if let Some((_, _, start)) = st.edge_pulse_animation {
-                let elapsed = start.elapsed().as_millis() as u64;
-                let dur = crate::ui::tokens::motion::DURATION_MEDIUM_MS as f64;
-                let progress = (elapsed as f64 / dur).clamp(0.0, 1.0);
-                if progress >= 1.0
-                    || elapsed >= crate::ui::tokens::motion::DURATION_MEDIUM_MS
-                    || !crate::ui::tokens::motion::is_animations_enabled()
-                {
-                    st.edge_pulse_animation = None;
-                }
-                needs_redraw = true;
-            }
-        });
-
-        if needs_redraw {
-            area.queue_draw();
-        }
-
-        glib::ControlFlow::Continue
-    });
+    // If an animation was queued before gesture setup completed, attach tick on demand
+    ensure_diagram_animation_tick(drawing_area, &state);
 
     // 2. Click Gesture for Node Selection
     let click_gesture = gtk4::GestureClick::new();
@@ -111,7 +108,7 @@ pub fn setup_state_diagram_drawing_and_gestures(
         });
 
         update_selected_state_info_label(&info_click, &state_click.borrow());
-
+        ensure_diagram_animation_tick(&area_click, &state_click);
         area_click.queue_draw();
     });
 
@@ -123,8 +120,10 @@ pub fn setup_state_diagram_drawing_and_gestures(
     let area_motion = drawing_area.clone();
 
     motion_controller.connect_motion(move |_, x, y| {
-        let mut needs_draw = false;
-        state_motion.borrow().with_canvas_state_mut(|st| {
+        let is_stage_animated = tokens::palette() != tokens::Palette::DEFAULT
+            && tokens::motion::is_animations_enabled();
+        let now = std::time::Instant::now();
+        let needs_draw = state_motion.borrow().with_canvas_state_mut(|st| {
             st.diagram_mouse_pos = Some((x, y));
             let zoom = st.diagram_zoom;
             let pan_x = st.diagram_pan_x;
@@ -147,13 +146,11 @@ pub fn setup_state_diagram_drawing_and_gestures(
                 }
             }
 
-            if st.hovered_state_node != hovered {
-                st.hovered_state_node = hovered;
-                needs_draw = true;
-            }
+            st.set_diagram_hovered_node(hovered, is_stage_animated, now)
         });
 
         if needs_draw {
+            ensure_diagram_animation_tick(&area_motion, &state_motion);
             area_motion.queue_draw();
         }
     });
@@ -166,10 +163,19 @@ pub fn setup_state_diagram_drawing_and_gestures(
     });
 
     let state_leave = Rc::clone(&state);
+    let area_leave = drawing_area.clone();
     motion_controller.connect_leave(move |_| {
-        state_leave.borrow().with_canvas_state_mut(|st| {
+        let is_stage_animated = tokens::palette() != tokens::Palette::DEFAULT
+            && tokens::motion::is_animations_enabled();
+        let now = std::time::Instant::now();
+        let needs_draw = state_leave.borrow().with_canvas_state_mut(|st| {
             st.diagram_mouse_pos = None;
+            st.set_diagram_hovered_node(None, is_stage_animated, now)
         });
+        if needs_draw {
+            ensure_diagram_animation_tick(&area_leave, &state_leave);
+            area_leave.queue_draw();
+        }
     });
 
     drawing_area.add_controller(motion_controller);
@@ -461,38 +467,25 @@ mod tests {
     fn test_edge_pulse_tick_lifecycle() {
         let state = Rc::new(RefCell::new(AppState::default()));
 
-        // Helper mimicking gestures.rs tick callback logic
-        let run_tick = |st_rc: &Rc<RefCell<AppState>>, anim_enabled: bool| -> bool {
-            let mut needs_redraw = false;
+        let run_tick = |st_rc: &Rc<RefCell<AppState>>, anim_enabled: bool| -> (bool, bool) {
             st_rc.borrow().with_canvas_state_mut(|st| {
-                if let Some((_, _, start)) = st.edge_pulse_animation {
-                    let elapsed = start.elapsed().as_millis() as u64;
-                    let dur = crate::ui::tokens::motion::DURATION_MEDIUM_MS as f64;
-                    let progress = (elapsed as f64 / dur).clamp(0.0, 1.0);
-                    if progress >= 1.0
-                        || elapsed >= crate::ui::tokens::motion::DURATION_MEDIUM_MS
-                        || !anim_enabled
-                    {
-                        st.edge_pulse_animation = None;
-                    }
-                    needs_redraw = true;
-                }
-            });
-            needs_redraw
+                st.step_diagram_tick(false, anim_enabled, std::time::Instant::now())
+            })
         };
 
-        // 1. t = 0ms: in flight, needs_redraw = true, edge_pulse_animation is Some
+        // 1. t = 0ms: in flight, needs_redraw = true, keep_running = true, edge_pulse_animation is Some
         state.borrow().with_canvas_state_mut(|c| {
             c.edge_pulse_animation =
                 Some(("A".to_string(), "B".to_string(), std::time::Instant::now()));
         });
-        let redraw = run_tick(&state, true);
+        let (redraw, keep) = run_tick(&state, true);
         assert!(redraw, "Tick at t=0ms must request redraw");
+        assert!(keep, "Tick at t=0ms must keep running");
         assert!(state
             .borrow()
             .with_canvas_state(|c| c.edge_pulse_animation.is_some()));
 
-        // 2. mid (t = 175ms): in flight, needs_redraw = true, edge_pulse_animation is Some
+        // 2. mid (t = 175ms): in flight, needs_redraw = true, keep_running = true, edge_pulse_animation is Some
         state.borrow().with_canvas_state_mut(|c| {
             c.edge_pulse_animation = Some((
                 "A".to_string(),
@@ -500,13 +493,14 @@ mod tests {
                 std::time::Instant::now() - std::time::Duration::from_millis(175),
             ));
         });
-        let redraw = run_tick(&state, true);
+        let (redraw, keep) = run_tick(&state, true);
         assert!(redraw, "Tick at mid must request redraw");
+        assert!(keep, "Tick at mid must keep running");
         assert!(state
             .borrow()
             .with_canvas_state(|c| c.edge_pulse_animation.is_some()));
 
-        // 3. exactly t = 350ms: progress >= 1.0, edge_pulse_animation cleared to None, needs_redraw = true for final flush
+        // 3. exactly t = 350ms: progress >= 1.0, edge_pulse_animation cleared to None, needs_redraw = true, keep_running = false
         state.borrow().with_canvas_state_mut(|c| {
             c.edge_pulse_animation = Some((
                 "A".to_string(),
@@ -514,10 +508,14 @@ mod tests {
                 std::time::Instant::now() - std::time::Duration::from_millis(350),
             ));
         });
-        let redraw = run_tick(&state, true);
+        let (redraw, keep) = run_tick(&state, true);
         assert!(
             redraw,
             "Tick at exactly 350ms must request final redraw to clear pulse"
+        );
+        assert!(
+            !keep,
+            "Tick at 350ms must break so frame clock does not spin while idle"
         );
         assert!(
             state
@@ -526,27 +524,28 @@ mod tests {
             "edge_pulse_animation must be None at 350ms"
         );
 
-        // 4. t = 380ms (+30ms past): edge_pulse_animation is None, needs_redraw = false (no clock starvation, frame clock idles)
-        let redraw = run_tick(&state, true);
+        // 4. t = 380ms (+30ms past): edge_pulse_animation is None, needs_redraw = false, keep_running = false
+        let (redraw, keep) = run_tick(&state, true);
         assert!(
-            !redraw,
-            "Tick at +30ms must NOT request redraw when pulse completed"
+            !redraw && !keep,
+            "Tick at +30ms must NOT request redraw or continue when pulse completed"
         );
 
-        // 5. t = 430ms (+80ms past): edge_pulse_animation is None, needs_redraw = false
-        let redraw = run_tick(&state, true);
+        // 5. t = 430ms (+80ms past): edge_pulse_animation is None, needs_redraw = false, keep_running = false
+        let (redraw, keep) = run_tick(&state, true);
         assert!(
-            !redraw,
-            "Tick at +80ms must NOT request redraw when pulse completed"
+            !redraw && !keep,
+            "Tick at +80ms must NOT request redraw or continue when pulse completed"
         );
 
-        // 6. Reduced motion: immediately cleared to None on first tick
+        // 6. Reduced motion: immediately cleared to None on first tick and breaks
         state.borrow().with_canvas_state_mut(|c| {
             c.edge_pulse_animation =
                 Some(("A".to_string(), "B".to_string(), std::time::Instant::now()));
         });
-        let redraw = run_tick(&state, false);
+        let (redraw, keep) = run_tick(&state, false);
         assert!(redraw, "Reduced motion tick must request redraw to clear");
+        assert!(!keep, "Reduced motion tick must break immediately");
         assert!(
             state
                 .borrow()
