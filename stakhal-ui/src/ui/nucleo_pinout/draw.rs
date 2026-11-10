@@ -853,7 +853,7 @@ pub fn draw_nucleo_pinout(
     let inset_border = if is_default {
         pal.border_hair
     } else {
-        pal.node_border
+        pal.line
     };
     cr.set_source_rgb(inset_fill.0, inset_fill.1, inset_fill.2);
     cr.rectangle(notch_x, notch_y, notch_w, 20.0);
@@ -1165,7 +1165,7 @@ pub fn draw_nucleo_pinout(
                             pal.state_active.rgb()
                         }
                     },
-                    None => pal.state_ready.rgb(),
+                    None => pal.pin_active.rgb(),
                 };
 
                 // Highlighted Pin (Active in loaded project) - background BG_PANEL
@@ -1209,7 +1209,24 @@ pub fn draw_nucleo_pinout(
                     cr.set_font_size(9.5);
                     cr.set_source_rgb(pal.text_muted.0, pal.text_muted.1, pal.text_muted.2);
                 } else {
-                    cr.set_source_rgb(hl_r, hl_g, hl_b);
+                    let is_caution = !is_default
+                        && reserved_info.is_some_and(|res| {
+                            res.severity == stakhal_core::nucleo_pinout::ReservedSeverity::Caution
+                        });
+                    let (tab_r, tab_g, tab_b) = if is_caution {
+                        pal.gold.rgb()
+                    } else {
+                        (hl_r, hl_g, hl_b)
+                    };
+                    let (tab_txt_r, tab_txt_g, tab_txt_b) = if is_default {
+                        pal.bg_void.rgb()
+                    } else if is_caution {
+                        pal.text_primary.rgb()
+                    } else {
+                        pal.bg_panel.rgb()
+                    };
+
+                    cr.set_source_rgb(tab_r, tab_g, tab_b);
                     cr.rectangle(cell_x + 3.0, cell_y + 3.0, badge_w, cell_h - 6.0);
                     let _ = cr.fill();
 
@@ -1219,7 +1236,7 @@ pub fn draw_nucleo_pinout(
                         cairo::FontWeight::Bold,
                     );
                     cr.set_font_size(9.5);
-                    cr.set_source_rgb(pal.bg_void.0, pal.bg_void.1, pal.bg_void.2);
+                    cr.set_source_rgb(tab_txt_r, tab_txt_g, tab_txt_b);
                 }
 
                 let pnum_str = format!("{}", p.pin_num);
@@ -1355,7 +1372,7 @@ pub fn draw_nucleo_pinout(
     let leg_x = board_x + (board_w * 0.02).max(16.0);
 
     // Active Signal Legend
-    cr.set_source_rgb(pal.state_ready.0, pal.state_ready.1, pal.state_ready.2);
+    cr.set_source_rgb(pal.pin_active.0, pal.pin_active.1, pal.pin_active.2);
     cr.rectangle(leg_x, legend_y, 14.0, 14.0);
     let _ = cr.fill();
 
@@ -1374,9 +1391,9 @@ pub fn draw_nucleo_pinout(
         cr.rectangle(leg_x2, legend_y, 14.0, 14.0);
         let _ = cr.fill_preserve();
         cr.set_source_rgba(
-            pal.state_ready.0,
-            pal.state_ready.1,
-            pal.state_ready.2,
+            pal.pin_active.0,
+            pal.pin_active.1,
+            pal.pin_active.2,
             if is_default { 0.35 } else { 0.55 },
         );
         cr.set_line_width(tokens::shape::BORDER_WIDTH_HAIR);
@@ -1486,7 +1503,7 @@ pub fn draw_nucleo_pinout(
                     },
                     None => {
                         if is_hl.is_some() {
-                            pal.state_ready.rgb()
+                            pal.pin_active.rgb()
                         } else if is_default {
                             pal.border_hair.rgb()
                         } else {
@@ -1797,29 +1814,80 @@ mod tests {
     }
 
     #[test]
-    fn test_stage_palette_nucleo_pinout_rendering_and_contrast() {
-        let stage = tokens::Palette::STAGE;
-        for (label, fill) in [
-            ("state_ready", stage.state_ready.rgb()),
-            ("state_error (SWD)", stage.state_error.rgb()),
-            ("state_active (OSC)", stage.state_active.rgb()),
-        ] {
-            let badge_c = contrast_ratio(stage.bg_void.rgb(), fill);
+    fn test_stage_pinout_text_and_fill_contrast_pairs() {
+        let s = tokens::Palette::STAGE;
+        let pairs = [
+            (
+                "board title/headers/active MCU/neutral label vs bg_panel",
+                s.text_primary.rgb(),
+                s.bg_panel.rgb(),
+            ),
+            (
+                "board subtitle/muted pins/legend/unused tooltip vs bg_panel",
+                s.text_muted.rgb(),
+                s.bg_panel.rgb(),
+            ),
+            (
+                "MCU chip part label vs bg_raised",
+                s.text_primary.rgb(),
+                s.bg_raised.rgb(),
+            ),
+            (
+                "ST-LINK/MCU sublabel/inactive & muted pin tab vs bg_raised",
+                s.text_muted.rgb(),
+                s.bg_raised.rgb(),
+            ),
+            (
+                "lit active pin tab number vs pin_active",
+                s.bg_panel.rgb(),
+                s.pin_active.rgb(),
+            ),
+            (
+                "lit active signal label & tooltip vs bg_panel",
+                s.pin_active.rgb(),
+                s.bg_panel.rgb(),
+            ),
+            (
+                "caution (OSC) pin tab number vs gold",
+                s.text_primary.rgb(),
+                s.gold.rgb(),
+            ),
+            (
+                "caution (OSC) signal label/conflict banner/tooltip vs bg_panel",
+                s.state_active.rgb(),
+                s.bg_panel.rgb(),
+            ),
+            (
+                "critical (SWD) pin tab number vs state_error",
+                s.bg_panel.rgb(),
+                s.state_error.rgb(),
+            ),
+            (
+                "critical (SWD) signal label/conflict banner/tooltip vs bg_panel",
+                s.state_error.rgb(),
+                s.bg_panel.rgb(),
+            ),
+            (
+                "LD2 active label vs bg_panel",
+                s.state_ready.rgb(),
+                s.bg_panel.rgb(),
+            ),
+        ];
+
+        for (desc, fg, bg) in pairs {
+            let ratio = contrast_ratio(fg, bg);
             assert!(
-                badge_c >= 4.5,
-                "Pinout badge text contrast for {} ({}) must be >= 4.5",
-                label,
-                badge_c
-            );
-            let cell_text_c = contrast_ratio(fill, stage.bg_panel.rgb());
-            assert!(
-                cell_text_c >= 4.5,
-                "Pinout label contrast on bg_panel for {} ({}) must be >= 4.5",
-                label,
-                cell_text_c
+                ratio >= 4.5,
+                "Stage pinout contrast for '{}' is {:.3}:1 (expected >= 4.5)",
+                desc,
+                ratio
             );
         }
+    }
 
+    #[test]
+    fn test_stage_palette_nucleo_pinout_rendering_and_contrast() {
+        let stage = tokens::Palette::STAGE;
         let _guard = PaletteResetGuard(tokens::palette());
         tokens::set_palette(stage);
 
@@ -1860,11 +1928,13 @@ mod tests {
             surface.flush();
         }
 
+        let stride = surface.stride() as usize;
         let data = surface.data().expect("surface pixel data");
         let mut saw_bg_void = false;
         let mut saw_bg_panel = false;
         let mut saw_bg_raised = false;
-        let mut saw_ready = false;
+        let mut saw_pin_active = false;
+        let mut saw_gold = false;
         let mut saw_error = false;
         let mut saw_active = false;
 
@@ -1874,18 +1944,36 @@ mod tests {
                 (0xF4, 0xF9, 0xFD) => saw_bg_void = true,
                 (0xFF, 0xFF, 0xFF) => saw_bg_panel = true,
                 (0xE8, 0xF2, 0xF9) => saw_bg_raised = true,
-                (0x0A, 0x7A, 0x66) => saw_ready = true,
+                (0x2E, 0x6D, 0xB4) => saw_pin_active = true,
+                (0xC9, 0xA2, 0x4F) => saw_gold = true,
                 (0xC6, 0x2F, 0x4D) => saw_error = true,
                 (0x8F, 0x67, 0x00) => saw_active = true,
                 _ => {}
             }
         }
 
+        // Verify ST-LINK top border at y=34.25 (row 34 gets 75% `line` #4F76AE + 25% `bg_raised` #E8F2F9 = ~(117, 149, 193))
+        let off = 34 * stride + 600 * 4;
+        let (sb, sg, sr) = (data[off], data[off + 1], data[off + 2]);
+        assert!(
+            (sr as i32 - 117).abs() <= 2
+                && (sg as i32 - 149).abs() <= 2
+                && (sb as i32 - 193).abs() <= 2,
+            "Expected Stage `line` border tint on ST-LINK notch edge, got ({}, {}, {})",
+            sr,
+            sg,
+            sb
+        );
+
         assert!(saw_bg_void, "Expected Stage light bg_void canvas");
         assert!(saw_bg_panel, "Expected Stage white board/cell panel");
         assert!(saw_bg_raised, "Expected Stage bg_raised badge/MCU fill");
-        assert!(saw_ready, "Expected Stage state_ready active pin cell");
+        assert!(
+            saw_pin_active,
+            "Expected Stage pin_active active pin cell/legend"
+        );
+        assert!(saw_gold, "Expected Stage gold caution (OSC) pin tab");
         assert!(saw_error, "Expected Stage state_error SWD pin cell");
-        assert!(saw_active, "Expected Stage state_active OSC pin cell");
+        assert!(saw_active, "Expected Stage state_active OSC text/border");
     }
 }
