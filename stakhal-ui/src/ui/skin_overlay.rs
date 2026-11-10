@@ -901,22 +901,85 @@ fn collect_settle_targets(root: Option<&gtk4::Widget>, out: &mut Vec<gtk4::Widge
     }
 }
 
-/// Manages the Stage circular reveal transition and header bottom-edge shimmer overlays.
-#[derive(Clone)]
-pub struct SkinOverlayController {
+struct SkinOverlayInner {
     skin_overlay: gtk4::Overlay,
     window: adw::ApplicationWindow,
     shimmer_area: gtk4::DrawingArea,
-    unlocked: Rc<Cell<bool>>,
-    closed: Rc<Cell<bool>>,
-    effects_active: Rc<Cell<bool>>,
-    shimmer_clock: Rc<RefCell<AnimationClock>>,
-    shimmer_running: Rc<Cell<bool>>,
-    shimmer_gen: Rc<Cell<u64>>,
-    shimmer_was_drawing: Rc<Cell<bool>>,
-    flash_start: Rc<Cell<Option<Instant>>>,
-    shine_target: Rc<RefCell<Option<glib::WeakRef<gtk4::Button>>>>,
+    unlocked: Cell<bool>,
+    closed: Cell<bool>,
+    effects_active: Cell<bool>,
+    shimmer_clock: RefCell<AnimationClock>,
+    shimmer_running: Cell<bool>,
+    shimmer_tick_running: Cell<bool>,
+    shimmer_gen: Cell<u64>,
+    sleep_gen: Cell<u64>,
+    shimmer_was_drawing: Cell<bool>,
+    flash_start: Cell<Option<Instant>>,
+    shine_target: RefCell<Option<glib::WeakRef<gtk4::Button>>>,
     on_skin_swap: Rc<dyn Fn()>,
+}
+
+/// Manages the Stage circular reveal transition and header bottom-edge shimmer overlays.
+#[derive(Clone)]
+pub struct SkinOverlayController(Rc<SkinOverlayInner>);
+
+/// Weak reference to a `SkinOverlayController` for cycle-free stack navigation hooks.
+#[derive(Clone)]
+pub struct WeakSkinOverlayController(std::rc::Weak<SkinOverlayInner>);
+
+impl WeakSkinOverlayController {
+    pub fn upgrade(&self) -> Option<SkinOverlayController> {
+        self.0.upgrade().map(SkinOverlayController)
+    }
+}
+
+type StackFlashHook = (glib::WeakRef<gtk4::Stack>, WeakSkinOverlayController);
+
+thread_local! {
+    static STACK_FLASH_HOOKS: RefCell<Vec<StackFlashHook>> = const { RefCell::new(Vec::new()) };
+}
+
+/// Associate `stack` with `ctrl` so every `navigate_stack` call while unlocked
+/// triggers the header gold flash without altering navigation signatures.
+pub fn register_stack_header_flash(stack: &gtk4::Stack, ctrl: &SkinOverlayController) {
+    let weak_stack = stack.downgrade();
+    let weak_ctrl = ctrl.downgrade();
+    STACK_FLASH_HOOKS.with(|hooks| {
+        let mut hooks = hooks.borrow_mut();
+        hooks.retain(|(s, c)| s.upgrade().is_some() && c.upgrade().is_some());
+        hooks.retain(|(s, _)| s.upgrade().as_ref() != Some(stack));
+        hooks.push((weak_stack, weak_ctrl));
+    });
+}
+
+/// Trigger the one-shot golden header flash for the controller bound to `stack`, if any.
+pub fn trigger_stack_header_flash(stack: &gtk4::Stack) {
+    let target: Option<SkinOverlayController> = STACK_FLASH_HOOKS.with(|hooks| {
+        let mut hooks = hooks.borrow_mut();
+        hooks.retain(|(s, c)| s.upgrade().is_some() && c.upgrade().is_some());
+        hooks.iter().find_map(|(s, c)| {
+            (s.upgrade().as_ref() == Some(stack))
+                .then(|| c.upgrade())
+                .flatten()
+        })
+    });
+    if let Some(ctrl) = target {
+        ctrl.trigger_header_flash();
+    }
+}
+
+/// Return whether the controller registered for `stack` currently has an active header flash.
+pub fn is_stack_header_flash_active(stack: &gtk4::Stack) -> bool {
+    let target: Option<SkinOverlayController> = STACK_FLASH_HOOKS.with(|hooks| {
+        let mut hooks = hooks.borrow_mut();
+        hooks.retain(|(s, c)| s.upgrade().is_some() && c.upgrade().is_some());
+        hooks.iter().find_map(|(s, c)| {
+            (s.upgrade().as_ref() == Some(stack))
+                .then(|| c.upgrade())
+                .flatten()
+        })
+    });
+    target.is_some_and(|ctrl| ctrl.is_header_flash_active())
 }
 
 impl SkinOverlayController {
@@ -950,47 +1013,48 @@ impl SkinOverlayController {
             None
         });
 
-        let effects_active = Rc::new(Cell::new(false));
-        let shimmer_clock = Rc::new(RefCell::new(AnimationClock::new(SHIMMER_FRAME_INTERVAL)));
-        let flash_start = Rc::new(Cell::new(None::<Instant>));
+        let inner = Rc::new(SkinOverlayInner {
+            skin_overlay: skin_overlay.clone(),
+            window: window.clone(),
+            shimmer_area: shimmer_area.clone(),
+            unlocked: Cell::new(false),
+            closed: Cell::new(false),
+            effects_active: Cell::new(false),
+            shimmer_clock: RefCell::new(AnimationClock::new(SHIMMER_FRAME_INTERVAL)),
+            shimmer_running: Cell::new(false),
+            shimmer_tick_running: Cell::new(false),
+            shimmer_gen: Cell::new(0),
+            sleep_gen: Cell::new(0),
+            shimmer_was_drawing: Cell::new(false),
+            flash_start: Cell::new(None),
+            shine_target: RefCell::new(None),
+            on_skin_swap,
+        });
 
         {
-            let active_draw = Rc::clone(&effects_active);
-            let clk_draw = Rc::clone(&shimmer_clock);
-            let flash_draw = Rc::clone(&flash_start);
+            let weak_draw = Rc::downgrade(&inner);
             shimmer_area.set_draw_func(move |_, cr, w, h| {
-                if !active_draw.get() || !tokens::motion::is_animations_enabled() {
+                let Some(inner) = weak_draw.upgrade() else {
+                    return;
+                };
+                if !inner.effects_active.get() || !tokens::motion::is_animations_enabled() {
                     return;
                 }
-                let phase = clk_draw.borrow().phase_secs();
+                let phase = inner.shimmer_clock.borrow().phase_secs();
                 let pal = tokens::palette();
                 draw_header_shimmer(cr, w as f64, h as f64, phase, &pal);
-                if let Some(start) = flash_draw.get() {
+                if let Some(start) = inner.flash_start.get() {
                     let elapsed = start.elapsed().as_secs_f64();
                     if elapsed * 1000.0 <= HEADER_FLASH_DURATION_MS {
                         draw_header_flash(cr, w as f64, h as f64, elapsed, &pal);
                     } else {
-                        flash_draw.set(None);
+                        inner.flash_start.set(None);
                     }
                 }
             });
         }
 
-        let controller = Self {
-            skin_overlay: skin_overlay.clone(),
-            window: window.clone(),
-            shimmer_area,
-            unlocked: Rc::new(Cell::new(false)),
-            closed: Rc::new(Cell::new(false)),
-            effects_active,
-            shimmer_clock,
-            shimmer_running: Rc::new(Cell::new(false)),
-            shimmer_gen: Rc::new(Cell::new(0)),
-            shimmer_was_drawing: Rc::new(Cell::new(false)),
-            flash_start,
-            shine_target: Rc::new(RefCell::new(None)),
-            on_skin_swap,
-        };
+        let controller = Self(inner);
 
         let ctrl_active = controller.clone();
         window.connect_is_active_notify(move |_| {
@@ -1004,8 +1068,8 @@ impl SkinOverlayController {
 
         let ctrl_close = controller.clone();
         window.connect_close_request(move |_| {
-            ctrl_close.closed.set(true);
-            ctrl_close.effects_active.set(false);
+            ctrl_close.0.closed.set(true);
+            ctrl_close.0.effects_active.set(false);
             ctrl_close.stop_loops(Instant::now());
             glib::Propagation::Proceed
         });
@@ -1013,40 +1077,50 @@ impl SkinOverlayController {
         controller
     }
 
+    pub fn downgrade(&self) -> WeakSkinOverlayController {
+        WeakSkinOverlayController(Rc::downgrade(&self.0))
+    }
+
     /// Register the primary button (e.g. Build & Flash) for the one-time unlock shine.
     pub fn set_shine_target(&self, button: &gtk4::Button) {
-        self.shine_target.replace(Some(button.downgrade()));
+        self.0.shine_target.replace(Some(button.downgrade()));
     }
 
     pub fn shimmer_area(&self) -> &gtk4::DrawingArea {
-        &self.shimmer_area
+        &self.0.shimmer_area
     }
 
     pub fn is_effects_active(&self) -> bool {
-        self.effects_active.get()
+        self.0.effects_active.get()
     }
 
     pub fn is_shimmer_running(&self) -> bool {
-        self.shimmer_running.get()
+        self.0.shimmer_running.get()
+    }
+
+    pub fn is_shimmer_tick_active(&self) -> bool {
+        self.0.shimmer_tick_running.get()
     }
 
     pub fn is_header_flash_active(&self) -> bool {
-        self.flash_start
+        self.0
+            .flash_start
             .get()
             .is_some_and(|s| s.elapsed().as_secs_f64() * 1000.0 <= HEADER_FLASH_DURATION_MS)
     }
 
     /// Trigger a one-shot 600 ms golden header sweep when unlocked and animations are enabled.
     pub fn trigger_header_flash(&self) {
-        if self.closed.get()
-            || !self.effects_active.get()
+        if self.0.closed.get()
+            || !self.0.effects_active.get()
             || !tokens::motion::is_animations_enabled()
         {
             return;
         }
-        self.flash_start.set(Some(Instant::now()));
+        self.0.flash_start.set(Some(Instant::now()));
+        self.0.sleep_gen.set(self.0.sleep_gen.get().wrapping_add(1));
         self.sync_loop_state();
-        self.shimmer_area.queue_draw();
+        self.0.shimmer_area.queue_draw();
     }
 
     fn apply_settle_and_shine(&self) {
@@ -1055,7 +1129,7 @@ impl SkinOverlayController {
         }
 
         let mut targets = Vec::new();
-        collect_settle_targets(self.skin_overlay.child().as_ref(), &mut targets);
+        collect_settle_targets(self.0.skin_overlay.child().as_ref(), &mut targets);
         let count = targets.len();
         for (i, widget) in targets.into_iter().enumerate() {
             widget.add_css_class("stage-pre");
@@ -1069,6 +1143,7 @@ impl SkinOverlayController {
         }
 
         if let Some(btn) = self
+            .0
             .shine_target
             .borrow()
             .as_ref()
@@ -1086,40 +1161,40 @@ impl SkinOverlayController {
 
     /// Trigger the skin unlock sequence once. Subsequent calls are no-ops.
     pub fn trigger_unlock(&self) {
-        if self.unlocked.replace(true) {
+        if self.0.unlocked.replace(true) {
             return;
         }
 
         if !tokens::motion::is_animations_enabled() {
             // Reduced motion: no capture, no overlay, instant swap, no shimmer/settle/shine.
-            (self.on_skin_swap)();
+            (self.0.on_skin_swap)();
             return;
         }
 
-        let Some(old_texture) = capture_window_texture(&self.window, &self.skin_overlay) else {
+        let Some(old_texture) = capture_window_texture(&self.0.window, &self.0.skin_overlay) else {
             // Fallback when capture cannot run (e.g. unrealized or zero-size window):
             // swap skin immediately without an overlay, never panic.
-            (self.on_skin_swap)();
+            (self.0.on_skin_swap)();
             self.apply_settle_and_shine();
-            self.effects_active.set(true);
-            self.flash_start.set(Some(Instant::now()));
+            self.0.effects_active.set(true);
+            self.0.flash_start.set(Some(Instant::now()));
             self.sync_loop_state();
             return;
         };
 
         let reveal_overlay = RevealOverlay::new(old_texture);
-        self.skin_overlay.add_overlay(&reveal_overlay);
+        self.0.skin_overlay.add_overlay(&reveal_overlay);
         reveal_overlay.set_progress(0.0);
 
         // Apply the new skin immediately beneath the old-texture reveal overlay.
-        (self.on_skin_swap)();
+        (self.0.on_skin_swap)();
         self.apply_settle_and_shine();
-        self.effects_active.set(true);
-        self.flash_start.set(Some(Instant::now()));
+        self.0.effects_active.set(true);
+        self.0.flash_start.set(Some(Instant::now()));
         self.sync_loop_state();
 
         let start_time: Rc<Cell<Option<Instant>>> = Rc::new(Cell::new(None));
-        let overlay_weak = self.skin_overlay.downgrade();
+        let overlay_weak = self.0.skin_overlay.downgrade();
         let ctrl_tick = self.clone();
 
         reveal_overlay.add_tick_callback(move |overlay, _| {
@@ -1136,7 +1211,7 @@ impl SkinOverlayController {
                 return glib::ControlFlow::Break;
             };
 
-            if ctrl_tick.closed.get() || !tokens::motion::is_animations_enabled() {
+            if ctrl_tick.0.closed.get() || !tokens::motion::is_animations_enabled() {
                 ov.remove_overlay(overlay);
                 return glib::ControlFlow::Break;
             }
@@ -1156,11 +1231,11 @@ impl SkinOverlayController {
 
     /// Synchronize the header shimmer tick loop with window active/visible state.
     pub fn sync_loop_state(&self) {
-        let should_run = !self.closed.get()
-            && self.effects_active.get()
+        let should_run = !self.0.closed.get()
+            && self.0.effects_active.get()
             && tokens::motion::is_animations_enabled()
-            && self.window.is_active()
-            && self.window.is_visible();
+            && self.0.window.is_active()
+            && self.0.window.is_visible();
 
         let now = Instant::now();
         if should_run {
@@ -1171,90 +1246,127 @@ impl SkinOverlayController {
     }
 
     fn stop_loops(&self, now: Instant) {
-        self.shimmer_clock.borrow_mut().pause(now);
-        self.shimmer_running.set(false);
-        self.shimmer_gen.set(self.shimmer_gen.get().wrapping_add(1));
-        if self.closed.get()
-            || !self.window.is_visible()
+        self.0.shimmer_clock.borrow_mut().pause(now);
+        self.0.shimmer_running.set(false);
+        self.0.shimmer_tick_running.set(false);
+        self.0
+            .shimmer_gen
+            .set(self.0.shimmer_gen.get().wrapping_add(1));
+        self.0.sleep_gen.set(self.0.sleep_gen.get().wrapping_add(1));
+        if self.0.closed.get()
+            || !self.0.window.is_visible()
             || !tokens::motion::is_animations_enabled()
         {
-            self.flash_start.set(None);
+            self.0.flash_start.set(None);
         }
-        if !tokens::motion::is_animations_enabled() && self.shimmer_was_drawing.replace(false) {
-            self.shimmer_area.queue_draw();
+        if !tokens::motion::is_animations_enabled() && self.0.shimmer_was_drawing.replace(false) {
+            self.0.shimmer_area.queue_draw();
         }
     }
 
     fn start_shimmer_loop(&self, now: Instant) {
-        self.shimmer_clock.borrow_mut().resume(now);
-        if self.shimmer_running.replace(true) {
+        self.0.shimmer_clock.borrow_mut().resume(now);
+        self.0.shimmer_running.set(true);
+        if self.0.shimmer_tick_running.replace(true) {
             return;
         }
 
-        let my_gen = self.shimmer_gen.get().wrapping_add(1);
-        self.shimmer_gen.set(my_gen);
+        let my_gen = self.0.shimmer_gen.get().wrapping_add(1);
+        self.0.shimmer_gen.set(my_gen);
+        self.0.sleep_gen.set(self.0.sleep_gen.get().wrapping_add(1));
 
-        let win_weak = self.window.downgrade();
-        let active_flag = Rc::clone(&self.effects_active);
-        let closed_flag = Rc::clone(&self.closed);
-        let running_flag = Rc::clone(&self.shimmer_running);
-        let gen_cell = Rc::clone(&self.shimmer_gen);
-        let clock = Rc::clone(&self.shimmer_clock);
-        let was_drawing = Rc::clone(&self.shimmer_was_drawing);
-        let flash_cell = Rc::clone(&self.flash_start);
+        let ctrl_weak = self.downgrade();
 
-        self.shimmer_area.add_tick_callback(move |area, _| {
+        self.0.shimmer_area.add_tick_callback(move |area, _| {
             let now = Instant::now();
-            let alive = my_gen == gen_cell.get()
-                && !closed_flag.get()
-                && active_flag.get()
+            let Some(ctrl) = ctrl_weak.upgrade() else {
+                return glib::ControlFlow::Break;
+            };
+            let inner = &ctrl.0;
+            let alive = my_gen == inner.shimmer_gen.get()
+                && !inner.closed.get()
+                && inner.effects_active.get()
                 && tokens::motion::is_animations_enabled()
-                && win_weak
-                    .upgrade()
-                    .is_some_and(|w| w.is_active() && w.is_visible());
+                && inner.window.is_active()
+                && inner.window.is_visible();
 
             if !alive {
-                clock.borrow_mut().pause(now);
-                if closed_flag.get()
+                inner.shimmer_clock.borrow_mut().pause(now);
+                if inner.closed.get()
                     || !tokens::motion::is_animations_enabled()
-                    || !win_weak.upgrade().is_some_and(|w| w.is_visible())
+                    || !inner.window.is_visible()
                 {
-                    flash_cell.set(None);
+                    inner.flash_start.set(None);
                 }
-                if my_gen == gen_cell.get() {
-                    running_flag.set(false);
+                if my_gen == inner.shimmer_gen.get() {
+                    inner.shimmer_running.set(false);
+                    inner.shimmer_tick_running.set(false);
                 }
-                if !tokens::motion::is_animations_enabled() && was_drawing.replace(false) {
+                if !tokens::motion::is_animations_enabled()
+                    && inner.shimmer_was_drawing.replace(false)
+                {
                     area.queue_draw();
                 }
                 return glib::ControlFlow::Break;
             }
 
-            let should_step = clock.borrow_mut().tick(now);
+            let should_step = inner.shimmer_clock.borrow_mut().tick(now);
+            let mut in_idle_gap = false;
             if should_step {
-                let phase = clock.borrow().phase_secs();
+                let phase = inner.shimmer_clock.borrow().phase_secs();
                 let periodic_active = compute_shimmer_frame(phase).is_some();
-                let flash_active = match flash_cell.get() {
+                let flash_active = match inner.flash_start.get() {
                     Some(start) => {
                         if now.saturating_duration_since(start).as_secs_f64() * 1000.0
                             <= HEADER_FLASH_DURATION_MS
                         {
                             true
                         } else {
-                            flash_cell.set(None);
+                            inner.flash_start.set(None);
                             true
                         }
                     }
                     None => false,
                 };
                 if periodic_active || flash_active {
-                    was_drawing.set(true);
+                    inner.shimmer_was_drawing.set(true);
                     area.queue_draw();
-                } else if was_drawing.replace(false) {
-                    area.queue_draw();
+                } else {
+                    if inner.shimmer_was_drawing.replace(false) {
+                        area.queue_draw();
+                    }
+                    let cycle_pos = phase.max(0.0).rem_euclid(SHIMMER_PERIOD_SECS);
+                    let rem_secs = SHIMMER_PERIOD_SECS - cycle_pos;
+                    if rem_secs > 0.05 {
+                        in_idle_gap = true;
+                        inner.shimmer_tick_running.set(false);
+                        let sleep_gen = inner.sleep_gen.get().wrapping_add(1);
+                        inner.sleep_gen.set(sleep_gen);
+                        let sleep_ms = ((rem_secs * 1000.0) - 10.0).max(10.0) as u64;
+                        let wake_weak = ctrl.downgrade();
+                        glib::timeout_add_local_once(Duration::from_millis(sleep_ms), move || {
+                            if let Some(c) = wake_weak.upgrade() {
+                                if c.0.shimmer_gen.get() == my_gen
+                                    && c.0.sleep_gen.get() == sleep_gen
+                                    && c.0.shimmer_running.get()
+                                    && !c.0.closed.get()
+                                    && c.0.effects_active.get()
+                                    && tokens::motion::is_animations_enabled()
+                                    && c.0.window.is_active()
+                                    && c.0.window.is_visible()
+                                {
+                                    c.start_shimmer_loop(Instant::now());
+                                }
+                            }
+                        });
+                    }
                 }
             }
-            glib::ControlFlow::Continue
+            if in_idle_gap {
+                glib::ControlFlow::Break
+            } else {
+                glib::ControlFlow::Continue
+            }
         });
     }
 }

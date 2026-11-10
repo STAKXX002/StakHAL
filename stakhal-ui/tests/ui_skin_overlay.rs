@@ -4,13 +4,13 @@ use gtk4::graphene;
 use gtk4::prelude::*;
 use libadwaita as adw;
 use libadwaita::prelude::*;
-use stakhal_ui::apply_skin;
-use stakhal_ui::ui;
 use stakhal_ui::ui::skin_overlay::{
-    append_sparkle_nodes, capture_window_texture, snapshot_reveal_nodes, RevealOverlay,
-    SkinOverlayController, Sparkle,
+    append_sparkle_nodes, capture_window_texture, is_stack_header_flash_active,
+    register_stack_header_flash, snapshot_reveal_nodes, RevealOverlay, SkinOverlayController,
+    Sparkle,
 };
 use stakhal_ui::ui::tokens;
+use stakhal_ui::{apply_skin, navigate_stack, ui};
 use std::cell::Cell;
 use std::rc::Rc;
 use std::time::{Duration, Instant};
@@ -165,8 +165,14 @@ fn test_skin_overlay_widgets_and_thin_shimmer_strip() {
         list2.append(&row_c);
         list2.append(&row_ephemeral);
         card2.append(&list2);
+        let stack2 = gtk4::Stack::new();
+        let page_a = gtk4::Label::new(Some("Page A"));
+        let page_b = gtk4::Label::new(Some("Page B"));
+        stack2.add_named(&page_a, Some("a"));
+        stack2.add_named(&page_b, Some("b"));
         body2.append(&btn_shine);
         body2.append(&card2);
+        body2.append(&stack2);
         box2.append(&body2);
         ov2.set_child(Some(&box2));
         win2.set_content(Some(&ov2));
@@ -185,6 +191,14 @@ fn test_skin_overlay_widgets_and_thin_shimmer_strip() {
             }),
         );
         ctrl2.set_shine_target(&btn_shine);
+        register_stack_header_flash(&stack2, &ctrl2);
+
+        // Before unlock: navigate_stack must NOT trigger header gold flash
+        navigate_stack(&stack2, "b", gtk4::StackTransitionType::SlideLeft);
+        assert!(
+            !ctrl2.is_header_flash_active() && !is_stack_header_flash_active(&stack2),
+            "navigate_stack while locked must not activate header flash"
+        );
 
         let layout_start = Instant::now();
         while (hdr2.height() <= 0
@@ -423,6 +437,52 @@ fn test_skin_overlay_widgets_and_thin_shimmer_strip() {
             Some(box2.upcast_ref::<gtk4::Widget>()),
             "Original child must remain cleanly after reveal overlay removal"
         );
+
+        // Wait until initial unlock flash (600 ms) and initial periodic sweep (1.2 s) complete
+        while (ctrl2.is_header_flash_active() || swap_time.elapsed() < Duration::from_millis(1350))
+            && swap_time.elapsed() < Duration::from_millis(2500)
+        {
+            glib::MainContext::default().iteration(false);
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        while glib::MainContext::default().iteration(false) {}
+
+        // During idle gap between 8s sweeps, tick callback sleeps cleanly (0 ticks) while scheduler stays active
+        if win2.is_active() {
+            assert!(ctrl2.is_shimmer_running());
+            assert!(
+                !ctrl2.is_shimmer_tick_active(),
+                "Shimmer tick callback must break during idle gap between 8s sweeps"
+            );
+        }
+
+        // After unlock: navigate_stack must trigger the header gold flash
+        navigate_stack(&stack2, "a", gtk4::StackTransitionType::SlideRight);
+        assert!(
+            ctrl2.is_header_flash_active() && is_stack_header_flash_active(&stack2),
+            "navigate_stack while unlocked must trigger header gold flash"
+        );
+
+        // Wait for navigation flash to complete cleanly, then test reduced motion
+        let nav_start = Instant::now();
+        while ctrl2.is_header_flash_active() && nav_start.elapsed() < Duration::from_millis(1000) {
+            glib::MainContext::default().iteration(false);
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        assert!(!ctrl2.is_header_flash_active());
+
+        if let Some(settings) = gtk4::Settings::default() {
+            settings.set_gtk_enable_animations(false);
+        }
+        navigate_stack(&stack2, "b", gtk4::StackTransitionType::SlideLeft);
+        assert!(
+            !ctrl2.is_header_flash_active(),
+            "navigate_stack under reduced motion must not trigger header gold flash"
+        );
+        if let Some(settings) = gtk4::Settings::default() {
+            settings.set_gtk_enable_animations(true);
+        }
+        ctrl2.sync_loop_state();
 
         // Hiding the window must stop the shimmer tick callback cleanly (ControlFlow::Break)
         win2.set_visible(false);

@@ -142,6 +142,7 @@ pub fn navigate_stack(
     }
 
     stack.set_visible_child_full(child_name, gtk4::StackTransitionType::Crossfade);
+    ui::skin_overlay::trigger_stack_header_flash(stack);
 }
 
 use state::{AppState, AppWidgets};
@@ -433,6 +434,15 @@ dropdown button {{
     }}
 }}
 
+@keyframes stage-active-breath {{
+    0% {{
+        box-shadow: 0 0 0 0 alpha(@gold_deep, 0);
+    }}
+    100% {{
+        box-shadow: 0 0 0 3px alpha(@gold_deep, 0.35);
+    }}
+}}
+
 @define-color window_bg_color @bg_void;
 @define-color window_fg_color @text_primary;
 @define-color view_bg_color @bg_panel;
@@ -515,8 +525,9 @@ row.stagger-reveal-row {{
     background-color: @card_bg_color;
     color: @card_fg_color;
     border-bottom: 1px solid @border_hair;
-    transition: background-color 180ms cubic-bezier(0.0, 0.0, 0.2, 1.0),
-                box-shadow 180ms cubic-bezier(0.0, 0.0, 0.2, 1.0),
+    box-shadow: inset 0 0 0 @accent;
+    transition: background-color 140ms cubic-bezier(0.0, 0.0, 0.2, 1.0),
+                box-shadow 140ms cubic-bezier(0.0, 0.0, 0.2, 1.0),
                 opacity 200ms cubic-bezier(0.0, 0.0, 0.2, 1.0),
                 transform 200ms cubic-bezier(0.0, 0.0, 0.2, 1.0);
 }}
@@ -589,6 +600,7 @@ label.card.status-idle,
     border-radius: 2px;
     padding: 2px 8px;
     box-shadow: none;
+    animation: none;
 }}
 
 .status-ready,
@@ -601,6 +613,7 @@ label.card.status-ready,
     border-radius: 2px;
     padding: 2px 8px;
     box-shadow: none;
+    animation: none;
 }}
 
 .status-active,
@@ -614,6 +627,13 @@ label.card.status-active,
     border-radius: 2px;
     padding: 2px 8px;
     box-shadow: none;
+    animation: none;
+}}
+
+.status-active,
+label.card.status-active,
+.status-chip.status-active {{
+    animation: stage-active-breath 1.6s ease-in-out infinite alternate;
 }}
 
 .status-error,
@@ -626,6 +646,7 @@ label.card.status-error,
     border-radius: 2px;
     padding: 2px 8px;
     box-shadow: none;
+    animation: none;
 }}
 
 toast,
@@ -646,6 +667,7 @@ toast image {{
 toast {{
     background-image: none;
     border-radius: 150px;
+    border: 1px solid alpha(@gold, 0.6);
 }}
 
 toast button:hover {{
@@ -666,12 +688,15 @@ entry text {{
 entry {{
     border: 1px solid @border_hair;
     border-radius: 2px;
+    box-shadow: 0 0 0 0 alpha(@accent, 0);
+    transition: border-color 140ms cubic-bezier(0.0, 0.0, 0.2, 1.0),
+                box-shadow 140ms cubic-bezier(0.0, 0.0, 0.2, 1.0);
 }}
 
 entry:focus-within {{
     border-color: @accent;
     outline: none;
-    box-shadow: 0 0 0 2px alpha(@accent, 0.35);
+    box-shadow: 0 0 0 3px alpha(@accent, 0.35);
 }}
 
 entry > text > placeholder,
@@ -680,15 +705,43 @@ text > placeholder {{
     opacity: 1;
 }}
 
+dropdown button {{
+    border: 1px solid @sky;
+    background-color: @bg_panel;
+    color: @text_primary;
+    box-shadow: 0 0 0 0 alpha(@accent, 0);
+    transition: background-color 120ms cubic-bezier(0.0, 0.0, 0.2, 1.0),
+                border-color 140ms cubic-bezier(0.0, 0.0, 0.2, 1.0),
+                box-shadow 140ms cubic-bezier(0.0, 0.0, 0.2, 1.0),
+                transform 120ms cubic-bezier(0.0, 0.0, 0.2, 1.0);
+}}
+
+dropdown button:hover {{
+    border-color: @accent;
+    background-color: @bg_raised;
+}}
+
+dropdown button:focus-visible,
+dropdown button:focus-within {{
+    border-color: @accent;
+    outline: none;
+    box-shadow: 0 0 0 3px alpha(@accent, 0.35);
+}}
+
 button.flat:disabled,
 button.stakhal-btn.flat:disabled {{
     filter: Opacity(var(--disabled-opacity));
 }}
 
-button.stakhal-btn {{
-    transition: background-color 180ms cubic-bezier(0.0, 0.0, 0.2, 1.0),
-                border-color 180ms cubic-bezier(0.0, 0.0, 0.2, 1.0),
-                color 180ms cubic-bezier(0.0, 0.0, 0.2, 1.0);
+button.stakhal-btn,
+button.stakhal-btn.suggested-action,
+button.stakhal-btn.flat {{
+    box-shadow: 0 0 0 0 alpha(@accent, 0);
+    transition: background-color 120ms cubic-bezier(0.0, 0.0, 0.2, 1.0),
+                border-color 120ms cubic-bezier(0.0, 0.0, 0.2, 1.0),
+                color 120ms cubic-bezier(0.0, 0.0, 0.2, 1.0),
+                box-shadow 140ms cubic-bezier(0.0, 0.0, 0.2, 1.0),
+                transform 120ms cubic-bezier(0.0, 0.0, 0.2, 1.0);
 }}
 
 button.stakhal-btn:not(.suggested-action) {{
@@ -709,11 +762,29 @@ button.stakhal-btn.flat:hover {{
     background-image: linear-gradient(alpha(@sky, 0.35), alpha(@sky, 0.35));
     border-color: @accent;
     color: @accent;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 10px alpha(@accent, 0.25);
+}}
+
+button.stakhal-btn:not(.suggested-action):active,
+button.stakhal-btn.flat:active {{
+    background-color: @bg_panel;
+    background-image: linear-gradient(alpha(@sky, 0.45), alpha(@sky, 0.45));
+    border-color: @accent;
+    color: @text_primary;
+    transform: scale(0.98);
+    box-shadow: none;
+    transition-duration: 70ms;
 }}
 
 button.stakhal-btn image,
 button.flat image {{
     color: @accent;
+}}
+
+button.stakhal-btn:not(.suggested-action):active image,
+button.stakhal-btn.flat:active image {{
+    color: @text_primary;
 }}
 
 button.stakhal-btn.suggested-action {{
@@ -732,12 +803,18 @@ button.stakhal-btn.suggested-action:hover {{
     background-image: none;
     background-color: {accent_hover};
     color: @bg_panel;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 10px alpha(@accent, 0.35);
 }}
 
 button.stakhal-btn.suggested-action:active {{
     background-image: none;
+    border-color: {accent_pressed};
     background-color: {accent_pressed};
     color: @bg_panel;
+    transform: scale(0.98);
+    box-shadow: none;
+    transition-duration: 70ms;
 }}
 
 button.stakhal-btn.suggested-action.stage-shine {{
@@ -756,10 +833,12 @@ button.stakhal-btn.suggested-action.stage-shine {{
     animation: stage-shine-sweep 700ms cubic-bezier(0.0, 0.0, 0.2, 1.0) 1;
 }}
 
-button.stakhal-btn:hover,
-button.stakhal-btn:focus-visible {{
-    outline: 2px solid alpha(@accent, 0.35);
-    box-shadow: 0 0 0 2px alpha(@accent, 0.35);
+button.stakhal-btn:focus-visible,
+button.stakhal-btn.suggested-action:focus-visible,
+button.stakhal-btn.flat:focus-visible {{
+    outline: none;
+    border-color: @accent;
+    box-shadow: 0 0 0 3px alpha(@accent, 0.35);
 }}
 
 headerbar {{
@@ -1167,6 +1246,7 @@ pub fn build_ui(app: &adw::Application) {
         }),
     );
     skin_ctrl.set_shine_target(&widgets.btn_build_flash);
+    ui::skin_overlay::register_stack_header_flash(&stack, &skin_ctrl);
     setup_konami_key_controller(&window, &state, &widgets, &skin_ctrl);
 
     window.present();
@@ -2180,6 +2260,48 @@ dropdown button {
             !def.contains("toast {"),
             "DEFAULT CSS must remain unchanged"
         );
+    }
+
+    #[test]
+    fn test_build_css_stage_responsive_interactions() {
+        let css = build_css(&ui::tokens::Palette::STAGE);
+        for needle in [
+            "@keyframes stage-active-breath",
+            "0 0 0 3px alpha(@gold_deep, 0.35);",
+            "box-shadow: inset 0 0 0 @accent;",
+            "background-color 140ms",
+            "box-shadow 140ms",
+            "box-shadow: 0 0 0 0 alpha(@accent, 0);",
+            "box-shadow: 0 0 0 3px alpha(@accent, 0.35);",
+            "transform: translateY(-1px);",
+            "0 4px 10px alpha(@accent, 0.25);",
+            "0 4px 10px alpha(@accent, 0.35);",
+            "transform: scale(0.98);",
+            "transition-duration: 70ms;",
+            "border: 1px solid alpha(@gold, 0.6);",
+            "dropdown button:focus-visible,",
+            "animation: stage-active-breath 1.6s ease-in-out infinite alternate;",
+            "animation: none;",
+        ] {
+            assert!(
+                css.contains(needle),
+                "Stage CSS missing responsive interaction rule: {needle}"
+            );
+        }
+
+        let def = build_css(&ui::tokens::Palette::DEFAULT);
+        for stage_only in [
+            "stage-active-breath",
+            "stage-shine-sweep",
+            "stage-pre",
+            "translateY(-1px)",
+            "scale(0.98)",
+        ] {
+            assert!(
+                !def.contains(stage_only),
+                "DEFAULT CSS must not contain Stage rule {stage_only}"
+            );
+        }
     }
 
     #[test]

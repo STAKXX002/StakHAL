@@ -298,6 +298,53 @@ fn test_stage_rendered_wcag_contrast() {
     buttons_row.append(&btn_secondary_flat);
     buttons_row.append(&icon_btn);
 
+    let buttons_row2 = gtk4::Box::builder()
+        .orientation(gtk4::Orientation::Horizontal)
+        .spacing(10)
+        .build();
+
+    let btn_suggested_hover = gtk4::Button::builder()
+        .label("Suggested Hover TEXT")
+        .height_request(40)
+        .css_classes(vec![
+            "stakhal-btn".to_string(),
+            "suggested-action".to_string(),
+        ])
+        .build();
+    btn_suggested_hover.set_state_flags(gtk4::StateFlags::PRELIGHT, false);
+
+    let btn_suggested_active = gtk4::Button::builder()
+        .label("Suggested Active TEXT")
+        .height_request(40)
+        .css_classes(vec![
+            "stakhal-btn".to_string(),
+            "suggested-action".to_string(),
+        ])
+        .build();
+    btn_suggested_active.set_state_flags(gtk4::StateFlags::ACTIVE, false);
+
+    let btn_secondary_flat_hover = gtk4::Button::builder()
+        .label("Flat Hover TEXT")
+        .height_request(40)
+        .css_classes(vec!["stakhal-btn".to_string(), "flat".to_string()])
+        .build();
+    btn_secondary_flat_hover.set_state_flags(gtk4::StateFlags::PRELIGHT, false);
+
+    let btn_secondary_active = gtk4::Button::builder()
+        .label("Secondary Active TEXT")
+        .height_request(40)
+        .css_classes(vec!["stakhal-btn".to_string()])
+        .build();
+    btn_secondary_active.set_state_flags(gtk4::StateFlags::ACTIVE, false);
+
+    let dropdown_widget = gtk4::DropDown::from_strings(&["AlignState", "HatchState"]);
+
+    buttons_row2.append(&btn_suggested_hover);
+    buttons_row2.append(&btn_suggested_active);
+    buttons_row2.append(&btn_secondary_flat_hover);
+    buttons_row2.append(&btn_secondary_active);
+    buttons_row2.append(&dropdown_widget);
+
     let lbl_section = gtk4::Label::builder()
         .label("[ PERIPHERALS ]")
         .halign(gtk4::Align::Start)
@@ -324,10 +371,13 @@ fn test_stage_rendered_wcag_contrast() {
     let chip_ready = make_chip("READY", "status-ready");
     let chip_active = make_chip("BUSY", "status-active");
     let chip_error = make_chip("ERROR", "status-error");
+    let chip_active_hover = make_chip("ACTIVE HOVER", "status-active");
+    chip_active_hover.set_state_flags(gtk4::StateFlags::PRELIGHT, false);
     chips_row.append(&chip_idle);
     chips_row.append(&chip_ready);
     chips_row.append(&chip_active);
     chips_row.append(&chip_error);
+    chips_row.append(&chip_active_hover);
 
     let list_box = gtk4::ListBox::builder()
         .selection_mode(gtk4::SelectionMode::Single)
@@ -348,6 +398,7 @@ fn test_stage_rendered_wcag_contrast() {
     inner.append(&lbl_dim);
     inner.append(&entry);
     inner.append(&buttons_row);
+    inner.append(&buttons_row2);
     inner.append(&chips_row);
     inner.append(&list_box);
 
@@ -385,7 +436,7 @@ fn test_stage_rendered_wcag_contrast() {
 
     let win = adw::ApplicationWindow::builder()
         .default_width(960)
-        .default_height(700)
+        .default_height(780)
         .content(&toast_overlay)
         .build();
     win.present();
@@ -564,8 +615,16 @@ fn test_stage_rendered_wcag_contrast() {
         "status-active chip",
     );
     assert_min_contrast(&mut surface, &chip_error, &win, 2, 4.5, "status-error chip");
+    assert_min_contrast(
+        &mut surface,
+        &chip_active_hover,
+        &win,
+        2,
+        4.5,
+        "status-active hovered chip",
+    );
 
-    // 7. Secondary button (normal, hovered, flat >= 4.5) and accent icon button
+    // 7. Secondary button (normal, hovered, active, flat, flat hovered >= 4.5), dropdown, and accent icon button
     assert_min_contrast(
         &mut surface,
         &btn_secondary,
@@ -584,11 +643,36 @@ fn test_stage_rendered_wcag_contrast() {
     );
     assert_min_contrast(
         &mut surface,
+        &btn_secondary_active,
+        &win,
+        2,
+        4.5,
+        "secondary button active",
+    );
+    assert_min_contrast(
+        &mut surface,
         &btn_secondary_flat,
         &win,
         2,
         4.5,
         "secondary flat button",
+    );
+    assert_min_contrast(
+        &mut surface,
+        &btn_secondary_flat_hover,
+        &win,
+        2,
+        4.5,
+        "secondary flat button hover",
+    );
+    let dropdown_lbl = find_lbl(dropdown_widget.upcast_ref(), "AlignState");
+    assert_min_contrast(
+        &mut surface,
+        &dropdown_lbl,
+        &win,
+        0,
+        4.5,
+        "dropdown button label",
     );
     let (icon_fg, _, _) =
         assert_min_contrast(&mut surface, &icon_btn, &win, 2, 4.5, "accent icon button");
@@ -618,6 +702,22 @@ fn test_stage_rendered_wcag_contrast() {
     assert!(
         relative_luminance_rgb(top_stop_rgb) > relative_luminance_rgb(bot_stop_rgb),
         "suggested-action top stop {top_stop_rgb:?} must be lighter than bottom stop {bot_stop_rgb:?}"
+    );
+    assert_min_contrast(
+        &mut surface,
+        &btn_suggested_hover,
+        &win,
+        2,
+        4.5,
+        "suggested-action hover",
+    );
+    assert_min_contrast(
+        &mut surface,
+        &btn_suggested_active,
+        &win,
+        2,
+        4.5,
+        "suggested-action active",
     );
 
     // 9. Labels over the bottom of the window gradient (>= 4.5)

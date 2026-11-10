@@ -47,6 +47,27 @@ fn to_u8_rgb(rgb: (f64, f64, f64)) -> (u8, u8, u8) {
     )
 }
 
+fn serialize_widget_node(widget: &impl IsA<gtk4::Widget>) -> String {
+    let w = widget.width().max(1);
+    let h = widget.height().max(1);
+    let paintable = gtk4::WidgetPaintable::new(Some(widget));
+    let snapshot = gtk4::Snapshot::new();
+    paintable.snapshot(&snapshot, w as f64, h as f64);
+    let node = snapshot
+        .to_node()
+        .expect("widget paintable produced render node");
+    String::from_utf8_lossy(node.serialize().as_ref()).to_string()
+}
+
+fn pump_for(duration: Duration) {
+    let start = Instant::now();
+    while start.elapsed() < duration {
+        while glib::MainContext::default().iteration(false) {}
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    while glib::MainContext::default().iteration(false) {}
+}
+
 #[test]
 fn test_stage_css_parses_cleanly_and_colors_adwaita_surfaces() {
     if let Err(err) = gtk4::init() {
@@ -97,12 +118,37 @@ fn test_stage_css_parses_cleanly_and_colors_adwaita_surfaces() {
     let row = ui::main_panel::create_peripheral_row("USART2", Some("Asynchronous"), 6);
     list_box.append(&row);
 
+    let btn_anim = gtk4::Button::builder()
+        .label("Build & Flash")
+        .css_classes(vec![
+            "stakhal-btn".to_string(),
+            "suggested-action".to_string(),
+        ])
+        .build();
+    let chip = gtk4::Label::builder()
+        .label("ACTIVE")
+        .css_classes(vec![
+            "card".to_string(),
+            "status-chip".to_string(),
+            "status-active".to_string(),
+        ])
+        .build();
+    let controls_row = gtk4::Box::builder()
+        .orientation(gtk4::Orientation::Horizontal)
+        .spacing(12)
+        .margin_top(12)
+        .margin_start(12)
+        .build();
+    controls_row.append(&btn_anim);
+    controls_row.append(&chip);
+
     let root_box = gtk4::Box::builder()
         .orientation(gtk4::Orientation::Vertical)
         .vexpand(true)
         .build();
     root_box.append(&header_bar);
     root_box.append(&list_box);
+    root_box.append(&controls_row);
 
     let win = adw::ApplicationWindow::builder()
         .default_width(600)
@@ -157,6 +203,70 @@ fn test_stage_css_parses_cleanly_and_colors_adwaita_surfaces() {
         "Window bottom gradient pixel {:?} must show pale azure Stage tint",
         bottom_px
     );
+
+    if let Some(settings) = gtk4::Settings::default() {
+        settings.set_gtk_enable_animations(true);
+    }
+
+    // Verify live GTK honors CSS transform on hover (:hover translateY(-1px)) and active (:active scale(0.98))
+    let ser_btn_idle = serialize_widget_node(&btn_anim);
+    btn_anim.set_state_flags(gtk4::StateFlags::PRELIGHT, false);
+    pump_for(Duration::from_millis(220));
+    let ser_btn_hover = serialize_widget_node(&btn_anim);
+    assert!(
+        ser_btn_hover != ser_btn_idle && ser_btn_hover.contains("transform {"),
+        "GTK must honor Stage hover transform on button:\n{ser_btn_hover}"
+    );
+    btn_anim.unset_state_flags(gtk4::StateFlags::PRELIGHT);
+    btn_anim.set_state_flags(gtk4::StateFlags::ACTIVE, false);
+    pump_for(Duration::from_millis(160));
+    let ser_btn_active = serialize_widget_node(&btn_anim);
+    assert!(
+        ser_btn_active != ser_btn_hover && ser_btn_active.contains("scale("),
+        "GTK must honor Stage active scale(0.98) transform on button:\n{ser_btn_active}"
+    );
+    btn_anim.unset_state_flags(gtk4::StateFlags::ACTIVE);
+    pump_for(Duration::from_millis(160));
+
+    // Verify @keyframes stage-active-breath runs ONLY on .status-active and stops when removed
+    let ser_active_t0 = serialize_widget_node(&chip);
+    pump_for(Duration::from_millis(280));
+    let ser_active_t1 = serialize_widget_node(&chip);
+    assert_ne!(
+        ser_active_t0, ser_active_t1,
+        ".status-active @keyframes stage-active-breath must animate across frames"
+    );
+
+    for static_class in ["status-idle", "status-ready", "status-error"] {
+        chip.remove_css_class("status-active");
+        chip.add_css_class(static_class);
+        pump_for(Duration::from_millis(220));
+        let s0 = serialize_widget_node(&chip);
+        pump_for(Duration::from_millis(260));
+        let s1 = serialize_widget_node(&chip);
+        assert_eq!(
+            s0, s1,
+            "Static status class {static_class} must have zero animation"
+        );
+        chip.remove_css_class(static_class);
+    }
+
+    // Reduced motion must halt CSS @keyframes animation
+    if let Some(settings) = gtk4::Settings::default() {
+        settings.set_gtk_enable_animations(false);
+    }
+    chip.add_css_class("status-active");
+    pump_for(Duration::from_millis(80));
+    let ser_rm0 = serialize_widget_node(&chip);
+    pump_for(Duration::from_millis(220));
+    let ser_rm1 = serialize_widget_node(&chip);
+    assert_eq!(
+        ser_rm0, ser_rm1,
+        "Reduced motion must disable Stage CSS @keyframes animation"
+    );
+    if let Some(settings) = gtk4::Settings::default() {
+        settings.set_gtk_enable_animations(true);
+    }
 
     win.close();
     gtk4::style_context_remove_provider_for_display(&display, &provider);
