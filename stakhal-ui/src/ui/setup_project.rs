@@ -201,6 +201,9 @@ pub fn do_load_project(state: &Rc<RefCell<AppState>>, widgets: &Rc<AppWidgets>) 
                     state.borrow().with_canvas_state_mut(|st| {
                         st.selected_state_machine = 0;
                         st.selected_state_node = None;
+                        st.hovered_state_node = None;
+                        st.node_hover_amounts.clear();
+                        st.node_hover_last_step = None;
                         st.diagram_bounds = (w, h);
                         let mut pos = std::collections::HashMap::new();
                         for (id, n) in &layout.nodes {
@@ -237,6 +240,9 @@ pub fn do_load_project(state: &Rc<RefCell<AppState>>, widgets: &Rc<AppWidgets>) 
             } else {
                 {
                     state.borrow().with_canvas_state_mut(|st| {
+                        st.hovered_state_node = None;
+                        st.node_hover_amounts.clear();
+                        st.node_hover_last_step = None;
                         st.state_diagram_layout = None;
                     });
                     state.borrow().project.borrow_mut().loaded_project = Some(project);
@@ -269,6 +275,10 @@ pub fn do_load_project(state: &Rc<RefCell<AppState>>, widgets: &Rc<AppWidgets>) 
 
                 state.borrow().with_canvas_state_mut(|c| {
                     c.selected_pinout_module = None;
+                    c.hovered_pinout_pin = None;
+                    c.hovered_pinout_mouse = None;
+                    c.pin_hover_amounts.clear();
+                    c.pin_hover_last_step = None;
                 });
             } else {
                 widgets.btn_nucleo_pinout.set_sensitive(false);
@@ -283,6 +293,10 @@ pub fn do_load_project(state: &Rc<RefCell<AppState>>, widgets: &Rc<AppWidgets>) 
                 widgets.combo_pinout_module.set_sensitive(false);
                 state.borrow().with_canvas_state_mut(|c| {
                     c.selected_pinout_module = None;
+                    c.hovered_pinout_pin = None;
+                    c.hovered_pinout_mouse = None;
+                    c.pin_hover_amounts.clear();
+                    c.pin_hover_last_step = None;
                 });
             }
             widgets.pinout_drawing_area.queue_draw();
@@ -329,6 +343,13 @@ pub fn do_load_project(state: &Rc<RefCell<AppState>>, widgets: &Rc<AppWidgets>) 
             widgets.combo_pinout_module.set_sensitive(false);
             state.borrow().with_canvas_state_mut(|c| {
                 c.selected_pinout_module = None;
+                c.hovered_pinout_pin = None;
+                c.hovered_pinout_mouse = None;
+                c.pin_hover_amounts.clear();
+                c.pin_hover_last_step = None;
+                c.hovered_state_node = None;
+                c.node_hover_amounts.clear();
+                c.node_hover_last_step = None;
             });
             widgets
                 .toast_overlay

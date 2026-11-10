@@ -81,6 +81,12 @@ pub struct DiagramCanvasState {
     pub edge_reveal_animation: Option<(usize, std::time::Instant)>,
     pub edge_pulse_animation: Option<(String, String, std::time::Instant)>,
     pub session_revealed_machines: std::collections::HashSet<usize>,
+    pub node_hover_amounts: std::collections::HashMap<String, f64>,
+    pub node_hover_last_step: Option<std::time::Instant>,
+    pub diagram_tick_active: bool,
+    pub pin_hover_amounts: std::collections::HashMap<(String, u8), f64>,
+    pub pin_hover_last_step: Option<std::time::Instant>,
+    pub pinout_tick_active: bool,
 }
 
 impl Default for DiagramCanvasState {
@@ -107,7 +113,259 @@ impl Default for DiagramCanvasState {
             edge_reveal_animation: None,
             edge_pulse_animation: None,
             session_revealed_machines: std::collections::HashSet::new(),
+            node_hover_amounts: std::collections::HashMap::new(),
+            node_hover_last_step: None,
+            diagram_tick_active: false,
+            pin_hover_amounts: std::collections::HashMap::new(),
+            pin_hover_last_step: None,
+            pinout_tick_active: false,
         }
+    }
+}
+
+fn step_hover_map<K: Eq + std::hash::Hash + Clone>(
+    amounts: &mut std::collections::HashMap<K, f64>,
+    active_key: Option<&K>,
+    dt_seconds: f64,
+    is_stage_animated: bool,
+) -> (bool, bool) {
+    if !is_stage_animated {
+        let changed = !amounts.is_empty();
+        amounts.clear();
+        return (changed, false);
+    }
+
+    let tau = crate::ui::tokens::motion::HOVER_EASE_TAU_SECONDS;
+    let eps = crate::ui::tokens::motion::HOVER_EASE_EPSILON;
+    let mut changed = false;
+    let mut still_pending = false;
+    let mut to_remove: Vec<K> = Vec::new();
+
+    for (k, val) in amounts.iter_mut() {
+        let is_target_active = active_key.is_some_and(|ak| ak == k);
+        let target = if is_target_active { 1.0 } else { 0.0 };
+        let next = crate::ui::tokens::motion::ease_toward(*val, target, dt_seconds, tau);
+        if (next - target).abs() <= eps {
+            if is_target_active {
+                if (*val - 1.0).abs() > 1e-12 {
+                    *val = 1.0;
+                    changed = true;
+                }
+            } else {
+                to_remove.push(k.clone());
+                changed = true;
+            }
+        } else {
+            if (next - *val).abs() > 1e-12 {
+                changed = true;
+            }
+            *val = next;
+            still_pending = true;
+        }
+    }
+
+    for k in to_remove {
+        amounts.remove(&k);
+    }
+
+    (changed, still_pending)
+}
+
+impl DiagramCanvasState {
+    pub fn has_unsettled_node_hover(&self) -> bool {
+        let eps = crate::ui::tokens::motion::HOVER_EASE_EPSILON;
+        self.node_hover_amounts.iter().any(|(id, val)| {
+            let target = if self.hovered_state_node.as_deref() == Some(id.as_str()) {
+                1.0
+            } else {
+                0.0
+            };
+            (val - target).abs() > eps
+        })
+    }
+
+    pub fn has_unsettled_pin_hover(&self) -> bool {
+        let eps = crate::ui::tokens::motion::HOVER_EASE_EPSILON;
+        self.pin_hover_amounts.iter().any(|(pin, val)| {
+            let target = if self.hovered_pinout_pin.as_ref() == Some(pin) {
+                1.0
+            } else {
+                0.0
+            };
+            (val - target).abs() > eps
+        })
+    }
+
+    pub fn has_active_diagram_animations(&self) -> bool {
+        self.node_flash_animation.is_some()
+            || self.edge_reveal_animation.is_some()
+            || self.edge_pulse_animation.is_some()
+            || self.has_unsettled_node_hover()
+    }
+
+    pub fn set_diagram_hovered_node(
+        &mut self,
+        hovered: Option<String>,
+        is_stage_animated: bool,
+        now: std::time::Instant,
+    ) -> bool {
+        let changed = self.hovered_state_node != hovered;
+        self.hovered_state_node = hovered.clone();
+        if is_stage_animated {
+            if let Some(id) = hovered {
+                self.node_hover_amounts.entry(id).or_insert(0.0);
+            }
+            let unsettled = self.has_unsettled_node_hover();
+            if unsettled && self.node_hover_last_step.is_none() {
+                self.node_hover_last_step = Some(now);
+            }
+            changed || unsettled
+        } else {
+            let had = !self.node_hover_amounts.is_empty();
+            self.node_hover_amounts.clear();
+            self.node_hover_last_step = None;
+            changed || had
+        }
+    }
+
+    pub fn set_pinout_hovered_pin(
+        &mut self,
+        hovered: Option<(String, u8)>,
+        is_stage_animated: bool,
+        now: std::time::Instant,
+    ) -> bool {
+        let changed = self.hovered_pinout_pin != hovered;
+        self.hovered_pinout_pin = hovered.clone();
+        if is_stage_animated {
+            if let Some(pin) = hovered {
+                self.pin_hover_amounts.entry(pin).or_insert(0.0);
+            }
+            let unsettled = self.has_unsettled_pin_hover();
+            if unsettled && self.pin_hover_last_step.is_none() {
+                self.pin_hover_last_step = Some(now);
+            }
+            changed || unsettled
+        } else {
+            let had = !self.pin_hover_amounts.is_empty();
+            self.pin_hover_amounts.clear();
+            self.pin_hover_last_step = None;
+            changed || had
+        }
+    }
+
+    pub fn step_node_hover_amounts(
+        &mut self,
+        dt_seconds: f64,
+        is_stage_animated: bool,
+    ) -> (bool, bool) {
+        let active = self.hovered_state_node.clone();
+        let res = step_hover_map(
+            &mut self.node_hover_amounts,
+            active.as_ref(),
+            dt_seconds,
+            is_stage_animated,
+        );
+        if !res.1 {
+            self.node_hover_last_step = None;
+        }
+        res
+    }
+
+    pub fn step_pin_hover_amounts(
+        &mut self,
+        dt_seconds: f64,
+        is_stage_animated: bool,
+    ) -> (bool, bool) {
+        let active = self.hovered_pinout_pin.clone();
+        let res = step_hover_map(
+            &mut self.pin_hover_amounts,
+            active.as_ref(),
+            dt_seconds,
+            is_stage_animated,
+        );
+        if !res.1 {
+            self.pin_hover_last_step = None;
+        }
+        res
+    }
+
+    pub fn step_diagram_tick(
+        &mut self,
+        is_stage: bool,
+        animations_enabled: bool,
+        now: std::time::Instant,
+    ) -> (bool, bool) {
+        let mut needs_redraw = false;
+        let mut anim_pending = false;
+
+        if let Some((_, start)) = self.node_flash_animation {
+            let elapsed = now.saturating_duration_since(start).as_millis() as u64;
+            if elapsed >= crate::ui::tokens::motion::DURATION_SHORT_MS || !animations_enabled {
+                self.node_flash_animation = None;
+            } else {
+                anim_pending = true;
+            }
+            needs_redraw = true;
+        }
+
+        if let Some((_, start)) = self.edge_reveal_animation {
+            let elapsed = now.saturating_duration_since(start).as_millis() as u64;
+            if elapsed >= crate::ui::tokens::motion::DURATION_MEDIUM_MS || !animations_enabled {
+                self.edge_reveal_animation = None;
+            } else {
+                anim_pending = true;
+            }
+            needs_redraw = true;
+        }
+
+        if let Some((_, _, start)) = self.edge_pulse_animation {
+            let elapsed = now.saturating_duration_since(start).as_millis() as u64;
+            let dur = crate::ui::tokens::motion::DURATION_MEDIUM_MS as f64;
+            let progress = (elapsed as f64 / dur).clamp(0.0, 1.0);
+            if progress >= 1.0
+                || elapsed >= crate::ui::tokens::motion::DURATION_MEDIUM_MS
+                || !animations_enabled
+            {
+                self.edge_pulse_animation = None;
+            } else {
+                anim_pending = true;
+            }
+            needs_redraw = true;
+        }
+
+        let dt = match self.node_hover_last_step.replace(now) {
+            Some(prev) => now.saturating_duration_since(prev).as_secs_f64(),
+            None => 0.0,
+        };
+        let (hover_changed, hover_pending) =
+            self.step_node_hover_amounts(dt, is_stage && animations_enabled);
+        if hover_changed {
+            needs_redraw = true;
+        }
+
+        let keep_running = anim_pending || hover_pending;
+        if !keep_running {
+            self.diagram_tick_active = false;
+        }
+
+        (needs_redraw, keep_running)
+    }
+
+    pub fn step_pinout_tick(
+        &mut self,
+        is_stage: bool,
+        animations_enabled: bool,
+        now: std::time::Instant,
+    ) -> (bool, bool) {
+        let dt = match self.pin_hover_last_step.replace(now) {
+            Some(prev) => now.saturating_duration_since(prev).as_secs_f64(),
+            None => 0.0,
+        };
+        let (changed, pending) = self.step_pin_hover_amounts(dt, is_stage && animations_enabled);
+        if !pending {
+            self.pinout_tick_active = false;
+        }
+        (changed, pending)
     }
 }
 
@@ -293,5 +551,103 @@ mod tests {
         });
         let zoom = with_canvas_state(&canvas_cell, |c| c.diagram_zoom);
         assert_eq!(zoom, 2.0);
+    }
+
+    #[test]
+    fn test_diagram_and_pinout_hover_easing_lifecycle() {
+        let t0 = std::time::Instant::now();
+        let mut c = DiagramCanvasState::default();
+
+        // Idle: nothing unsettled, tick stops immediately
+        assert!(!c.has_unsettled_node_hover());
+        assert!(!c.has_unsettled_pin_hover());
+        assert_eq!(c.step_diagram_tick(true, true, t0), (false, false));
+        assert_eq!(c.step_pinout_tick(true, true, t0), (false, false));
+
+        // Start hovering node "GOING" and pin ("CN7", 1) in Stage
+        assert!(c.set_diagram_hovered_node(Some("GOING".to_string()), true, t0));
+        assert!(c.set_pinout_hovered_pin(Some(("CN7".to_string(), 1)), true, t0));
+        assert!(c.has_unsettled_node_hover());
+        assert!(c.has_unsettled_pin_hover());
+        assert_eq!(c.node_hover_amounts.get("GOING"), Some(&0.0));
+        assert_eq!(c.pin_hover_amounts.get(&("CN7".to_string(), 1)), Some(&0.0));
+        c.diagram_tick_active = true;
+        c.pinout_tick_active = true;
+
+        // Intermediate steps advance smoothly between 0 and 1
+        let t1 = t0 + std::time::Duration::from_millis(80);
+        let (d_redraw, d_cont) = c.step_diagram_tick(true, true, t1);
+        let (p_redraw, p_cont) = c.step_pinout_tick(true, true, t1);
+        assert!(d_redraw && d_cont);
+        assert!(p_redraw && p_cont);
+        let v_node = *c.node_hover_amounts.get("GOING").unwrap();
+        let v_pin = *c.pin_hover_amounts.get(&("CN7".to_string(), 1)).unwrap();
+        assert!(
+            v_node > 0.5 && v_node < 0.75,
+            "expected ~0.632 at tau, got {v_node}"
+        );
+        assert!(
+            v_pin > 0.5 && v_pin < 0.75,
+            "expected ~0.632 at tau, got {v_pin}"
+        );
+
+        // Settle after enough elapsed time (500ms >> tau * ln(100) ~ 368ms)
+        let t2 = t0 + std::time::Duration::from_millis(500);
+        let (d_redraw2, d_cont2) = c.step_diagram_tick(true, true, t2);
+        let (p_redraw2, p_cont2) = c.step_pinout_tick(true, true, t2);
+        assert!(
+            d_redraw2 && !d_cont2,
+            "Settling frame draws 1.0 then breaks"
+        );
+        assert!(
+            p_redraw2 && !p_cont2,
+            "Settling frame draws 1.0 then breaks"
+        );
+        assert!(!c.diagram_tick_active);
+        assert!(!c.pinout_tick_active);
+        assert_eq!(c.node_hover_amounts.get("GOING"), Some(&1.0));
+        assert_eq!(c.pin_hover_amounts.get(&("CN7".to_string(), 1)), Some(&1.0));
+
+        // While holding steady at settled hover: 0 redraws, 0 continuation
+        let t3 = t2 + std::time::Duration::from_millis(50);
+        assert_eq!(c.step_diagram_tick(true, true, t3), (false, false));
+        assert_eq!(c.step_pinout_tick(true, true, t3), (false, false));
+
+        // Leave: transitions back down to 0, then prunes entry and stops tick
+        assert!(c.set_diagram_hovered_node(None, true, t3));
+        assert!(c.set_pinout_hovered_pin(None, true, t3));
+        c.diagram_tick_active = true;
+        c.pinout_tick_active = true;
+
+        let t4 = t3 + std::time::Duration::from_millis(80);
+        let (d_out1, d_out_cont1) = c.step_diagram_tick(true, true, t4);
+        let (p_out1, p_out_cont1) = c.step_pinout_tick(true, true, t4);
+        assert!(d_out1 && d_out_cont1);
+        assert!(p_out1 && p_out_cont1);
+        let fading_val = *c.node_hover_amounts.get("GOING").unwrap();
+        assert!(fading_val > 0.25 && fading_val < 0.45);
+
+        // Re-hover mid-fade preserves partial value instead of resetting to 0
+        assert!(c.set_diagram_hovered_node(Some("GOING".to_string()), true, t4));
+        assert!((*c.node_hover_amounts.get("GOING").unwrap() - fading_val).abs() < 1e-12);
+
+        // Unhover again and let both completely settle off
+        assert!(c.set_diagram_hovered_node(None, true, t4));
+        let t5 = t4 + std::time::Duration::from_millis(500);
+        let (d_done, d_cont_done) = c.step_diagram_tick(true, true, t5);
+        let (p_done, p_cont_done) = c.step_pinout_tick(true, true, t5);
+        assert!(d_done && !d_cont_done);
+        assert!(p_done && !p_cont_done);
+        assert!(c.node_hover_amounts.is_empty());
+        assert!(c.pin_hover_amounts.is_empty());
+        assert!(!c.diagram_tick_active && !c.pinout_tick_active);
+
+        // Reduced motion or Default skin collapses existing map immediately and never continues
+        assert!(c.set_diagram_hovered_node(Some("GOING".to_string()), true, t5));
+        assert!(c.set_pinout_hovered_pin(Some(("CN7".to_string(), 1)), true, t5));
+        assert_eq!(c.step_diagram_tick(true, false, t5), (true, false));
+        assert_eq!(c.step_pinout_tick(false, true, t5), (true, false));
+        assert!(c.node_hover_amounts.is_empty());
+        assert!(c.pin_hover_amounts.is_empty());
     }
 }

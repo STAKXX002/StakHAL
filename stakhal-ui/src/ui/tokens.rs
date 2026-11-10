@@ -227,6 +227,43 @@ pub mod motion {
         true
     }
 
+    /// Exponential hover approach time constant (seconds)
+    pub const HOVER_EASE_TAU_SECONDS: f64 = 0.08;
+    /// Target settle threshold for exponential hover easing
+    pub const HOVER_EASE_EPSILON: f64 = 0.01;
+
+    /// Exponentially approach `target` from `current` with time constant `tau` over `dt_seconds`.
+    /// Clamped strictly to [0.0, 1.0] and guaranteed finite for `dt == 0.0`, negative `dt`,
+    /// zero/non-positive `tau`, and arbitrarily large `dt`.
+    pub fn ease_toward(current: f64, target: f64, dt_seconds: f64, tau: f64) -> f64 {
+        let tgt = if target.is_nan() {
+            0.0
+        } else {
+            target.clamp(0.0, 1.0)
+        };
+        let cur = if current.is_nan() {
+            tgt
+        } else {
+            current.clamp(0.0, 1.0)
+        };
+        if dt_seconds.is_nan() || dt_seconds <= 0.0 {
+            return cur;
+        }
+        if tau.is_nan() || tau <= 0.0 || dt_seconds.is_infinite() {
+            return tgt;
+        }
+        if tau.is_infinite() {
+            return cur;
+        }
+        let factor = 1.0 - (-dt_seconds / tau).exp();
+        let next = cur + (tgt - cur) * factor;
+        if next.is_nan() {
+            tgt
+        } else {
+            next.clamp(0.0, 1.0)
+        }
+    }
+
     /// Return effective animation duration in milliseconds, collapsing to 0 if animations are disabled.
     pub fn effective_duration_ms(base_duration_ms: u64) -> u64 {
         if is_animations_enabled() {
@@ -246,6 +283,67 @@ pub mod motion {
             assert_eq!(DURATION_SHORT_MS, 180);
             assert_eq!(DURATION_MEDIUM_MS, 350);
             assert_eq!(EASING_CSS, "cubic-bezier(0.0, 0.0, 0.2, 1.0)");
+            assert!((HOVER_EASE_TAU_SECONDS - 0.08).abs() < 1e-12);
+            assert!((HOVER_EASE_EPSILON - 0.01).abs() < 1e-12);
+        }
+
+        #[test]
+        fn test_ease_toward_edge_cases_and_exponential_approach() {
+            // dt == 0 and negative dt stay at clamped current
+            let v0 = ease_toward(0.35, 1.0, 0.0, HOVER_EASE_TAU_SECONDS);
+            assert!(v0.is_finite());
+            assert!((v0 - 0.35).abs() < 1e-12);
+
+            let v_neg = ease_toward(0.4, 0.9, -0.05, HOVER_EASE_TAU_SECONDS);
+            assert!(v_neg.is_finite());
+            assert!((v_neg - 0.4).abs() < 1e-12);
+
+            // Huge dt (and infinity) converge cleanly to target with no NaN
+            for huge_dt in [1.0e3, 1.0e9, 1.0e300, f64::MAX, f64::INFINITY] {
+                let up = ease_toward(0.0, 1.0, huge_dt, HOVER_EASE_TAU_SECONDS);
+                let down = ease_toward(1.0, 0.0, huge_dt, HOVER_EASE_TAU_SECONDS);
+                assert!(up.is_finite() && (up - 1.0).abs() < 1e-12);
+                assert!(down.is_finite() && down.abs() < 1e-12);
+            }
+
+            // tau <= 0 snaps immediately to clamped target
+            assert!((ease_toward(0.2, 0.8, 0.016, 0.0) - 0.8).abs() < 1e-12);
+            assert!((ease_toward(0.2, 0.8, 0.016, -1.0) - 0.8).abs() < 1e-12);
+
+            // Clamping outside [0.0, 1.0]
+            assert!((ease_toward(-0.5, 2.0, 0.0, HOVER_EASE_TAU_SECONDS) - 0.0).abs() < 1e-12);
+            assert!((ease_toward(1.5, 2.0, 0.0, HOVER_EASE_TAU_SECONDS) - 1.0).abs() < 1e-12);
+            assert!((ease_toward(0.5, 2.0, 10.0, HOVER_EASE_TAU_SECONDS) - 1.0).abs() < 1e-12);
+            assert!((ease_toward(0.5, -1.0, 10.0, HOVER_EASE_TAU_SECONDS) - 0.0).abs() < 1e-12);
+
+            // NaN resilience
+            let n1 = ease_toward(f64::NAN, 1.0, 0.016, 0.08);
+            let n2 = ease_toward(0.5, f64::NAN, 0.016, 0.08);
+            let n3 = ease_toward(0.5, 1.0, f64::NAN, 0.08);
+            let n4 = ease_toward(0.5, 1.0, 0.016, f64::NAN);
+            assert!(n1.is_finite() && n2.is_finite() && n3.is_finite() && n4.is_finite());
+
+            // Exact 1 - e^-1 at dt == tau rising, e^-1 falling
+            let tau = HOVER_EASE_TAU_SECONDS;
+            let expected_rise = 1.0 - (-1.0_f64).exp();
+            let expected_fall = (-1.0_f64).exp();
+            assert!((ease_toward(0.0, 1.0, tau, tau) - expected_rise).abs() < 1e-12);
+            assert!((ease_toward(1.0, 0.0, tau, tau) - expected_fall).abs() < 1e-12);
+
+            // Time-step invariance: two steps of dt/2 equal one step of dt
+            let single = ease_toward(0.15, 0.9, 0.032, tau);
+            let half1 = ease_toward(0.15, 0.9, 0.016, tau);
+            let half2 = ease_toward(half1, 0.9, 0.016, tau);
+            assert!((single - half2).abs() < 1e-12);
+
+            // Monotonic approach within [0.0, 1.0]
+            let mut val = 0.0;
+            for _ in 0..40 {
+                let next = ease_toward(val, 1.0, 0.016, tau);
+                assert!(next >= val && (0.0..=1.0).contains(&next));
+                val = next;
+            }
+            assert!(val > 0.99);
         }
 
         #[test]

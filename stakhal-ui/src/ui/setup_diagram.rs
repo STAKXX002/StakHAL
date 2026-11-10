@@ -67,6 +67,10 @@ pub fn setup_diagram_and_navigation(
             &lbl_info_diagram_nav,
             &state_diagram_nav.borrow(),
         );
+        crate::ui::state_diagram::ensure_diagram_animation_tick(
+            &area_diagram_nav,
+            &state_diagram_nav,
+        );
         area_diagram_nav.queue_draw();
         crate::navigate_stack(
             &stack_diagram,
@@ -107,6 +111,9 @@ pub fn setup_diagram_and_navigation(
             state_combo.borrow().with_canvas_state_mut(|st| {
                 st.selected_state_machine = idx;
                 st.selected_state_node = None;
+                st.hovered_state_node = None;
+                st.node_hover_amounts.clear();
+                st.node_hover_last_step = None;
                 st.state_diagram_layout = None; // trigger layout recompute for selected machine
                 st.diagram_needs_fit = true;
 
@@ -119,6 +126,7 @@ pub fn setup_diagram_and_navigation(
                     st.edge_reveal_animation = None;
                 }
             });
+            crate::ui::state_diagram::ensure_diagram_animation_tick(&area_combo, &state_combo);
             {
                 let proj = Rc::clone(&state_combo.borrow().project);
                 let proj_guard = proj.borrow();

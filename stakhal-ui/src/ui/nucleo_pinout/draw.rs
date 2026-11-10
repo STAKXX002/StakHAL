@@ -1,10 +1,20 @@
 use crate::state::{AppState, AppWidgets};
 use crate::ui::tokens;
 use gtk4::cairo;
+use gtk4::glib;
 use gtk4::prelude::*;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
+
+fn mix_rgb(a: (f64, f64, f64), b: (f64, f64, f64), t: f64) -> (f64, f64, f64) {
+    let t = t.clamp(0.0, 1.0);
+    (
+        (a.0 + (b.0 - a.0) * t).clamp(0.0, 1.0),
+        (a.1 + (b.1 - a.1) * t).clamp(0.0, 1.0),
+        (a.2 + (b.2 - a.2) * t).clamp(0.0, 1.0),
+    )
+}
 
 pub struct PinDef {
     pub pin_num: u8,
@@ -758,13 +768,23 @@ pub fn draw_nucleo_pinout(
 ) {
     let pal = tokens::palette();
     let is_default = pal == tokens::Palette::DEFAULT;
-    let (hovered_pin, hovered_mouse, is_filtering_module) = state.borrow().with_canvas_state(|c| {
-        (
-            c.hovered_pinout_pin.clone(),
-            c.hovered_pinout_mouse,
-            c.selected_pinout_module.is_some(),
-        )
-    });
+    let (hovered_pin, hovered_mouse, is_filtering_module, pin_hover_entries) =
+        state.borrow().with_canvas_state(|c| {
+            let entries: Vec<(String, u8, f64)> = if is_default {
+                Vec::new()
+            } else {
+                c.pin_hover_amounts
+                    .iter()
+                    .map(|((cn, pn), v)| (cn.clone(), *pn, *v))
+                    .collect()
+            };
+            (
+                c.hovered_pinout_pin.clone(),
+                c.hovered_pinout_mouse,
+                c.selected_pinout_module.is_some(),
+                entries,
+            )
+        });
     let highlights = get_active_pin_highlights(&state.borrow());
     let hovered_pin = hovered_pin.as_ref();
 
@@ -1153,6 +1173,16 @@ pub fn draw_nucleo_pinout(
             let is_hl = highlights.get(&(conn.name, p.pin_num));
             let is_hovered = hovered_pin
                 .is_some_and(|(c_name, p_num)| c_name == conn.name && *p_num == p.pin_num);
+            let pin_hover_amount = if is_default {
+                0.0
+            } else {
+                pin_hover_entries
+                    .iter()
+                    .find(|(c_name, p_num, _)| c_name == conn.name && *p_num == p.pin_num)
+                    .map(|(_, _, v)| *v)
+                    .unwrap_or(if is_hovered { 1.0 } else { 0.0 })
+                    .clamp(0.0, 1.0)
+            };
 
             if let Some(hl_info) = is_hl {
                 let reserved_info = stakhal_core::nucleo_pinout::check_reserved(p.mcu_pin);
@@ -1180,9 +1210,25 @@ pub fn draw_nucleo_pinout(
                     pal.bg_raised
                 };
 
-                // Interactive/Selection ONLY uses ACCENT
-                if is_hovered {
-                    cr.set_source_rgb(pal.accent.0, pal.accent.1, pal.accent.2);
+                // Default uses static ACCENT; Stage blends toward gold_deep by eased hover amount
+                if is_default {
+                    if is_hovered {
+                        cr.set_source_rgb(pal.accent.0, pal.accent.1, pal.accent.2);
+                    } else if hl_info.is_muted {
+                        cr.set_source_rgba(hl_r, hl_g, hl_b, muted_alpha);
+                    } else {
+                        cr.set_source_rgb(hl_r, hl_g, hl_b);
+                    }
+                } else if pin_hover_amount > 0.0 {
+                    let base_a = if hl_info.is_muted { muted_alpha } else { 1.0 };
+                    let blended =
+                        mix_rgb((hl_r, hl_g, hl_b), pal.gold_deep.rgb(), pin_hover_amount);
+                    let blended_a = base_a + (1.0 - base_a) * pin_hover_amount;
+                    if blended_a < 1.0 {
+                        cr.set_source_rgba(blended.0, blended.1, blended.2, blended_a);
+                    } else {
+                        cr.set_source_rgb(blended.0, blended.1, blended.2);
+                    }
                 } else if hl_info.is_muted {
                     cr.set_source_rgba(hl_r, hl_g, hl_b, muted_alpha);
                 } else {
@@ -1304,9 +1350,17 @@ pub fn draw_nucleo_pinout(
                 cr.rectangle(cell_x, cell_y, cell_w, cell_h);
                 let _ = cr.fill_preserve();
 
-                // Interactive/Selection ONLY uses ACCENT
-                if is_hovered {
-                    cr.set_source_rgb(pal.accent.0, pal.accent.1, pal.accent.2);
+                // Default uses static ACCENT; Stage blends toward gold_deep by eased hover amount
+                if is_default {
+                    if is_hovered {
+                        cr.set_source_rgb(pal.accent.0, pal.accent.1, pal.accent.2);
+                    } else {
+                        cr.set_source_rgb(pal.border_hair.0, pal.border_hair.1, pal.border_hair.2);
+                    }
+                } else if pin_hover_amount > 0.0 {
+                    let blended =
+                        mix_rgb(pal.border_hair.rgb(), pal.gold_deep.rgb(), pin_hover_amount);
+                    cr.set_source_rgb(blended.0, blended.1, blended.2);
                 } else {
                     cr.set_source_rgb(pal.border_hair.0, pal.border_hair.1, pal.border_hair.2);
                 }
@@ -1559,6 +1613,41 @@ pub fn draw_nucleo_pinout(
     }
 }
 
+/// Attach the Stage pinout hover-easing frame-clock tick callback on demand while
+/// any cell hover amount is not yet settled at its target.
+pub fn ensure_pinout_hover_tick(drawing_area: &gtk4::DrawingArea, state: &Rc<RefCell<AppState>>) {
+    let should_attach = state.borrow().with_canvas_state_mut(|st| {
+        if st.pinout_tick_active || !st.has_unsettled_pin_hover() {
+            return false;
+        }
+        st.pinout_tick_active = true;
+        true
+    });
+    if !should_attach {
+        return;
+    }
+
+    let state_tick = Rc::clone(state);
+    drawing_area.add_tick_callback(move |area, _| {
+        let is_stage = tokens::palette() != tokens::Palette::DEFAULT;
+        let animations_enabled = tokens::motion::is_animations_enabled();
+        let now = std::time::Instant::now();
+        let (needs_redraw, keep_running) = state_tick
+            .borrow()
+            .with_canvas_state_mut(|st| st.step_pinout_tick(is_stage, animations_enabled, now));
+
+        if needs_redraw {
+            area.queue_draw();
+        }
+
+        if keep_running {
+            glib::ControlFlow::Continue
+        } else {
+            glib::ControlFlow::Break
+        }
+    });
+}
+
 pub fn setup_nucleo_pinout_drawing_and_gestures(
     state: &Rc<RefCell<AppState>>,
     widgets: &Rc<AppWidgets>,
@@ -1578,6 +1667,9 @@ pub fn setup_nucleo_pinout_drawing_and_gestures(
         let area = &widgets_motion.pinout_drawing_area;
         let cw = area.width().max(800) as f64;
         let ch = area.height().max(600) as f64;
+        let is_stage_animated = tokens::palette() != tokens::Palette::DEFAULT
+            && tokens::motion::is_animations_enabled();
+        let now = std::time::Instant::now();
 
         let mut hit_pin: Option<(&'static str, u8, &'static str, Option<&'static str>)> = None;
 
@@ -1597,35 +1689,51 @@ pub fn setup_nucleo_pinout_drawing_and_gestures(
 
         match hit_pin {
             Some((conn_name, pin_num, _mcu_pin, _default_label)) => {
-                let mut needs_draw = false;
                 state_motion.borrow().with_canvas_state_mut(|c| {
-                    let current_hovered = c.hovered_pinout_pin.clone();
-                    let new_hovered = Some((conn_name.to_string(), pin_num));
-
                     c.hovered_pinout_mouse = Some((x, y));
-
-                    if current_hovered != new_hovered {
-                        c.hovered_pinout_pin = new_hovered;
-                    }
-                    needs_draw = true;
+                    c.set_pinout_hovered_pin(
+                        Some((conn_name.to_string(), pin_num)),
+                        is_stage_animated,
+                        now,
+                    );
                 });
-                if needs_draw {
-                    area.queue_draw();
+                if is_stage_animated {
+                    ensure_pinout_hover_tick(area, &state_motion);
                 }
+                area.queue_draw();
             }
             None => {
-                let mut needs_draw = false;
-                state_motion.borrow().with_canvas_state_mut(|c| {
-                    if c.hovered_pinout_pin.is_some() || c.hovered_pinout_mouse.is_some() {
-                        c.hovered_pinout_pin = None;
-                        c.hovered_pinout_mouse = None;
-                        needs_draw = true;
-                    }
+                let needs_draw = state_motion.borrow().with_canvas_state_mut(|c| {
+                    let had_mouse = c.hovered_pinout_mouse.take().is_some();
+                    let hover_changed = c.set_pinout_hovered_pin(None, is_stage_animated, now);
+                    had_mouse || hover_changed
                 });
                 if needs_draw {
+                    if is_stage_animated {
+                        ensure_pinout_hover_tick(area, &state_motion);
+                    }
                     area.queue_draw();
                 }
             }
+        }
+    });
+
+    let state_leave = Rc::clone(state);
+    let area_leave = widgets.pinout_drawing_area.clone();
+    motion.connect_leave(move |_| {
+        let is_stage_animated = tokens::palette() != tokens::Palette::DEFAULT
+            && tokens::motion::is_animations_enabled();
+        let now = std::time::Instant::now();
+        let needs_draw = state_leave.borrow().with_canvas_state_mut(|c| {
+            let had_mouse = c.hovered_pinout_mouse.take().is_some();
+            let hover_changed = c.set_pinout_hovered_pin(None, is_stage_animated, now);
+            had_mouse || hover_changed
+        });
+        if needs_draw {
+            if is_stage_animated {
+                ensure_pinout_hover_tick(&area_leave, &state_leave);
+            }
+            area_leave.queue_draw();
         }
     });
 
@@ -1975,5 +2083,88 @@ mod tests {
         assert!(saw_gold, "Expected Stage gold caution (OSC) pin tab");
         assert!(saw_error, "Expected Stage state_error SWD pin cell");
         assert!(saw_active, "Expected Stage state_active OSC text/border");
+    }
+
+    #[test]
+    fn test_stage_pinout_hover_border_blends_to_gold_deep() {
+        let stage = tokens::Palette::STAGE;
+        let _guard = PaletteResetGuard(tokens::palette());
+        tokens::set_palette(stage);
+
+        let state = Rc::new(RefCell::new(AppState::default()));
+        let fixture_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../stakhal-core/tests/fixtures/aa_ns_stm_port");
+        let project = stakhal_core::ir::schema::load_project(
+            &fixture_dir.join("aa_ns_stm_port.ioc"),
+            &fixture_dir.join("Core/Src/main.c"),
+        )
+        .expect("Failed to load aa_ns_stm_port");
+        state.borrow().project.borrow_mut().loaded_project = Some(project);
+
+        // Pin cell CN7 index 1 (pin 2) top border pixel
+        let (cell_x, cell_y, cell_w, _) = get_pin_cell_rect("CN7", 1, 1200.0, 750.0);
+        let sample_x = (cell_x + cell_w * 0.5).round() as usize;
+        let sample_y = cell_y.round() as usize;
+
+        let render_border_px = |amount: f64| -> (u8, u8, u8) {
+            state.borrow().with_canvas_state_mut(|c| {
+                c.pin_hover_amounts.clear();
+                c.hovered_pinout_pin = if amount >= 0.5 {
+                    Some(("CN7".to_string(), 2))
+                } else {
+                    None
+                };
+                if amount > 0.0 {
+                    c.pin_hover_amounts.insert(("CN7".to_string(), 2), amount);
+                }
+            });
+            let mut s = cairo::ImageSurface::create(cairo::Format::ARgb32, 1200, 750).unwrap();
+            {
+                let cr = cairo::Context::new(&s).unwrap();
+                draw_nucleo_pinout(&cr, 1200.0, 750.0, &state);
+            }
+            s.flush();
+            let stride = s.stride() as usize;
+            let data = s.data().unwrap();
+            let off = sample_y * stride + sample_x * 4;
+            (data[off + 2], data[off + 1], data[off])
+        };
+
+        let px_0 = render_border_px(0.0);
+        let px_mid = render_border_px(0.5);
+        let px_1 = render_border_px(1.0);
+
+        // Border shifts smoothly from cool blue toward warm gold_deep (#A8770F: high R, low B)
+        assert!(
+            px_0.2 > px_mid.2 && px_mid.2 > px_1.2,
+            "Pin border B channel must blend down toward gold_deep: {px_0:?} -> {px_mid:?} -> {px_1:?}"
+        );
+
+        // Default skin ignores pin_hover_amounts and renders pixel-identical frames
+        tokens::set_palette(tokens::Palette::DEFAULT);
+        state.borrow().with_canvas_state_mut(|c| {
+            c.hovered_pinout_pin = Some(("CN7".to_string(), 2));
+            c.pin_hover_amounts.clear();
+        });
+        let mut s_def_a = cairo::ImageSurface::create(cairo::Format::ARgb32, 1200, 750).unwrap();
+        {
+            let cr = cairo::Context::new(&s_def_a).unwrap();
+            draw_nucleo_pinout(&cr, 1200.0, 750.0, &state);
+        }
+        state.borrow().with_canvas_state_mut(|c| {
+            c.pin_hover_amounts.insert(("CN7".to_string(), 2), 0.45);
+        });
+        let mut s_def_b = cairo::ImageSurface::create(cairo::Format::ARgb32, 1200, 750).unwrap();
+        {
+            let cr = cairo::Context::new(&s_def_b).unwrap();
+            draw_nucleo_pinout(&cr, 1200.0, 750.0, &state);
+        }
+        s_def_a.flush();
+        s_def_b.flush();
+        assert_eq!(
+            s_def_a.data().unwrap().as_ref(),
+            s_def_b.data().unwrap().as_ref(),
+            "Default skin pinout canvas must stay pixel-identical"
+        );
     }
 }

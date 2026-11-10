@@ -18,6 +18,8 @@ const STAGE_NODE_BORDER_WIDTH: f64 = 1.5;
 const STAGE_SELECTED_BORDER_WIDTH: f64 = 2.0;
 const STAGE_SELECTED_GLOW_WIDTH: f64 = 6.0;
 const STAGE_SELECTED_GLOW_ALPHA: f64 = 0.16;
+const STAGE_HOVER_GLOW_WIDTH: f64 = 3.0;
+const STAGE_HOVER_GLOW_ALPHA: f64 = 0.20;
 const STAGE_RIBBON_WIDTH: f64 = 3.0;
 
 fn trace_rounded_rect(cr: &cairo::Context, x: f64, y: f64, w: f64, h: f64, radius: f64) {
@@ -67,6 +69,7 @@ struct DiagramColors {
     accent: (f64, f64, f64),
     azure: (f64, f64, f64),
     gold: (f64, f64, f64),
+    gold_deep: (f64, f64, f64),
     edge_width: f64,
     node_border_width: f64,
     lane_alpha_selected: f64,
@@ -189,6 +192,7 @@ impl DiagramColors {
             accent: pal.accent.rgb(),
             azure: pal.azure.rgb(),
             gold: pal.gold.rgb(),
+            gold_deep: pal.gold_deep.rgb(),
             edge_width: if is_default {
                 tokens::shape::BORDER_WIDTH_HAIR
             } else {
@@ -279,6 +283,7 @@ pub fn draw_state_diagram(
         pan_y,
         selected_node,
         hovered_node,
+        node_hover_amounts,
         node_flash,
         edge_reveal,
         edge_pulse,
@@ -291,6 +296,11 @@ pub fn draw_state_diagram(
             st.diagram_pan_y,
             st.selected_state_node.clone(),
             st.hovered_state_node.clone(),
+            if colors.is_default {
+                std::collections::HashMap::new()
+            } else {
+                st.node_hover_amounts.clone()
+            },
             st.node_flash_animation.clone(),
             st.edge_reveal_animation,
             st.edge_pulse_animation.clone(),
@@ -532,7 +542,21 @@ pub fn draw_state_diagram(
             cr.set_line_width(2.0);
             let pulse_len = 24.0_f64.min(total_len * 0.4).max(8.0);
             cr.set_dash(&[pulse_len, total_len * 2.0], -(pulse_t * total_len));
-            let _ = cr.stroke();
+            if colors.is_default {
+                let _ = cr.stroke();
+            } else {
+                let _ = cr.stroke_preserve();
+                let head_len = (pulse_len * 0.35).clamp(4.0, 8.0).min(pulse_len);
+                let head_start = pulse_t * total_len + (pulse_len - head_len);
+                cr.set_source_rgba(
+                    colors.gold_deep.0,
+                    colors.gold_deep.1,
+                    colors.gold_deep.2,
+                    1.0,
+                );
+                cr.set_dash(&[head_len, total_len * 4.0 + pulse_len], -head_start);
+                let _ = cr.stroke();
+            }
             cr.set_dash(&[], 0.0);
             cr.set_line_width(colors.edge_width);
         }
@@ -571,6 +595,19 @@ pub fn draw_state_diagram(
     for (id, node) in &layout.nodes {
         let is_selected = selected_node == Some(id.as_str());
         let is_hovered = hovered_node == Some(id.as_str());
+        let hover_amount = if colors.is_default {
+            if is_hovered {
+                1.0
+            } else {
+                0.0
+            }
+        } else {
+            node_hover_amounts
+                .get(id.as_str())
+                .copied()
+                .unwrap_or(if is_hovered { 1.0 } else { 0.0 })
+                .clamp(0.0, 1.0)
+        };
         let is_flashing = flash_node.as_deref() == Some(id.as_str()) && flash_progress < 1.0;
         let flash_intensity = if is_flashing {
             1.0 - flash_progress
@@ -600,6 +637,7 @@ pub fn draw_state_diagram(
             node.is_initial,
             is_selected,
             is_hovered,
+            hover_amount,
             is_dimmed_node,
             flash_intensity,
             &colors,
@@ -790,10 +828,12 @@ fn draw_rounded_node(
     is_initial: bool,
     is_selected: bool,
     is_hovered: bool,
+    hover_amount: f64,
     is_dimmed: bool,
     flash_intensity: f64,
     colors: &DiagramColors,
 ) {
+    let hover_t = hover_amount.clamp(0.0, 1.0);
     if !colors.is_default {
         // Two offset translucent rounded rectangles for soft elevation without blur filters
         let (a_far, a_near) = if is_dimmed {
@@ -837,6 +877,24 @@ fn draw_rounded_node(
             );
             cr.set_line_width(STAGE_SELECTED_GLOW_WIDTH);
             let _ = cr.stroke();
+        } else if !is_dimmed && hover_t > 0.0 {
+            // Hovered node in Stage: 3px soft accent glow scaled by hover amount
+            trace_rounded_rect(
+                cr,
+                x - STAGE_HOVER_GLOW_WIDTH * 0.5,
+                y - STAGE_HOVER_GLOW_WIDTH * 0.5,
+                w + STAGE_HOVER_GLOW_WIDTH,
+                h + STAGE_HOVER_GLOW_WIDTH,
+                r + STAGE_HOVER_GLOW_WIDTH * 0.5,
+            );
+            cr.set_source_rgba(
+                colors.accent.0,
+                colors.accent.1,
+                colors.accent.2,
+                STAGE_HOVER_GLOW_ALPHA * hover_t,
+            );
+            cr.set_line_width(STAGE_HOVER_GLOW_WIDTH);
+            let _ = cr.stroke();
         }
     }
 
@@ -864,7 +922,24 @@ fn draw_rounded_node(
             colors.node_fill_selected.2,
             colors.node_fill_selected.3,
         );
-    } else if is_hovered {
+    } else if !colors.is_default && hover_t > 0.0 {
+        let base_fill = if is_initial {
+            colors.node_fill_initial
+        } else {
+            colors.node_fill_default
+        };
+        let rgb = mix_rgb(
+            (base_fill.0, base_fill.1, base_fill.2),
+            (
+                colors.node_fill_hover.0,
+                colors.node_fill_hover.1,
+                colors.node_fill_hover.2,
+            ),
+            hover_t,
+        );
+        let alpha = base_fill.3 + (colors.node_fill_hover.3 - base_fill.3) * hover_t;
+        cr.set_source_rgba(rgb.0, rgb.1, rgb.2, alpha);
+    } else if colors.is_default && is_hovered {
         cr.set_source_rgba(
             colors.node_fill_hover.0,
             colors.node_fill_hover.1,
@@ -946,6 +1021,9 @@ fn draw_rounded_node(
             colors.border_selected.1,
             colors.border_selected.2,
         );
+    } else if !colors.is_default && hover_t > 0.0 {
+        let blended = mix_rgb(colors.border_default, colors.accent, hover_t);
+        cr.set_source_rgb(blended.0, blended.1, blended.2);
     } else if is_hovered {
         cr.set_source_rgb(
             colors.border_hover.0,
@@ -1898,7 +1976,8 @@ mod tests {
             cr.rectangle(0.0, 0.0, 300.0, 160.0);
             let _ = cr.fill();
             draw_rounded_node(
-                &cr, 40.0, 40.0, 175.0, 54.0, 2.0, false, true, true, false, false, 0.0, &stage,
+                &cr, 40.0, 40.0, 175.0, 54.0, 2.0, false, true, true, false, 0.0, false, 0.0,
+                &stage,
             );
         }
         // Background outside node+glow+shadow stays exact bg_void
@@ -1935,7 +2014,8 @@ mod tests {
             cr.rectangle(0.0, 0.0, 300.0, 160.0);
             let _ = cr.fill();
             draw_rounded_node(
-                &cr, 40.0, 40.0, 175.0, 54.0, 2.0, false, false, false, false, false, 0.0, &stage,
+                &cr, 40.0, 40.0, 175.0, 54.0, 2.0, false, false, false, false, 0.0, false, 0.0,
+                &stage,
             );
         }
         let ribbon_azure = pixel_at(&mut s_norm, 42, 67);
@@ -1959,10 +2039,183 @@ mod tests {
             cr.rectangle(0.0, 0.0, 300.0, 160.0);
             let _ = cr.fill();
             draw_rounded_node(
-                &cr, 40.0, 40.0, 175.0, 54.0, 2.0, false, true, true, false, false, 0.0, &default,
+                &cr, 40.0, 40.0, 175.0, 54.0, 2.0, false, true, true, false, 0.0, false, 0.0,
+                &default,
             );
         }
         assert_eq!(pixel_at(&mut s_def, 120, 97), (0x0A, 0x0D, 0x10));
         assert_eq!(pixel_at(&mut s_def, 36, 67), (0x0A, 0x0D, 0x10));
+    }
+
+    #[test]
+    fn test_stage_hover_easing_glow_border_and_pulse_head() {
+        let stage = DiagramColors::from_palette(tokens::Palette::STAGE);
+        assert_eq!(stage.gold_deep, tokens::Palette::STAGE.gold_deep.rgb());
+
+        let pixel_at = |surface: &mut cairo::ImageSurface, px_x: i32, px_y: i32| -> (u8, u8, u8) {
+            surface.flush();
+            let stride = surface.stride() as usize;
+            let data = surface.data().expect("surface data");
+            let off = px_y as usize * stride + px_x as usize * 4;
+            (data[off + 2], data[off + 1], data[off])
+        };
+
+        let render_node_with_amount =
+            |colors: &DiagramColors, amount: f64| -> cairo::ImageSurface {
+                let s = cairo::ImageSurface::create(cairo::Format::ARgb32, 300, 160).unwrap();
+                let cr = cairo::Context::new(&s).unwrap();
+                cr.set_source_rgb(colors.canvas_bg.0, colors.canvas_bg.1, colors.canvas_bg.2);
+                cr.rectangle(0.0, 0.0, 300.0, 160.0);
+                let _ = cr.fill();
+                draw_rounded_node(
+                    &cr,
+                    40.0,
+                    40.0,
+                    175.0,
+                    54.0,
+                    2.0,
+                    false,
+                    false,
+                    false,
+                    amount >= 0.5,
+                    amount,
+                    false,
+                    0.0,
+                    colors,
+                );
+                s
+            };
+
+        let mut s_0 = render_node_with_amount(&stage, 0.0);
+        let mut s_mid = render_node_with_amount(&stage, 0.5);
+        let mut s_1 = render_node_with_amount(&stage, 1.0);
+
+        // Top border center (x=120, y=40): node_border (#3F5FA0) -> midpoint -> accent (#2E6DB4)
+        let b_0 = pixel_at(&mut s_0, 120, 40);
+        let b_mid = pixel_at(&mut s_mid, 120, 40);
+        let b_1 = pixel_at(&mut s_1, 120, 40);
+        assert!(
+            b_0.0 > b_mid.0 && b_mid.0 > b_1.0,
+            "R channel must blend {b_0:?} -> {b_mid:?} -> {b_1:?}"
+        );
+        assert!(
+            b_0.1 < b_mid.1 && b_mid.1 < b_1.1,
+            "G channel must blend {b_0:?} -> {b_mid:?} -> {b_1:?}"
+        );
+        assert!(
+            b_0.2 < b_mid.2 && b_mid.2 < b_1.2,
+            "B channel must blend {b_0:?} -> {b_mid:?} -> {b_1:?}"
+        );
+
+        // 3px outer hover glow at x=38 (2px outside left border x=40):
+        // at amount=0 -> canvas bg_void; at amount=0.5 -> partial tint; at amount=1.0 -> full glow tint
+        let g_0 = pixel_at(&mut s_0, 38, 67);
+        let g_mid = pixel_at(&mut s_mid, 38, 67);
+        let g_1 = pixel_at(&mut s_1, 38, 67);
+        assert_eq!(g_0, (0xF4, 0xF9, 0xFD));
+        assert!(
+            g_0.0 > g_mid.0 && g_mid.0 > g_1.0 && g_0.1 > g_mid.1 && g_mid.1 > g_1.1,
+            "3px hover glow must intensify monotonically across {g_0:?} -> {g_mid:?} -> {g_1:?}"
+        );
+
+        // Active transition pulse in Stage renders gold_deep head and accent trail on docking fixture
+        let _guard = PaletteResetGuard(tokens::palette());
+        tokens::set_palette(tokens::Palette::STAGE);
+        let state = Rc::new(RefCell::new(AppState::default()));
+        let fixture_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../stakhal-core/tests/fixtures/docking_firmware");
+        let project = stakhal_core::ir::schema::load_project(
+            &fixture_dir.join("docking_firmware.ioc"),
+            &fixture_dir.join("Core/Src/main.c"),
+        )
+        .expect("Failed to load docking firmware fixture");
+        state.borrow().project.borrow_mut().loaded_project = Some(project);
+        let start_mid = std::time::Instant::now() - std::time::Duration::from_millis(140);
+        state.borrow().with_canvas_state_mut(|c| {
+            c.selected_state_node = Some("RETURNED".to_string());
+            c.edge_pulse_animation =
+                Some(("RETURNING".to_string(), "RETURNED".to_string(), start_mid));
+        });
+        let mut s_pulse = cairo::ImageSurface::create(cairo::Format::ARgb32, 1200, 800).unwrap();
+        {
+            let cr = cairo::Context::new(&s_pulse).unwrap();
+            draw_state_diagram(&cr, 1200.0, 800.0, &state);
+        }
+        s_pulse.flush();
+        let data = s_pulse.data().expect("pulse pixels");
+        let mut saw_gold_deep = false;
+        let mut saw_accent = false;
+        for px in data.chunks_exact(4) {
+            let (b, g, r) = (px[0], px[1], px[2]);
+            // Zoomed-out 2px stroke over accent trail blends slightly under Cairo AA
+            if (r as i32 - 0xA8).abs() <= 16
+                && (g as i32 - 0x77).abs() <= 16
+                && (b as i32 - 0x0F).abs() <= 16
+            {
+                saw_gold_deep = true;
+            }
+            if (r as i32 - 0x2E).abs() <= 6
+                && (g as i32 - 0x6D).abs() <= 6
+                && (b as i32 - 0xB4).abs() <= 6
+            {
+                saw_accent = true;
+            }
+        }
+        assert!(
+            saw_gold_deep,
+            "Expected gold_deep (#A8770F) pulse head on Stage active-transition edge"
+        );
+        assert!(
+            saw_accent,
+            "Expected accent (#2E6DB4) dash trail on Stage active-transition edge"
+        );
+
+        // Default skin pixel equivalence: with edge pulse active, zero gold_deep pixels appear
+        tokens::set_palette(tokens::Palette::DEFAULT);
+        let mut s_def_pulse =
+            cairo::ImageSurface::create(cairo::Format::ARgb32, 1200, 800).unwrap();
+        {
+            let cr = cairo::Context::new(&s_def_pulse).unwrap();
+            draw_state_diagram(&cr, 1200.0, 800.0, &state);
+        }
+        s_def_pulse.flush();
+        let def_data = s_def_pulse.data().expect("default pulse pixels");
+        assert!(
+            !def_data.chunks_exact(4).any(|px| {
+                (px[2] as i32 - 0xA8).abs() <= 16
+                    && (px[1] as i32 - 0x77).abs() <= 16
+                    && (px[0] as i32 - 0x0F).abs() <= 16
+            }),
+            "Default skin active-transition pulse must never use Stage gold_deep"
+        );
+
+        // Default node hover stays bit-for-bit invariant regardless of partial hover_amount map entries
+        let mut s_def_a = cairo::ImageSurface::create(cairo::Format::ARgb32, 1200, 800).unwrap();
+        let mut s_def_b = cairo::ImageSurface::create(cairo::Format::ARgb32, 1200, 800).unwrap();
+        state.borrow().with_canvas_state_mut(|c| {
+            c.selected_state_node = None;
+            c.edge_pulse_animation = None;
+            c.hovered_state_node = Some("CALIBRATING".to_string());
+            c.node_hover_amounts.clear();
+        });
+        {
+            let cr = cairo::Context::new(&s_def_a).unwrap();
+            draw_state_diagram(&cr, 1200.0, 800.0, &state);
+        }
+        state.borrow().with_canvas_state_mut(|c| {
+            c.node_hover_amounts.insert("CALIBRATING".to_string(), 0.35);
+            c.node_hover_amounts.insert("GOING".to_string(), 0.65);
+        });
+        {
+            let cr = cairo::Context::new(&s_def_b).unwrap();
+            draw_state_diagram(&cr, 1200.0, 800.0, &state);
+        }
+        s_def_a.flush();
+        s_def_b.flush();
+        assert_eq!(
+            s_def_a.data().unwrap().as_ref(),
+            s_def_b.data().unwrap().as_ref(),
+            "Default skin state diagram must remain pixel-identical"
+        );
     }
 }

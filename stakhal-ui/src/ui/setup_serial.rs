@@ -188,6 +188,10 @@ pub fn attach_serial_rx_pump(
                                         &widgets_timer.lbl_selected_info,
                                         &state_timer.borrow(),
                                     );
+                                    crate::ui::state_diagram::ensure_diagram_animation_tick(
+                                        &widgets_timer.diagram_drawing_area,
+                                        &state_timer,
+                                    );
                                     widgets_timer.diagram_drawing_area.queue_draw();
                                 }
                             }
