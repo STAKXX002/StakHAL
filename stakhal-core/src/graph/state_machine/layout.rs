@@ -190,6 +190,12 @@ pub fn compute_state_machine_layout(sm: &AppStateMachine) -> StateMachineLayout 
             }
         }
 
+        let decl_index: HashMap<&str, usize> = lane_states
+            .iter()
+            .enumerate()
+            .map(|(i, s)| (s.as_str(), i))
+            .collect();
+
         let layouts = rust_sugiyama::from_graph(&lane_graph, &size_fn, &config);
         let mut sorted_nodes: Vec<(String, f64)> = Vec::new();
         for (nodes, _w, _h) in layouts {
@@ -197,7 +203,13 @@ pub fn compute_state_machine_layout(sm: &AppStateMachine) -> StateMachineLayout 
                 sorted_nodes.push((lane_graph[node_idx].id.clone(), sy));
             }
         }
-        sorted_nodes.sort_by(|a, b| a.1.total_cmp(&b.1));
+        sorted_nodes.sort_by(|a, b| {
+            a.1.total_cmp(&b.1).then_with(|| {
+                let ia = decl_index.get(a.0.as_str()).copied().unwrap_or(usize::MAX);
+                let ib = decl_index.get(b.0.as_str()).copied().unwrap_or(usize::MAX);
+                ia.cmp(&ib).then_with(|| a.0.cmp(&b.0))
+            })
+        });
 
         for (rank, (name, _)) in sorted_nodes.into_iter().enumerate() {
             lane_node_ranks.insert(name, rank);
