@@ -156,6 +156,24 @@ fn pump_events(duration: Duration) {
     while glib::MainContext::default().iteration(false) {}
 }
 
+fn assert_min_contrast(
+    surface: &mut cairo::ImageSurface,
+    widget: &impl IsA<gtk4::Widget>,
+    root: &impl IsA<gtk4::Widget>,
+    inset: i32,
+    min_ratio: f64,
+    label: &str,
+) -> ((u8, u8, u8), (u8, u8, u8), f64) {
+    let rect = widget_bounds_in(widget, root, inset, inset);
+    let (fg, bg, cr) = sample_fg_and_bg_in_rect(surface, rect);
+    eprintln!("Stage rendered {label}: fg={fg:?} bg={bg:?} contrast={cr:.2}");
+    assert!(
+        cr >= min_ratio,
+        "{label} contrast {cr:.2} < {min_ratio} (fg={fg:?}, bg={bg:?})"
+    );
+    (fg, bg, cr)
+}
+
 #[test]
 fn test_stage_rendered_wcag_contrast() {
     if let Err(err) = gtk4::init() {
@@ -176,11 +194,19 @@ fn test_stage_rendered_wcag_contrast() {
     );
     apply_skin(&provider, ui::tokens::Palette::STAGE);
 
+    let header_bar = adw::HeaderBar::new();
+    header_bar.set_show_end_title_buttons(false);
+    let header_right_lbl = gtk4::Label::builder()
+        .label("Header Light End TEXT")
+        .margin_end(8)
+        .build();
+    header_bar.pack_end(&header_right_lbl);
+
     let card = gtk4::Box::builder()
         .orientation(gtk4::Orientation::Vertical)
         .spacing(10)
-        .margin_top(16)
-        .margin_bottom(16)
+        .margin_top(12)
+        .margin_bottom(12)
         .margin_start(16)
         .margin_end(16)
         .css_classes(vec!["card".to_string()])
@@ -188,11 +214,11 @@ fn test_stage_rendered_wcag_contrast() {
 
     let inner = gtk4::Box::builder()
         .orientation(gtk4::Orientation::Vertical)
-        .spacing(10)
-        .margin_top(16)
-        .margin_bottom(16)
-        .margin_start(16)
-        .margin_end(16)
+        .spacing(8)
+        .margin_top(12)
+        .margin_bottom(12)
+        .margin_start(14)
+        .margin_end(14)
         .build();
     card.append(&inner);
 
@@ -226,31 +252,140 @@ fn test_stage_rendered_wcag_contrast() {
         .can_focus(false)
         .build();
 
-    let list_box = gtk4::ListBox::builder()
-        .selection_mode(gtk4::SelectionMode::None)
+    let buttons_row = gtk4::Box::builder()
+        .orientation(gtk4::Orientation::Horizontal)
+        .spacing(10)
         .build();
-    let action_row = ui::main_panel::create_peripheral_row("USART2", Some("Asynchronous"), 6);
-    list_box.append(&action_row);
 
+    let btn_suggested = gtk4::Button::builder()
+        .label("Suggested Action TEXT")
+        .height_request(40)
+        .width_request(190)
+        .css_classes(vec![
+            "stakhal-btn".to_string(),
+            "suggested-action".to_string(),
+        ])
+        .build();
+
+    let btn_secondary = gtk4::Button::builder()
+        .label("Secondary Action TEXT")
+        .height_request(40)
+        .css_classes(vec!["stakhal-btn".to_string()])
+        .build();
+
+    let btn_secondary_hover = gtk4::Button::builder()
+        .label("Secondary Hovered TEXT")
+        .height_request(40)
+        .css_classes(vec!["stakhal-btn".to_string()])
+        .build();
+    btn_secondary_hover.set_state_flags(gtk4::StateFlags::PRELIGHT, false);
+
+    let btn_secondary_flat = gtk4::Button::builder()
+        .label("Flat Secondary TEXT")
+        .height_request(40)
+        .css_classes(vec!["stakhal-btn".to_string(), "flat".to_string()])
+        .build();
+
+    let icon_btn = gtk4::Button::builder()
+        .icon_name("view-refresh-symbolic")
+        .height_request(40)
+        .css_classes(vec!["stakhal-btn".to_string(), "flat".to_string()])
+        .build();
+
+    buttons_row.append(&btn_suggested);
+    buttons_row.append(&btn_secondary);
+    buttons_row.append(&btn_secondary_hover);
+    buttons_row.append(&btn_secondary_flat);
+    buttons_row.append(&icon_btn);
+
+    let lbl_section = gtk4::Label::builder()
+        .label("[ PERIPHERALS ]")
+        .halign(gtk4::Align::Start)
+        .css_classes(vec!["title-4".to_string()])
+        .build();
+
+    let chips_row = gtk4::Box::builder()
+        .orientation(gtk4::Orientation::Horizontal)
+        .spacing(8)
+        .build();
+
+    let make_chip = |text: &str, status_class: &str| {
+        gtk4::Label::builder()
+            .label(text)
+            .css_classes(vec![
+                "card".to_string(),
+                "caption".to_string(),
+                "data-mono".to_string(),
+                status_class.to_string(),
+            ])
+            .build()
+    };
+    let chip_idle = make_chip("IDLE", "status-idle");
+    let chip_ready = make_chip("READY", "status-ready");
+    let chip_active = make_chip("BUSY", "status-active");
+    let chip_error = make_chip("ERROR", "status-error");
+    chips_row.append(&chip_idle);
+    chips_row.append(&chip_ready);
+    chips_row.append(&chip_active);
+    chips_row.append(&chip_error);
+
+    let list_box = gtk4::ListBox::builder()
+        .selection_mode(gtk4::SelectionMode::Single)
+        .build();
+    let row_hovered = ui::main_panel::create_peripheral_row("USART2", Some("Asynchronous"), 6);
+    row_hovered.set_state_flags(gtk4::StateFlags::PRELIGHT, false);
+    let row_even = ui::main_panel::create_peripheral_row("SPI1", Some("Master Mode"), 4);
+    let row_selected = ui::main_panel::create_peripheral_row("CAN1", Some("Loopback Mode"), 5);
+    list_box.append(&row_hovered);
+    list_box.append(&row_even);
+    list_box.append(&row_selected);
+    list_box.select_row(Some(&row_selected));
+
+    inner.append(&lbl_section);
     inner.append(&lbl_normal);
     inner.append(&lbl_disabled);
     inner.append(&btn_flat_disabled);
     inner.append(&lbl_dim);
     inner.append(&entry);
+    inner.append(&buttons_row);
+    inner.append(&chips_row);
     inner.append(&list_box);
+
+    let bottom_spacer = gtk4::Box::builder().vexpand(true).build();
+    let grad_box = gtk4::Box::builder()
+        .orientation(gtk4::Orientation::Vertical)
+        .spacing(4)
+        .halign(gtk4::Align::Start)
+        .margin_start(16)
+        .margin_bottom(12)
+        .build();
+    let lbl_grad_primary = gtk4::Label::builder()
+        .label("Bottom Gradient Primary TEXT")
+        .halign(gtk4::Align::Start)
+        .build();
+    let lbl_grad_muted = gtk4::Label::builder()
+        .label("Bottom Gradient Muted TEXT")
+        .halign(gtk4::Align::Start)
+        .css_classes(vec!["dim-label".to_string()])
+        .build();
+    grad_box.append(&lbl_grad_primary);
+    grad_box.append(&lbl_grad_muted);
 
     let root_box = gtk4::Box::builder()
         .orientation(gtk4::Orientation::Vertical)
         .vexpand(true)
         .build();
+    root_box.append(&header_bar);
     root_box.append(&card);
+    root_box.append(&bottom_spacer);
+    root_box.append(&grad_box);
 
     let toast_overlay = adw::ToastOverlay::new();
     toast_overlay.set_child(Some(&root_box));
 
     let win = adw::ApplicationWindow::builder()
-        .default_width(640)
-        .default_height(460)
+        .default_width(960)
+        .default_height(700)
         .content(&toast_overlay)
         .build();
     win.present();
@@ -265,17 +400,21 @@ fn test_stage_rendered_wcag_contrast() {
     // Wait long enough for libadwaita toast show transition and layout to settle completely.
     pump_events(Duration::from_millis(500));
 
-    let row_title_lbl = find_descendant(action_row.upcast_ref(), &|w| {
-        w.downcast_ref::<gtk4::Label>()
-            .is_some_and(|l| l.text() == "USART2")
-    })
-    .expect("ActionRow must contain title label");
+    let find_lbl = |parent: &gtk4::Widget, txt: &str| {
+        find_descendant(parent, &|w| {
+            w.downcast_ref::<gtk4::Label>()
+                .is_some_and(|l| l.text() == txt)
+        })
+        .unwrap_or_else(|| panic!("expected label with text {txt:?}"))
+    };
 
-    let row_subtitle_lbl = find_descendant(action_row.upcast_ref(), &|w| {
-        w.downcast_ref::<gtk4::Label>()
-            .is_some_and(|l| l.text() == "Asynchronous")
-    })
-    .expect("ActionRow must contain subtitle label");
+    let hover_title_lbl = find_lbl(row_hovered.upcast_ref(), "USART2");
+    let hover_sub_lbl = find_lbl(row_hovered.upcast_ref(), "Asynchronous");
+    let even_title_lbl = find_lbl(row_even.upcast_ref(), "SPI1");
+    let even_sub_lbl = find_lbl(row_even.upcast_ref(), "Master Mode");
+    let sel_title_lbl = find_lbl(row_selected.upcast_ref(), "CAN1");
+    let sel_sub_lbl = find_lbl(row_selected.upcast_ref(), "Loopback Mode");
+    let sug_btn_lbl = find_lbl(btn_suggested.upcast_ref(), "Suggested Action TEXT");
 
     let toast_widget = find_descendant(toast_overlay.upcast_ref(), &|w| w.css_name() == "toast")
         .expect("ToastOverlay must contain mapped toast widget");
@@ -286,112 +425,241 @@ fn test_stage_rendered_wcag_contrast() {
         toast_widget.height()
     );
 
-    let toast_label = find_descendant(&toast_widget, &|w| {
-        w.downcast_ref::<gtk4::Label>()
-            .is_some_and(|l| l.text() == "Stage Skin Activated")
-    })
-    .expect("Toast must contain title label");
-
-    let toast_btn_label = find_descendant(&toast_widget, &|w| {
-        w.downcast_ref::<gtk4::Label>()
-            .is_some_and(|l| l.text() == "Dismiss")
-    })
-    .expect("Toast must contain action button label");
+    let toast_label = find_lbl(&toast_widget, "Stage Skin Activated");
+    let toast_btn_label = find_lbl(&toast_widget, "Dismiss");
 
     let mut surface = render_widget_to_surface(&win);
 
-    // 1. Normal label (>= 4.5)
-    let (norm_fg, norm_bg, norm_cr) =
-        sample_fg_and_bg_in_rect(&mut surface, widget_bounds_in(&lbl_normal, &win, 0, 0));
-    eprintln!("Stage rendered normal label: fg={norm_fg:?} bg={norm_bg:?} contrast={norm_cr:.2}");
-    assert!(
-        norm_cr >= 4.5,
-        "normal label contrast {norm_cr:.2} < 4.5 (fg={norm_fg:?}, bg={norm_bg:?})"
+    // 1. Section title (.title-4): sky gradient fill, gold left accent, primary text (>= 4.5)
+    let sec_outer = widget_bounds_in(&lbl_section, &win, 0, 0);
+    let sec_inner = widget_bounds_in(&lbl_section, &win, 4, 2);
+    let sec_bg_px = surface_pixel(&mut surface, sec_inner.x0 + 2, sec_outer.y0 + 2);
+    let sec_bg = (sec_bg_px.0, sec_bg_px.1, sec_bg_px.2);
+    let mut sec_fg = sec_bg;
+    let mut best_lum = relative_luminance_rgb(sec_bg);
+    for y in sec_inner.y0..sec_inner.y1 {
+        for x in sec_inner.x0..sec_inner.x1 {
+            let p = surface_pixel(&mut surface, x, y);
+            let rgb = (p.0, p.1, p.2);
+            let l = relative_luminance_rgb(rgb);
+            if l < best_lum {
+                best_lum = l;
+                sec_fg = rgb;
+            }
+        }
+    }
+    let sec_cr = wcag_contrast_rgb(sec_fg, sec_bg);
+    eprintln!(
+        "Stage rendered section title (.title-4): fg={sec_fg:?} bg={sec_bg:?} contrast={sec_cr:.2}"
     );
+    assert!(
+        sec_cr >= 4.5,
+        "section title contrast {sec_cr:.2} < 4.5 (fg={sec_fg:?}, bg={sec_bg:?})"
+    );
+    let sec_gold_px = surface_pixel(
+        &mut surface,
+        sec_outer.x0 + 1,
+        (sec_outer.y0 + sec_outer.y1) / 2,
+    );
+    assert!(
+        sec_gold_px.0 > sec_gold_px.2 + 40,
+        "section title left border {sec_gold_px:?} must render @gold"
+    );
+    let (norm_fg, _, _) =
+        assert_min_contrast(&mut surface, &lbl_normal, &win, 0, 4.5, "normal label");
 
     // 2. Disabled label and disabled flat button (>= 3.0 AND visibly lighter than enabled label)
-    let (dis_fg, dis_bg, dis_cr) =
-        sample_fg_and_bg_in_rect(&mut surface, widget_bounds_in(&lbl_disabled, &win, 0, 0));
-    eprintln!("Stage rendered disabled label: fg={dis_fg:?} bg={dis_bg:?} contrast={dis_cr:.2}");
-    assert!(
-        dis_cr >= 3.0,
-        "disabled label contrast {dis_cr:.2} < 3.0 (fg={dis_fg:?}, bg={dis_bg:?})"
-    );
+    let (dis_fg, _, _) =
+        assert_min_contrast(&mut surface, &lbl_disabled, &win, 0, 3.0, "disabled label");
     assert!(
         relative_luminance_rgb(dis_fg) > relative_luminance_rgb(norm_fg),
         "disabled label fg {dis_fg:?} must be visibly lighter than enabled label fg {norm_fg:?}"
     );
-
-    let (btn_dis_fg, btn_dis_bg, btn_dis_cr) = sample_fg_and_bg_in_rect(
+    assert_min_contrast(
         &mut surface,
-        widget_bounds_in(&btn_flat_disabled, &win, 2, 2),
-    );
-    eprintln!(
-        "Stage rendered disabled flat button: fg={btn_dis_fg:?} bg={btn_dis_bg:?} contrast={btn_dis_cr:.2}"
-    );
-    assert!(
-        btn_dis_cr >= 3.0,
-        "disabled flat button contrast {btn_dis_cr:.2} < 3.0 (fg={btn_dis_fg:?}, bg={btn_dis_bg:?})"
+        &btn_flat_disabled,
+        &win,
+        2,
+        3.0,
+        "disabled flat button",
     );
 
     // 3. .dim-label (>= 4.5)
-    let (dim_fg, dim_bg, dim_cr) =
-        sample_fg_and_bg_in_rect(&mut surface, widget_bounds_in(&lbl_dim, &win, 0, 0));
-    eprintln!("Stage rendered .dim-label: fg={dim_fg:?} bg={dim_bg:?} contrast={dim_cr:.2}");
-    assert!(
-        dim_cr >= 4.5,
-        ".dim-label contrast {dim_cr:.2} < 4.5 (fg={dim_fg:?}, bg={dim_bg:?})"
-    );
+    assert_min_contrast(&mut surface, &lbl_dim, &win, 0, 4.5, ".dim-label");
 
-    // 4. AdwActionRow title and subtitle (>= 4.5)
-    let (art_fg, art_bg, art_cr) =
-        sample_fg_and_bg_in_rect(&mut surface, widget_bounds_in(&row_title_lbl, &win, 0, 0));
-    eprintln!("Stage rendered ActionRow title: fg={art_fg:?} bg={art_bg:?} contrast={art_cr:.2}");
-    assert!(
-        art_cr >= 4.5,
-        "ActionRow title contrast {art_cr:.2} < 4.5 (fg={art_fg:?}, bg={art_bg:?})"
-    );
+    // 4. Entry placeholder (>= 4.5; inset 4px inside entry bounds to avoid sampling 1px border)
+    assert_min_contrast(&mut surface, &entry, &win, 4, 4.5, "Entry placeholder");
 
-    let (ars_fg, ars_bg, ars_cr) = sample_fg_and_bg_in_rect(
+    // 5. Rows: hovered (prelight), zebra even, and selected (title & subtitle >= 4.5)
+    assert_min_contrast(
         &mut surface,
-        widget_bounds_in(&row_subtitle_lbl, &win, 0, 0),
+        &hover_title_lbl,
+        &win,
+        0,
+        4.5,
+        "hovered row title",
     );
+    assert_min_contrast(
+        &mut surface,
+        &hover_sub_lbl,
+        &win,
+        0,
+        4.5,
+        "hovered row subtitle",
+    );
+    assert_min_contrast(
+        &mut surface,
+        &even_title_lbl,
+        &win,
+        0,
+        4.5,
+        "even row title",
+    );
+    assert_min_contrast(
+        &mut surface,
+        &even_sub_lbl,
+        &win,
+        0,
+        4.5,
+        "even row subtitle",
+    );
+    assert_min_contrast(
+        &mut surface,
+        &sel_title_lbl,
+        &win,
+        0,
+        4.5,
+        "selected row title",
+    );
+    assert_min_contrast(
+        &mut surface,
+        &sel_sub_lbl,
+        &win,
+        0,
+        4.5,
+        "selected row subtitle",
+    );
+
+    let sel_rect = widget_bounds_in(&row_selected, &win, 0, 0);
+    let sel_bar_px = surface_pixel(
+        &mut surface,
+        sel_rect.x0 + 1,
+        (sel_rect.y0 + sel_rect.y1) / 2,
+    );
+    let sel_bar_rgb = (sel_bar_px.0, sel_bar_px.1, sel_bar_px.2);
+    assert!(
+        sel_bar_rgb.2 > sel_bar_rgb.0 + 40 && sel_bar_rgb.0 < 120,
+        "selected row left edge {sel_bar_rgb:?} must render @accent inset bar"
+    );
+
+    // 6. Chips of all four states (>= 4.5; inset 2px to exclude 1px border)
+    assert_min_contrast(&mut surface, &chip_idle, &win, 2, 4.5, "status-idle chip");
+    assert_min_contrast(&mut surface, &chip_ready, &win, 2, 4.5, "status-ready chip");
+    assert_min_contrast(
+        &mut surface,
+        &chip_active,
+        &win,
+        2,
+        4.5,
+        "status-active chip",
+    );
+    assert_min_contrast(&mut surface, &chip_error, &win, 2, 4.5, "status-error chip");
+
+    // 7. Secondary button (normal, hovered, flat >= 4.5) and accent icon button
+    assert_min_contrast(
+        &mut surface,
+        &btn_secondary,
+        &win,
+        2,
+        4.5,
+        "secondary button",
+    );
+    assert_min_contrast(
+        &mut surface,
+        &btn_secondary_hover,
+        &win,
+        2,
+        4.5,
+        "secondary button hover",
+    );
+    assert_min_contrast(
+        &mut surface,
+        &btn_secondary_flat,
+        &win,
+        2,
+        4.5,
+        "secondary flat button",
+    );
+    let (icon_fg, _, _) =
+        assert_min_contrast(&mut surface, &icon_btn, &win, 2, 4.5, "accent icon button");
+    assert!(
+        icon_fg.2 > icon_fg.0 + 40,
+        "icon button glyph {icon_fg:?} must be accent blue"
+    );
+
+    // 8. Suggested-action button at BOTH vertical gradient stops (>= 4.5)
+    let (sug_fg, _, _) =
+        sample_fg_and_bg_in_rect(&mut surface, widget_bounds_in(&sug_btn_lbl, &win, 0, 0));
+    let sug_rect = widget_bounds_in(&btn_suggested, &win, 2, 2);
+    let mid_x = (sug_rect.x0 + sug_rect.x1) / 2;
+    let top_stop_px = surface_pixel(&mut surface, mid_x, sug_rect.y0 + 1);
+    let bot_stop_px = surface_pixel(&mut surface, mid_x, sug_rect.y1 - 2);
+    let top_stop_rgb = (top_stop_px.0, top_stop_px.1, top_stop_px.2);
+    let bot_stop_rgb = (bot_stop_px.0, bot_stop_px.1, bot_stop_px.2);
+    let cr_top = wcag_contrast_rgb(sug_fg, top_stop_rgb);
+    let cr_bot = wcag_contrast_rgb(sug_fg, bot_stop_rgb);
     eprintln!(
-        "Stage rendered ActionRow subtitle: fg={ars_fg:?} bg={ars_bg:?} contrast={ars_cr:.2}"
+        "Stage rendered suggested-action: fg={sug_fg:?}, top_bg={top_stop_rgb:?} ({cr_top:.2}), bot_bg={bot_stop_rgb:?} ({cr_bot:.2})"
     );
     assert!(
-        ars_cr >= 4.5,
-        "ActionRow subtitle contrast {ars_cr:.2} < 4.5 (fg={ars_fg:?}, bg={ars_bg:?})"
+        cr_top >= 4.5 && cr_bot >= 4.5,
+        "suggested-action contrast must be >= 4.5 at both stops (top={cr_top:.2}, bot={cr_bot:.2})"
+    );
+    assert!(
+        relative_luminance_rgb(top_stop_rgb) > relative_luminance_rgb(bot_stop_rgb),
+        "suggested-action top stop {top_stop_rgb:?} must be lighter than bottom stop {bot_stop_rgb:?}"
     );
 
-    // 5. Entry placeholder (>= 4.5; inset 4px inside entry bounds to avoid sampling 1px border)
-    let entry_inner_rect = widget_bounds_in(&entry, &win, 4, 4);
-    let (ent_fg, ent_bg, ent_cr) = sample_fg_and_bg_in_rect(&mut surface, entry_inner_rect);
-    eprintln!("Stage rendered Entry placeholder: fg={ent_fg:?} bg={ent_bg:?} contrast={ent_cr:.2}");
+    // 9. Labels over the bottom of the window gradient (>= 4.5)
+    let (_, grad_p_bg, _) = assert_min_contrast(
+        &mut surface,
+        &lbl_grad_primary,
+        &win,
+        0,
+        4.5,
+        "bottom gradient primary label",
+    );
+    let (_, grad_m_bg, _) = assert_min_contrast(
+        &mut surface,
+        &lbl_grad_muted,
+        &win,
+        0,
+        4.5,
+        "bottom gradient muted label",
+    );
     assert!(
-        ent_cr >= 4.5,
-        "Entry placeholder contrast {ent_cr:.2} < 4.5 (fg={ent_fg:?}, bg={ent_bg:?})"
+        grad_p_bg.2 > grad_p_bg.0 + 10 && grad_m_bg.2 > grad_m_bg.0 + 10,
+        "bottom labels must sit on tinted azure window gradient (got {grad_p_bg:?}, {grad_m_bg:?})"
     );
 
-    // 6. Toast label & button label contrast (>= 4.5) + rounded pill corner verification
-    let (tl_fg, tl_bg, tl_cr) =
-        sample_fg_and_bg_in_rect(&mut surface, widget_bounds_in(&toast_label, &win, 0, 0));
-    eprintln!(
-        "Stage rendered Toast label: classes={:?} fg={tl_fg:?} bg={tl_bg:?} contrast={tl_cr:.2}",
-        toast_label.css_classes()
+    // 10. Header text at its lightest (right) point (>= 4.5)
+    let (_, hdr_light_bg, _) = assert_min_contrast(
+        &mut surface,
+        &header_right_lbl,
+        &win,
+        0,
+        4.5,
+        "header lightest end text",
     );
     assert!(
-        tl_cr >= 4.5,
-        "Toast label contrast {tl_cr:.2} < 4.5 (fg={tl_fg:?}, bg={tl_bg:?})"
+        hdr_light_bg.2 > 115,
+        "header right end bg {hdr_light_bg:?} must show lightened gradient end"
     );
 
-    let (tb_fg, tb_bg, tb_cr) =
-        sample_fg_and_bg_in_rect(&mut surface, widget_bounds_in(&toast_btn_label, &win, 0, 0));
-    eprintln!("Stage rendered Toast button: fg={tb_fg:?} bg={tb_bg:?} contrast={tb_cr:.2}");
-    assert!(
-        tb_cr >= 4.5,
-        "Toast button contrast {tb_cr:.2} < 4.5 (fg={tb_fg:?}, bg={tb_bg:?})"
-    );
+    // 11. Toast label & button label contrast (>= 4.5) + rounded pill corner verification
+    let (_, tl_bg, _) =
+        assert_min_contrast(&mut surface, &toast_label, &win, 0, 4.5, "Toast label");
+    assert_min_contrast(&mut surface, &toast_btn_label, &win, 0, 4.5, "Toast button");
 
     let toast_outer = widget_bounds_in(&toast_widget, &win, 0, 0);
     let corner_px = surface_pixel(&mut surface, toast_outer.x0 + 1, toast_outer.y0 + 1);
