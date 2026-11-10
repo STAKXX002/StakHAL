@@ -409,6 +409,8 @@ dropdown button {{
         let header = p.header.hex();
         let header_fg = p.header_fg.hex();
         let gold = p.gold.hex();
+        let gold_light = p.gold_light.hex();
+        let gold_deep = p.gold_deep.hex();
         let sky = p.sky.hex();
         let azure = p.azure.hex();
         css.push_str(&format!(
@@ -417,8 +419,19 @@ dropdown button {{
 @define-color header {header};
 @define-color header_fg {header_fg};
 @define-color gold {gold};
+@define-color gold_light {gold_light};
+@define-color gold_deep {gold_deep};
 @define-color sky {sky};
 @define-color azure {azure};
+
+@keyframes stage-shine-sweep {{
+    0% {{
+        background-position: 120% 0%;
+    }}
+    100% {{
+        background-position: -20% 0%;
+    }}
+}}
 
 @define-color window_bg_color @bg_void;
 @define-color window_fg_color @text_primary;
@@ -486,6 +499,8 @@ scrolledwindow.card {{
     box-shadow: inset 0 2px 0 @azure,
                 0 1px 2px alpha(@text_primary, 0.08),
                 0 8px 20px alpha(@azure, 0.18);
+    transition: opacity 200ms cubic-bezier(0.0, 0.0, 0.2, 1.0),
+                transform 200ms cubic-bezier(0.0, 0.0, 0.2, 1.0);
 }}
 
 list, listview {{
@@ -493,12 +508,32 @@ list, listview {{
     color: @view_fg_color;
 }}
 
-row, listboxrow, actionrow {{
+row,
+listboxrow,
+actionrow,
+row.stagger-reveal-row {{
     background-color: @card_bg_color;
     color: @card_fg_color;
     border-bottom: 1px solid @border_hair;
     transition: background-color 180ms cubic-bezier(0.0, 0.0, 0.2, 1.0),
-                box-shadow 180ms cubic-bezier(0.0, 0.0, 0.2, 1.0);
+                box-shadow 180ms cubic-bezier(0.0, 0.0, 0.2, 1.0),
+                opacity 200ms cubic-bezier(0.0, 0.0, 0.2, 1.0),
+                transform 200ms cubic-bezier(0.0, 0.0, 0.2, 1.0);
+}}
+
+.stage-pre,
+row.stage-pre,
+listboxrow.stage-pre,
+actionrow.stage-pre,
+row.stagger-reveal-row.stage-pre,
+.card.stage-pre,
+box.card.stage-pre,
+list.boxed-list.stage-pre,
+frame.stage-pre,
+scrolledwindow.card.stage-pre {{
+    opacity: 0;
+    transform: translateY(6px);
+    transition: none;
 }}
 
 row:nth-child(even) {{
@@ -703,6 +738,22 @@ button.stakhal-btn.suggested-action:active {{
     background-image: none;
     background-color: {accent_pressed};
     color: @bg_panel;
+}}
+
+button.stakhal-btn.suggested-action.stage-shine {{
+    background-color: @accent;
+    background-image: linear-gradient(
+        105deg,
+        alpha(@gold_light, 0) 0%,
+        alpha(@gold_light, 0) 35%,
+        alpha(@gold_light, 0.48) 50%,
+        alpha(@gold_light, 0) 65%,
+        alpha(@gold_light, 0) 100%
+    );
+    background-size: 220% 100%;
+    background-repeat: no-repeat;
+    background-position: 120% 0%;
+    animation: stage-shine-sweep 700ms cubic-bezier(0.0, 0.0, 0.2, 1.0) 1;
 }}
 
 button.stakhal-btn:hover,
@@ -1115,6 +1166,7 @@ pub fn build_ui(app: &adw::Application) {
             );
         }),
     );
+    skin_ctrl.set_shine_target(&widgets.btn_build_flash);
     setup_konami_key_controller(&window, &state, &widgets, &skin_ctrl);
 
     window.present();

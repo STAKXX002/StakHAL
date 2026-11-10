@@ -35,6 +35,28 @@ pub const REVEAL_RIM_MAX_ALPHA: f64 = 0.6;
 pub const REVEAL_OUTER_TRAIL_MAX_ALPHA: f64 = 0.25;
 pub const REVEAL_INNER_TRAIL_MAX_ALPHA: f64 = 0.15;
 
+pub const REVEAL_CORE_MAX_ALPHA: f64 = 0.85;
+pub const REVEAL_GLOW_MAX_ALPHA: f64 = 0.35;
+pub const REVEAL_AZURE_TRAIL_MAX_ALPHA: f64 = 0.30;
+pub const REVEAL_RIPPLE1_MAX_ALPHA: f64 = 0.20;
+pub const REVEAL_RIPPLE2_MAX_ALPHA: f64 = 0.12;
+
+pub const SPARKLE_COUNT: usize = 36;
+pub const SPARKLE_LIFETIME_MS: f64 = 420.0;
+pub const SPARKLE_MAX_ALPHA: f64 = 0.9;
+pub const SPARKLE_DRIFT_PX: f64 = 12.0;
+pub const SPARKLE_GOLDEN_ANGLE_DEG: f64 = 137.5078;
+
+pub const FINAL_GLOW_DURATION_MS: f64 = 250.0;
+pub const FINAL_GLOW_MAX_ALPHA: f64 = 0.10;
+
+pub const SETTLE_STEP_MS: u64 = 25;
+pub const SETTLE_MAX_TOTAL_MS: u64 = 500;
+pub const SHINE_DURATION_MS: u64 = 700;
+
+pub const HEADER_FLASH_DURATION_MS: f64 = 600.0;
+pub const HEADER_FLASH_MAX_ALPHA: f64 = 0.6;
+
 pub const SHIMMER_PERIOD_SECS: f64 = 8.0;
 pub const SHIMMER_SWEEP_SECS: f64 = 1.2;
 pub const SHIMMER_MAX_ALPHA: f64 = 0.25;
@@ -61,6 +83,26 @@ pub struct RingAlphas {
     pub rim: f64,
     pub outer_trail: f64,
     pub inner_trail: f64,
+}
+
+/// Opacity values for the Stage reveal's multi-band golden rim and trailing ripples.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct GoldenRingAlphas {
+    pub core: f64,
+    pub glow: f64,
+    pub azure_trail: f64,
+    pub ripple1: f64,
+    pub ripple2: f64,
+}
+
+/// Deterministic four-point star sparkle state along the expanding reveal wavefront.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Sparkle {
+    pub x: f64,
+    pub y: f64,
+    pub size: f64,
+    pub alpha: f64,
+    pub rotation: f64,
 }
 
 fn reveal_ring_envelope(tc: f64, fade_in_end: f64, fade_out_start: f64) -> f64 {
@@ -91,6 +133,125 @@ pub fn ring_alphas(t: f64) -> RingAlphas {
             .clamp(0.0, REVEAL_OUTER_TRAIL_MAX_ALPHA),
         inner_trail: (REVEAL_INNER_TRAIL_MAX_ALPHA * reveal_ring_envelope(tc, 0.20, 0.45))
             .clamp(0.0, REVEAL_INNER_TRAIL_MAX_ALPHA),
+    }
+}
+
+/// Compute bounded golden rim, outer glow, behind-edge azure trail, and trailing ripple alphas.
+pub fn golden_ring_alphas(t: f64) -> GoldenRingAlphas {
+    let tc = if t.is_nan() { 0.0 } else { t.clamp(0.0, 1.0) };
+    GoldenRingAlphas {
+        core: (REVEAL_CORE_MAX_ALPHA * reveal_ring_envelope(tc, 0.08, 0.58))
+            .clamp(0.0, REVEAL_CORE_MAX_ALPHA),
+        glow: (REVEAL_GLOW_MAX_ALPHA * reveal_ring_envelope(tc, 0.08, 0.58))
+            .clamp(0.0, REVEAL_GLOW_MAX_ALPHA),
+        azure_trail: (REVEAL_AZURE_TRAIL_MAX_ALPHA * reveal_ring_envelope(tc, 0.10, 0.55))
+            .clamp(0.0, REVEAL_AZURE_TRAIL_MAX_ALPHA),
+        ripple1: (REVEAL_RIPPLE1_MAX_ALPHA * reveal_ring_envelope(tc, 0.14, 0.52))
+            .clamp(0.0, REVEAL_RIPPLE1_MAX_ALPHA),
+        ripple2: (REVEAL_RIPPLE2_MAX_ALPHA * reveal_ring_envelope(tc, 0.20, 0.48))
+            .clamp(0.0, REVEAL_RIPPLE2_MAX_ALPHA),
+    }
+}
+
+/// Deterministic sparkle along the expanding circular reveal wavefront (no RNG).
+///
+/// Spawned when the reveal radius reaches the sparkle's base radius, lives `SPARKLE_LIFETIME_MS`
+/// (420 ms), twinkles from scale `0.3 -> 1.0 -> 0.6`, drifts `12 px` radially outward,
+/// and rotates within `0.0..=45.0` degrees.
+pub fn sparkle(i: usize, t: f64, width: f64, height: f64) -> Option<Sparkle> {
+    if i >= SPARKLE_COUNT
+        || !width.is_finite()
+        || !height.is_finite()
+        || width <= 0.0
+        || height <= 0.0
+        || !t.is_finite()
+        || t <= 0.0
+    {
+        return None;
+    }
+
+    let frac_i = (i as f64 + 0.5) / SPARKLE_COUNT as f64;
+    let r_frac = 0.15 + frac_i * (0.95 - 0.15);
+    let t_birth = 1.0 - (1.0 - r_frac).cbrt();
+    let birth_ms = t_birth * REVEAL_DURATION_MS;
+    let elapsed_ms = t * REVEAL_DURATION_MS;
+    if elapsed_ms < birth_ms {
+        return None;
+    }
+
+    let age_ms = elapsed_ms - birth_ms;
+    if age_ms >= SPARKLE_LIFETIME_MS {
+        return None;
+    }
+
+    let life = (age_ms / SPARKLE_LIFETIME_MS).clamp(0.0, 1.0);
+    let max_radius = (0.5 * width).hypot(0.5 * height) + REVEAL_FEATHER_PX;
+    let base_r = r_frac * max_radius;
+    let r = base_r + SPARKLE_DRIFT_PX * tokens::motion::ease_out_cubic(life);
+    let theta = ((i as f64) * SPARKLE_GOLDEN_ANGLE_DEG).to_radians();
+
+    let x = 0.5 * width + r * theta.cos();
+    let y = 0.5 * height + r * theta.sin();
+
+    let size_bucket = ((i * 7) % 5) as f64;
+    let base_size = 5.0 + size_bucket * 1.5;
+    let scale = if life <= 0.5 {
+        0.3 + 0.7 * tokens::motion::ease_out_cubic(life / 0.5)
+    } else {
+        1.0 - 0.4 * tokens::motion::ease_out_cubic((life - 0.5) / 0.5)
+    };
+    let size = (base_size * scale).clamp(0.0, 11.0);
+
+    let fade_in = if life < 0.15 {
+        tokens::motion::ease_out_cubic(life / 0.15)
+    } else {
+        1.0
+    };
+    let fade_out = if life > 0.5 {
+        (1.0 - tokens::motion::ease_out_cubic((life - 0.5) / 0.5)).max(0.0)
+    } else {
+        1.0
+    };
+    let alpha = (SPARKLE_MAX_ALPHA * fade_in * fade_out).clamp(0.0, SPARKLE_MAX_ALPHA);
+
+    let rot_offset = ((i * 11) % 21) as f64;
+    let rotation = (rot_offset + 24.0 * life).clamp(0.0, 45.0);
+
+    Some(Sparkle {
+        x,
+        y,
+        size,
+        alpha,
+        rotation,
+    })
+}
+
+/// Center golden radial glow fading out during the final `FINAL_GLOW_DURATION_MS` (250 ms).
+pub fn final_glow_alpha(t: f64) -> f64 {
+    if !t.is_finite() {
+        return 0.0;
+    }
+    let start_t = (REVEAL_DURATION_MS - FINAL_GLOW_DURATION_MS) / REVEAL_DURATION_MS;
+    if t < start_t || t >= 1.0 {
+        return 0.0;
+    }
+    let u = ((t - start_t) / (1.0 - start_t)).clamp(0.0, 1.0);
+    (FINAL_GLOW_MAX_ALPHA * (1.0 - u)).clamp(0.0, FINAL_GLOW_MAX_ALPHA)
+}
+
+/// Per-item stagger delay (ms) for Stage settle removal, stepping by 25 ms and capped at 500 ms.
+pub fn calculate_settle_delay_ms(index: usize, count: usize) -> u64 {
+    if count <= 1 || index == 0 {
+        return 0;
+    }
+    let natural_last = (count - 1) as u64 * SETTLE_STEP_MS;
+    if natural_last <= SETTLE_MAX_TOTAL_MS {
+        (index as u64) * SETTLE_STEP_MS
+    } else {
+        let step = SETTLE_MAX_TOTAL_MS as f64 / (count - 1) as f64;
+        ((index as f64) * step)
+            .round()
+            .clamp(0.0, SETTLE_MAX_TOTAL_MS as f64) as u64
     }
 }
 
@@ -193,32 +354,26 @@ fn build_reveal_mask_stops(radius: f64) -> (f32, Vec<gsk::ColorStop>) {
     )
 }
 
-fn append_rim_ring_node(
+fn append_radial_band_node(
     snapshot: &gtk4::Snapshot,
     bounds: &graphene::Rect,
     center: &graphene::Point,
-    radius: f64,
+    radii: (f64, f64, f64),
     alpha: f64,
-    pal: &tokens::Palette,
+    rgb: (f64, f64, f64),
 ) {
-    let alpha = alpha.clamp(0.0, REVEAL_RIM_MAX_ALPHA);
-    if radius <= 1.0 || alpha <= 0.001 {
+    let (inner_r, peak_r, outer_r) = radii;
+    if outer_r <= 1.0 || alpha <= 0.001 || outer_r <= peak_r {
         return;
     }
-
-    let inner_r = (radius - 3.0).max(0.0);
-    let core_r = radius;
-    let gold_r = radius + 1.5;
-    let outer_r = radius + 4.0;
-
-    let azure = pal.azure.rgb();
-    let gold = pal.gold.rgb();
+    let clamped_in = inner_r.max(0.0).min(peak_r * 0.99);
+    let peak_off = (peak_r / outer_r).clamp(0.001, 0.999) as f32;
+    let in_off = ((clamped_in / outer_r) as f32).clamp(0.0, peak_off - 0.0005);
 
     let stops = [
-        gsk::ColorStop::new((inner_r / outer_r) as f32, rgba_with_alpha(azure, 0.0)),
-        gsk::ColorStop::new((core_r / outer_r) as f32, rgba_with_alpha(azure, alpha)),
-        gsk::ColorStop::new((gold_r / outer_r) as f32, rgba_with_alpha(gold, alpha)),
-        gsk::ColorStop::new(1.0, rgba_with_alpha(gold, 0.0)),
+        gsk::ColorStop::new(in_off, rgba_with_alpha(rgb, 0.0)),
+        gsk::ColorStop::new(peak_off, rgba_with_alpha(rgb, alpha)),
+        gsk::ColorStop::new(1.0, rgba_with_alpha(rgb, 0.0)),
     ];
     snapshot.append_radial_gradient(
         bounds,
@@ -266,11 +421,80 @@ fn append_trail_ring_node(
     );
 }
 
-/// Record the GSK circular reveal mask and gradient ring nodes into `snapshot`.
+fn push_rotated_rect_to_path(
+    pb: &gsk::PathBuilder,
+    cx: f32,
+    cy: f32,
+    hx: f32,
+    hy: f32,
+    cos_a: f32,
+    sin_a: f32,
+) {
+    let corners = [(-hx, -hy), (hx, -hy), (hx, hy), (-hx, hy)];
+    for (idx, (lx, ly)) in corners.iter().enumerate() {
+        let px = cx + lx * cos_a - ly * sin_a;
+        let py = cy + lx * sin_a + ly * cos_a;
+        if idx == 0 {
+            pb.move_to(px, py);
+        } else {
+            pb.line_to(px, py);
+        }
+    }
+    pb.close();
+}
+
+pub fn append_sparkle_nodes(
+    snapshot: &gtk4::Snapshot,
+    sp: Sparkle,
+    end_fade: f64,
+    gold_light: (f64, f64, f64),
+) {
+    let alpha = (sp.alpha * end_fade).clamp(0.0, SPARKLE_MAX_ALPHA);
+    if alpha <= 0.002 || sp.size <= 0.2 {
+        return;
+    }
+
+    let cx = sp.x as f32;
+    let cy = sp.y as f32;
+    let glow_r = (sp.size * 0.9).max(2.5) as f32;
+    let glow_bounds = graphene::Rect::new(cx - glow_r, cy - glow_r, 2.0 * glow_r, 2.0 * glow_r);
+    let glow_center = graphene::Point::new(cx, cy);
+    let glow_stops = [
+        gsk::ColorStop::new(0.0, rgba_with_alpha(gold_light, alpha * 0.55)),
+        gsk::ColorStop::new(1.0, rgba_with_alpha(gold_light, 0.0)),
+    ];
+    snapshot.append_radial_gradient(
+        &glow_bounds,
+        &glow_center,
+        glow_r,
+        glow_r,
+        0.0,
+        1.0,
+        &glow_stops,
+    );
+
+    let hl = (sp.size * 0.5).max(1.0) as f32;
+    let ht = (sp.size * 0.11).clamp(0.6, 1.1) as f32;
+    let rad = (sp.rotation as f32).to_radians();
+    let cos_a = rad.cos();
+    let sin_a = rad.sin();
+
+    let pb = gsk::PathBuilder::new();
+    push_rotated_rect_to_path(&pb, cx, cy, hl, ht, cos_a, sin_a);
+    push_rotated_rect_to_path(&pb, cx, cy, ht, hl, cos_a, sin_a);
+    let cross_path = pb.to_path();
+    snapshot.append_fill(
+        &cross_path,
+        gsk::FillRule::Winding,
+        &rgba_with_alpha(gold_light, alpha),
+    );
+}
+
+/// Record the GSK circular reveal mask and golden wavefront nodes into `snapshot`.
 ///
-/// Uses `MaskMode::InvertedAlpha` (`source * (1 - mask.alpha)`), so the mask gradient
-/// is opaque (`alpha = 1.0`) inside `radius - 8 px` and feathered to transparent outside
-/// `radius`, cutting an expanding circular hole through `texture`.
+/// Uses `MaskMode::InvertedAlpha` (`source * (1 - mask.alpha)`), cutting an expanding
+/// circular hole through `texture`, then draws the multi-band rim, trailing ripples,
+/// sparkles, and end-of-reveal center glow above the mask overlay clipped to the window.
 pub fn snapshot_reveal_nodes(
     snapshot: &gtk4::Snapshot,
     texture: &gdk::Texture,
@@ -297,28 +521,95 @@ pub fn snapshot_reveal_nodes(
     snapshot.append_texture(texture, &bounds);
     snapshot.pop();
 
-    let alphas = ring_alphas(progress);
+    snapshot.push_clip(&bounds);
+
+    let alphas = golden_ring_alphas(progress);
     if radius > 0.0 {
-        append_rim_ring_node(snapshot, &bounds, &center, radius, alphas.rim, pal);
+        // Outer gold glow band (~24 px outside edge)
+        append_radial_band_node(
+            snapshot,
+            &bounds,
+            &center,
+            ((radius - 2.0).max(0.0), radius + 4.0, radius + 24.0),
+            alphas.glow,
+            pal.gold.rgb(),
+        );
+        // Behind-edge azure trail (~18 px behind edge)
+        if radius > 2.0 {
+            let trail_in = (radius - 18.0).max(0.0);
+            let trail_peak = (radius - 5.0).max(trail_in + 0.5);
+            append_radial_band_node(
+                snapshot,
+                &bounds,
+                &center,
+                (trail_in, trail_peak, radius + 1.0),
+                alphas.azure_trail,
+                pal.azure.rgb(),
+            );
+        }
+        // Leading-edge gold_light core (~3 px)
+        append_radial_band_node(
+            snapshot,
+            &bounds,
+            &center,
+            ((radius - 1.5).max(0.0), radius, radius + 1.5),
+            alphas.core,
+            pal.gold_light.rgb(),
+        );
+        // Trailing ripples: gold then azure
         append_trail_ring_node(
             snapshot,
             &bounds,
             &center,
-            radius * 0.60,
+            radius * 0.62,
+            3.0,
+            alphas.ripple1,
+            pal.gold.rgb(),
+        );
+        append_trail_ring_node(
+            snapshot,
+            &bounds,
+            &center,
+            radius * 0.36,
             2.5,
-            alphas.outer_trail,
+            alphas.ripple2,
             pal.azure.rgb(),
         );
-        append_trail_ring_node(
-            snapshot,
+    }
+
+    let end_fade = if progress > 0.88 {
+        ((1.0 - progress) / 0.12).clamp(0.0, 1.0)
+    } else {
+        1.0
+    };
+    let gold_light = pal.gold_light.rgb();
+    for i in 0..SPARKLE_COUNT {
+        if let Some(sp) = sparkle(i, progress, width, height) {
+            append_sparkle_nodes(snapshot, sp, end_fade, gold_light);
+        }
+    }
+
+    let glow_a = final_glow_alpha(progress);
+    if glow_a > 0.001 {
+        let center_r = (0.45 * width).hypot(0.45 * height).max(40.0) as f32;
+        let gold = pal.gold.rgb();
+        let center_stops = [
+            gsk::ColorStop::new(0.0, rgba_with_alpha(gold, glow_a)),
+            gsk::ColorStop::new(0.55, rgba_with_alpha(gold, glow_a * 0.35)),
+            gsk::ColorStop::new(1.0, rgba_with_alpha(gold, 0.0)),
+        ];
+        snapshot.append_radial_gradient(
             &bounds,
             &center,
-            radius * 0.35,
-            2.0,
-            alphas.inner_trail,
-            pal.sky.rgb(),
+            center_r,
+            center_r,
+            0.0,
+            1.0,
+            &center_stops,
         );
     }
+
+    snapshot.pop();
 }
 
 mod imp {
@@ -492,6 +783,54 @@ pub fn compute_shimmer_frame(elapsed_secs: f64) -> Option<ShimmerFrame> {
     })
 }
 
+/// Compute one-shot golden header flash sweep state for `elapsed_secs` within 600 ms.
+pub fn compute_header_flash_frame(elapsed_secs: f64) -> Option<ShimmerFrame> {
+    let duration_secs = HEADER_FLASH_DURATION_MS / 1000.0;
+    if !elapsed_secs.is_finite() || elapsed_secs < 0.0 || elapsed_secs > duration_secs {
+        return None;
+    }
+
+    let u = (elapsed_secs / duration_secs).clamp(0.0, 1.0);
+    let eased = tokens::motion::ease_out_cubic(u);
+    let center_frac = -0.15 + 1.30 * eased;
+    let half_width_frac = 0.18;
+    let envelope = (std::f64::consts::PI * u).sin().max(0.0);
+    let peak_alpha = (HEADER_FLASH_MAX_ALPHA * envelope).clamp(0.0, HEADER_FLASH_MAX_ALPHA);
+
+    if peak_alpha <= 0.001 {
+        return None;
+    }
+
+    Some(ShimmerFrame {
+        center_frac,
+        half_width_frac,
+        peak_alpha,
+    })
+}
+
+fn draw_gold_sweep_strip(
+    cr: &cairo::Context,
+    width: f64,
+    height: f64,
+    frame: ShimmerFrame,
+    alpha_cap: f64,
+    rgb: (f64, f64, f64),
+) {
+    let (r, g, b) = rgb;
+    let cx = frame.center_frac * width;
+    let hw = (frame.half_width_frac * width).max(16.0);
+    let alpha = frame.peak_alpha.clamp(0.0, alpha_cap);
+
+    let grad = cairo::LinearGradient::new(cx - hw, 0.0, cx + hw, 0.0);
+    grad.add_color_stop_rgba(0.0, r, g, b, 0.0);
+    grad.add_color_stop_rgba(0.5, r, g, b, alpha);
+    grad.add_color_stop_rgba(1.0, r, g, b, 0.0);
+
+    let _ = cr.set_source(&grad);
+    cr.rectangle(0.0, (height - 1.0).max(0.0), width, 1.0);
+    let _ = cr.fill();
+}
+
 /// Render the 1px gold shimmer highlight along the bottom edge of the header strip.
 pub fn draw_header_shimmer(
     cr: &cairo::Context,
@@ -508,19 +847,58 @@ pub fn draw_header_shimmer(
         return;
     };
 
-    let (r, g, b) = pal.gold.rgb();
-    let cx = frame.center_frac * width;
-    let hw = (frame.half_width_frac * width).max(16.0);
-    let alpha = frame.peak_alpha.clamp(0.0, SHIMMER_MAX_ALPHA);
+    draw_gold_sweep_strip(cr, width, height, frame, SHIMMER_MAX_ALPHA, pal.gold.rgb());
+}
 
-    let grad = cairo::LinearGradient::new(cx - hw, 0.0, cx + hw, 0.0);
-    grad.add_color_stop_rgba(0.0, r, g, b, 0.0);
-    grad.add_color_stop_rgba(0.5, r, g, b, alpha);
-    grad.add_color_stop_rgba(1.0, r, g, b, 0.0);
+/// Render the 1px one-shot golden flash along the bottom edge of the header strip.
+pub fn draw_header_flash(
+    cr: &cairo::Context,
+    width: f64,
+    height: f64,
+    elapsed_secs: f64,
+    pal: &tokens::Palette,
+) {
+    if width <= 0.0 || height <= 0.0 {
+        return;
+    }
 
-    let _ = cr.set_source(&grad);
-    cr.rectangle(0.0, (height - 1.0).max(0.0), width, 1.0);
-    let _ = cr.fill();
+    let Some(frame) = compute_header_flash_frame(elapsed_secs) else {
+        return;
+    };
+
+    draw_gold_sweep_strip(
+        cr,
+        width,
+        height,
+        frame,
+        HEADER_FLASH_MAX_ALPHA,
+        pal.gold_light.rgb(),
+    );
+}
+
+fn collect_settle_targets(root: Option<&gtk4::Widget>, out: &mut Vec<gtk4::Widget>) {
+    let Some(widget) = root else {
+        return;
+    };
+    if !widget.is_visible() || !widget.is_mapped() {
+        return;
+    }
+
+    let is_row = widget.is::<gtk4::ListBoxRow>();
+    let is_card_container = !widget.is::<gtk4::Label>()
+        && (widget.has_css_class("card")
+            || widget.has_css_class("boxed-list")
+            || widget.is::<gtk4::Frame>());
+
+    if is_row || is_card_container {
+        out.push(widget.clone());
+    }
+
+    let mut child = widget.first_child();
+    while let Some(c) = child {
+        collect_settle_targets(Some(&c), out);
+        child = c.next_sibling();
+    }
 }
 
 /// Manages the Stage circular reveal transition and header bottom-edge shimmer overlays.
@@ -536,6 +914,8 @@ pub struct SkinOverlayController {
     shimmer_running: Rc<Cell<bool>>,
     shimmer_gen: Rc<Cell<u64>>,
     shimmer_was_drawing: Rc<Cell<bool>>,
+    flash_start: Rc<Cell<Option<Instant>>>,
+    shine_target: Rc<RefCell<Option<glib::WeakRef<gtk4::Button>>>>,
     on_skin_swap: Rc<dyn Fn()>,
 }
 
@@ -572,10 +952,12 @@ impl SkinOverlayController {
 
         let effects_active = Rc::new(Cell::new(false));
         let shimmer_clock = Rc::new(RefCell::new(AnimationClock::new(SHIMMER_FRAME_INTERVAL)));
+        let flash_start = Rc::new(Cell::new(None::<Instant>));
 
         {
             let active_draw = Rc::clone(&effects_active);
             let clk_draw = Rc::clone(&shimmer_clock);
+            let flash_draw = Rc::clone(&flash_start);
             shimmer_area.set_draw_func(move |_, cr, w, h| {
                 if !active_draw.get() || !tokens::motion::is_animations_enabled() {
                     return;
@@ -583,6 +965,14 @@ impl SkinOverlayController {
                 let phase = clk_draw.borrow().phase_secs();
                 let pal = tokens::palette();
                 draw_header_shimmer(cr, w as f64, h as f64, phase, &pal);
+                if let Some(start) = flash_draw.get() {
+                    let elapsed = start.elapsed().as_secs_f64();
+                    if elapsed * 1000.0 <= HEADER_FLASH_DURATION_MS {
+                        draw_header_flash(cr, w as f64, h as f64, elapsed, &pal);
+                    } else {
+                        flash_draw.set(None);
+                    }
+                }
             });
         }
 
@@ -597,6 +987,8 @@ impl SkinOverlayController {
             shimmer_running: Rc::new(Cell::new(false)),
             shimmer_gen: Rc::new(Cell::new(0)),
             shimmer_was_drawing: Rc::new(Cell::new(false)),
+            flash_start,
+            shine_target: Rc::new(RefCell::new(None)),
             on_skin_swap,
         };
 
@@ -621,6 +1013,11 @@ impl SkinOverlayController {
         controller
     }
 
+    /// Register the primary button (e.g. Build & Flash) for the one-time unlock shine.
+    pub fn set_shine_target(&self, button: &gtk4::Button) {
+        self.shine_target.replace(Some(button.downgrade()));
+    }
+
     pub fn shimmer_area(&self) -> &gtk4::DrawingArea {
         &self.shimmer_area
     }
@@ -633,6 +1030,60 @@ impl SkinOverlayController {
         self.shimmer_running.get()
     }
 
+    pub fn is_header_flash_active(&self) -> bool {
+        self.flash_start
+            .get()
+            .is_some_and(|s| s.elapsed().as_secs_f64() * 1000.0 <= HEADER_FLASH_DURATION_MS)
+    }
+
+    /// Trigger a one-shot 600 ms golden header sweep when unlocked and animations are enabled.
+    pub fn trigger_header_flash(&self) {
+        if self.closed.get()
+            || !self.effects_active.get()
+            || !tokens::motion::is_animations_enabled()
+        {
+            return;
+        }
+        self.flash_start.set(Some(Instant::now()));
+        self.sync_loop_state();
+        self.shimmer_area.queue_draw();
+    }
+
+    fn apply_settle_and_shine(&self) {
+        if !tokens::motion::is_animations_enabled() {
+            return;
+        }
+
+        let mut targets = Vec::new();
+        collect_settle_targets(self.skin_overlay.child().as_ref(), &mut targets);
+        let count = targets.len();
+        for (i, widget) in targets.into_iter().enumerate() {
+            widget.add_css_class("stage-pre");
+            let delay_ms = calculate_settle_delay_ms(i, count);
+            let weak = widget.downgrade();
+            glib::timeout_add_local_once(Duration::from_millis(delay_ms), move || {
+                if let Some(w) = weak.upgrade() {
+                    w.remove_css_class("stage-pre");
+                }
+            });
+        }
+
+        if let Some(btn) = self
+            .shine_target
+            .borrow()
+            .as_ref()
+            .and_then(|w| w.upgrade())
+        {
+            btn.add_css_class("stage-shine");
+            let btn_weak = btn.downgrade();
+            glib::timeout_add_local_once(Duration::from_millis(SHINE_DURATION_MS), move || {
+                if let Some(b) = btn_weak.upgrade() {
+                    b.remove_css_class("stage-shine");
+                }
+            });
+        }
+    }
+
     /// Trigger the skin unlock sequence once. Subsequent calls are no-ops.
     pub fn trigger_unlock(&self) {
         if self.unlocked.replace(true) {
@@ -640,7 +1091,7 @@ impl SkinOverlayController {
         }
 
         if !tokens::motion::is_animations_enabled() {
-            // Reduced motion: no capture, no overlay, instant swap, no shimmer.
+            // Reduced motion: no capture, no overlay, instant swap, no shimmer/settle/shine.
             (self.on_skin_swap)();
             return;
         }
@@ -649,7 +1100,9 @@ impl SkinOverlayController {
             // Fallback when capture cannot run (e.g. unrealized or zero-size window):
             // swap skin immediately without an overlay, never panic.
             (self.on_skin_swap)();
+            self.apply_settle_and_shine();
             self.effects_active.set(true);
+            self.flash_start.set(Some(Instant::now()));
             self.sync_loop_state();
             return;
         };
@@ -660,7 +1113,9 @@ impl SkinOverlayController {
 
         // Apply the new skin immediately beneath the old-texture reveal overlay.
         (self.on_skin_swap)();
+        self.apply_settle_and_shine();
         self.effects_active.set(true);
+        self.flash_start.set(Some(Instant::now()));
         self.sync_loop_state();
 
         let start_time: Rc<Cell<Option<Instant>>> = Rc::new(Cell::new(None));
@@ -719,6 +1174,12 @@ impl SkinOverlayController {
         self.shimmer_clock.borrow_mut().pause(now);
         self.shimmer_running.set(false);
         self.shimmer_gen.set(self.shimmer_gen.get().wrapping_add(1));
+        if self.closed.get()
+            || !self.window.is_visible()
+            || !tokens::motion::is_animations_enabled()
+        {
+            self.flash_start.set(None);
+        }
         if !tokens::motion::is_animations_enabled() && self.shimmer_was_drawing.replace(false) {
             self.shimmer_area.queue_draw();
         }
@@ -740,6 +1201,7 @@ impl SkinOverlayController {
         let gen_cell = Rc::clone(&self.shimmer_gen);
         let clock = Rc::clone(&self.shimmer_clock);
         let was_drawing = Rc::clone(&self.shimmer_was_drawing);
+        let flash_cell = Rc::clone(&self.flash_start);
 
         self.shimmer_area.add_tick_callback(move |area, _| {
             let now = Instant::now();
@@ -753,6 +1215,12 @@ impl SkinOverlayController {
 
             if !alive {
                 clock.borrow_mut().pause(now);
+                if closed_flag.get()
+                    || !tokens::motion::is_animations_enabled()
+                    || !win_weak.upgrade().is_some_and(|w| w.is_visible())
+                {
+                    flash_cell.set(None);
+                }
                 if my_gen == gen_cell.get() {
                     running_flag.set(false);
                 }
@@ -765,7 +1233,21 @@ impl SkinOverlayController {
             let should_step = clock.borrow_mut().tick(now);
             if should_step {
                 let phase = clock.borrow().phase_secs();
-                if compute_shimmer_frame(phase).is_some() {
+                let periodic_active = compute_shimmer_frame(phase).is_some();
+                let flash_active = match flash_cell.get() {
+                    Some(start) => {
+                        if now.saturating_duration_since(start).as_secs_f64() * 1000.0
+                            <= HEADER_FLASH_DURATION_MS
+                        {
+                            true
+                        } else {
+                            flash_cell.set(None);
+                            true
+                        }
+                    }
+                    None => false,
+                };
+                if periodic_active || flash_active {
                     was_drawing.set(true);
                     area.queue_draw();
                 } else if was_drawing.replace(false) {
@@ -944,6 +1426,232 @@ mod tests {
         // Zero dimensions must not panic
         draw_header_shimmer(&cr, 0.0, 0.0, 0.5, &stage);
         draw_header_shimmer(&cr, 320.0, 0.0, 0.5, &stage);
+        draw_header_flash(&cr, 320.0, 2.0, 0.3, &stage);
+        draw_header_flash(&cr, 0.0, 0.0, 0.3, &stage);
         surface.flush();
+    }
+
+    #[test]
+    fn test_golden_ring_alphas_bounds() {
+        let a0 = golden_ring_alphas(0.0);
+        assert_eq!(a0.core, 0.0);
+        assert_eq!(a0.glow, 0.0);
+        assert_eq!(a0.azure_trail, 0.0);
+        assert_eq!(a0.ripple1, 0.0);
+        assert_eq!(a0.ripple2, 0.0);
+
+        let a1 = golden_ring_alphas(1.0);
+        assert_eq!(a1.core, 0.0);
+        assert_eq!(a1.glow, 0.0);
+        assert_eq!(a1.azure_trail, 0.0);
+        assert_eq!(a1.ripple1, 0.0);
+        assert_eq!(a1.ripple2, 0.0);
+
+        let mut max_core = 0.0_f64;
+        let mut max_glow = 0.0_f64;
+        let mut max_trail = 0.0_f64;
+        let mut max_r1 = 0.0_f64;
+        let mut max_r2 = 0.0_f64;
+        for step in 0..=200 {
+            let t = step as f64 / 200.0;
+            let a = golden_ring_alphas(t);
+            assert!(a.core.is_finite() && (0.0..=0.85).contains(&a.core));
+            assert!(a.glow.is_finite() && (0.0..=0.35).contains(&a.glow));
+            assert!(a.azure_trail.is_finite() && (0.0..=0.30).contains(&a.azure_trail));
+            assert!(a.ripple1.is_finite() && (0.0..=0.20).contains(&a.ripple1));
+            assert!(a.ripple2.is_finite() && (0.0..=0.12).contains(&a.ripple2));
+            max_core = max_core.max(a.core);
+            max_glow = max_glow.max(a.glow);
+            max_trail = max_trail.max(a.azure_trail);
+            max_r1 = max_r1.max(a.ripple1);
+            max_r2 = max_r2.max(a.ripple2);
+        }
+        assert!(max_core > 0.7 && max_core <= 0.85);
+        assert!(max_glow > 0.3 && max_glow <= 0.35);
+        assert!(max_trail > 0.25 && max_trail <= 0.30);
+        assert!(max_r1 > 0.15 && max_r1 <= 0.20);
+        assert!(max_r2 > 0.09 && max_r2 <= 0.12);
+    }
+
+    #[test]
+    fn test_sparkle_deterministic_bounds_and_lifecycle() {
+        let w = 1280.0;
+        let h = 820.0;
+
+        for i in 0..SPARKLE_COUNT {
+            assert!(
+                sparkle(i, 0.0, w, h).is_none(),
+                "Sparkle {i} must be None at t = 0"
+            );
+            assert!(
+                sparkle(i, 1.6, w, h).is_none(),
+                "Sparkle {i} must be None after full lifetime"
+            );
+            assert!(
+                sparkle(i, 2.5, w, h).is_none(),
+                "Sparkle {i} must be None well after full lifetime"
+            );
+        }
+        assert!(sparkle(SPARKLE_COUNT, 0.4, w, h).is_none());
+
+        let mut saw_active = [false; SPARKLE_COUNT];
+        for step in 1..=160 {
+            let t = step as f64 / 100.0;
+            for (i, seen) in saw_active.iter_mut().enumerate() {
+                let s1 = sparkle(i, t, w, h);
+                let s2 = sparkle(i, t, w, h);
+                assert_eq!(s1, s2, "sparkle must be strictly deterministic");
+                if let Some(s) = s1 {
+                    *seen = true;
+                    assert!(s.x.is_finite() && s.y.is_finite());
+                    assert!(
+                        s.alpha.is_finite() && (0.0..=0.9).contains(&s.alpha),
+                        "Sparkle {i} alpha {} exceeds 0.9",
+                        s.alpha
+                    );
+                    assert!(
+                        s.size.is_finite() && (1.0..=11.0).contains(&s.size),
+                        "Sparkle {i} size {} out of bounds",
+                        s.size
+                    );
+                    assert!(
+                        s.rotation.is_finite() && (0.0..=45.0).contains(&s.rotation),
+                        "Sparkle {i} rotation {} out of 0..=45",
+                        s.rotation
+                    );
+                }
+            }
+        }
+        assert!(
+            saw_active.iter().all(|&s| s),
+            "All 36 sparkles must activate during reveal lifetime"
+        );
+
+        // Zero-size, negative, and non-finite windows never yield non-finite values
+        for (tw, th) in [
+            (0.0, 0.0),
+            (0.0, 400.0),
+            (600.0, 0.0),
+            (-20.0, 300.0),
+            (f64::NAN, 300.0),
+            (f64::INFINITY, 300.0),
+        ] {
+            for i in 0..SPARKLE_COUNT {
+                if let Some(s) = sparkle(i, 0.5, tw, th) {
+                    assert!(
+                        s.x.is_finite()
+                            && s.y.is_finite()
+                            && s.size.is_finite()
+                            && s.alpha.is_finite()
+                            && s.rotation.is_finite()
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_final_glow_header_flash_and_settle_delays() {
+        assert_eq!(final_glow_alpha(0.0), 0.0);
+        assert_eq!(final_glow_alpha(0.65), 0.0);
+        let at_start = final_glow_alpha(500.0 / 750.0);
+        assert!((at_start - 0.10).abs() < 1e-6);
+        let at_mid = final_glow_alpha(625.0 / 750.0);
+        assert!(at_mid > 0.04 && at_mid < 0.06);
+        assert_eq!(final_glow_alpha(1.0), 0.0);
+
+        // Header flash bounds: 600 ms, alpha <= 0.6
+        assert!(compute_header_flash_frame(-0.1).is_none());
+        let flash_mid =
+            compute_header_flash_frame(0.3).expect("Header flash must be active at 300 ms");
+        assert!(flash_mid.peak_alpha > 0.5 && flash_mid.peak_alpha <= 0.6);
+        assert!(compute_header_flash_frame(0.65).is_none());
+
+        // Settle delays step at 25 ms and cap total at 500 ms
+        assert_eq!(calculate_settle_delay_ms(0, 5), 0);
+        assert_eq!(calculate_settle_delay_ms(4, 5), 100);
+        assert_eq!(calculate_settle_delay_ms(19, 20), 475);
+        assert_eq!(calculate_settle_delay_ms(49, 50), 500);
+        for i in 0..50 {
+            assert!(calculate_settle_delay_ms(i, 50) <= SETTLE_MAX_TOTAL_MS);
+        }
+    }
+
+    #[test]
+    fn test_reveal_node_budget_pure_under_150() {
+        let w = 1280.0;
+        let h = 820.0;
+        let mut max_nodes = 0usize;
+        let mut max_active_sparkles = 0usize;
+
+        for step in 0..=100 {
+            let t = step as f64 / 100.0;
+            let radius = reveal_radius(t, w, h);
+            let alphas = golden_ring_alphas(t);
+
+            // Base GSK structure: container + mask + mask radial-gradient + texture + clip
+            let mut nodes = 5usize;
+
+            if radius > 0.0 {
+                if alphas.glow > 0.001 && radius + 24.0 > 1.0 {
+                    nodes += 1;
+                }
+                if radius > 2.0 && alphas.azure_trail > 0.001 {
+                    nodes += 1;
+                }
+                if alphas.core > 0.001 && radius + 1.5 > 1.0 {
+                    nodes += 1;
+                }
+                if radius * 0.62 > 1.0 && alphas.ripple1 > 0.001 {
+                    nodes += 1;
+                }
+                if radius * 0.36 > 1.0 && alphas.ripple2 > 0.001 {
+                    nodes += 1;
+                }
+            }
+
+            let end_fade = if t > 0.88 {
+                ((1.0 - t) / 0.12).clamp(0.0, 1.0)
+            } else {
+                1.0
+            };
+            let mut active_sparkles = 0usize;
+            for i in 0..SPARKLE_COUNT {
+                if let Some(sp) = sparkle(i, t, w, h) {
+                    if (sp.alpha * end_fade).clamp(0.0, SPARKLE_MAX_ALPHA) > 0.002 && sp.size > 0.2
+                    {
+                        active_sparkles += 1;
+                        // 1 RadialGradientNode + 1 FillNode (with 1 child ColorNode) = 3 recursive
+                        nodes += 3;
+                    }
+                }
+            }
+            if final_glow_alpha(t) > 0.001 {
+                nodes += 1;
+            }
+
+            max_active_sparkles = max_active_sparkles.max(active_sparkles);
+            max_nodes = max_nodes.max(nodes);
+            assert!(
+                nodes < 150,
+                "Expected reveal GSK node budget < 150 at t={t}, got {nodes}"
+            );
+        }
+
+        assert!(
+            max_active_sparkles > 10 && max_active_sparkles <= SPARKLE_COUNT,
+            "Expected meaningful sparkle activation, peak={max_active_sparkles}"
+        );
+        assert!(
+            max_nodes < 150,
+            "Peak reveal node budget must remain < 150, got {max_nodes}"
+        );
+
+        let (r0, stops0) = build_reveal_mask_stops(0.0);
+        assert!(r0.is_finite() && stops0.len() == 2);
+        let (r_small, stops_small) = build_reveal_mask_stops(REVEAL_FEATHER_PX * 0.5);
+        assert!(r_small.is_finite() && stops_small.len() == 2);
+        let (r_big, stops_big) = build_reveal_mask_stops(120.0);
+        assert!(r_big.is_finite() && stops_big.len() == 3);
     }
 }

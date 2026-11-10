@@ -5,8 +5,10 @@ use gtk4::prelude::*;
 use libadwaita as adw;
 use libadwaita::prelude::*;
 use stakhal_ui::apply_skin;
+use stakhal_ui::ui;
 use stakhal_ui::ui::skin_overlay::{
-    capture_window_texture, snapshot_reveal_nodes, RevealOverlay, SkinOverlayController,
+    append_sparkle_nodes, capture_window_texture, snapshot_reveal_nodes, RevealOverlay,
+    SkinOverlayController, Sparkle,
 };
 use stakhal_ui::ui::tokens;
 use std::cell::Cell;
@@ -140,8 +142,31 @@ fn test_skin_overlay_widgets_and_thin_shimmer_strip() {
         hov2.set_child(Some(&hdr2));
         let box2 = gtk4::Box::new(gtk4::Orientation::Vertical, 0);
         box2.append(&hov2);
-        let body2 = gtk4::Box::new(gtk4::Orientation::Vertical, 0);
+        let body2 = gtk4::Box::new(gtk4::Orientation::Vertical, 8);
         body2.set_vexpand(true);
+        let btn_shine = gtk4::Button::builder()
+            .label("Build & Flash")
+            .css_classes(vec![
+                "stakhal-btn".to_string(),
+                "suggested-action".to_string(),
+            ])
+            .build();
+        let card2 = gtk4::Box::builder()
+            .orientation(gtk4::Orientation::Vertical)
+            .css_classes(vec!["card".to_string()])
+            .build();
+        let list2 = gtk4::ListBox::new();
+        let row_a = ui::main_panel::create_peripheral_row("USART2", Some("Async"), 4);
+        let row_b = ui::main_panel::create_peripheral_row("SPI1", Some("Master"), 3);
+        let row_c = ui::main_panel::create_peripheral_row("TIM2", Some("PWM"), 2);
+        let row_ephemeral = ui::main_panel::create_peripheral_row("I2C1", Some("Fast"), 2);
+        list2.append(&row_a);
+        list2.append(&row_b);
+        list2.append(&row_c);
+        list2.append(&row_ephemeral);
+        card2.append(&list2);
+        body2.append(&btn_shine);
+        body2.append(&card2);
         box2.append(&body2);
         ov2.set_child(Some(&box2));
         win2.set_content(Some(&ov2));
@@ -159,11 +184,13 @@ fn test_skin_overlay_widgets_and_thin_shimmer_strip() {
                 apply_skin(&provider_swap, tokens::Palette::STAGE);
             }),
         );
+        ctrl2.set_shine_target(&btn_shine);
 
         let layout_start = Instant::now();
         while (hdr2.height() <= 0
             || hov2.height() <= 0
             || ctrl2.shimmer_area().height() == 0
+            || !row_c.is_mapped()
             || win2
                 .native()
                 .and_then(|n| n.renderer())
@@ -246,8 +273,76 @@ fn test_skin_overlay_widgets_and_thin_shimmer_strip() {
             "Reveal corner outside radius must keep captured texture opaque, got alpha {corner_alpha}"
         );
 
+        // Verify single-sparkle GSK node budget (<= 3 nodes recursively) and full-frame
+        // GSK node count < 150, clipped, with zero Cairo fallback nodes.
+        let sp_snap = gtk4::Snapshot::new();
+        let sp = Sparkle {
+            x: 100.0,
+            y: 100.0,
+            size: 8.0,
+            alpha: 0.8,
+            rotation: 20.0,
+        };
+        append_sparkle_nodes(&sp_snap, sp, 1.0, tokens::Palette::STAGE.gold_light.rgb());
+        let sp_node = sp_snap.to_node().expect("sparkle node");
+        let sp_ser = String::from_utf8_lossy(sp_node.serialize().as_ref()).to_string();
+        let sp_tree_nodes = sp_ser.matches('{').count();
+        assert!(
+            sp_tree_nodes <= 4,
+            "Sparkle render tree node count must stay compact (got {sp_tree_nodes}):\n{sp_ser}"
+        );
+        let sp_primitives = sp_ser.matches("radial-gradient {").count()
+            + sp_ser.matches("fill {").count()
+            + sp_ser.matches("color {").count();
+        assert!(
+            sp_primitives <= 3,
+            "Single sparkle must emit at most 3 GSK render nodes recursively, got {sp_primitives}"
+        );
+        assert!(
+            !sp_ser.contains("cairo {"),
+            "Sparkle must use GSK nodes only, no cairo:\n{sp_ser}"
+        );
+
+        let mut max_total_nodes = 0usize;
+        for step in 0..=100 {
+            let t = step as f64 / 100.0;
+            let frame_snap = gtk4::Snapshot::new();
+            snapshot_reveal_nodes(
+                &frame_snap,
+                &captured,
+                1280.0,
+                820.0,
+                t,
+                &tokens::Palette::STAGE,
+            );
+            if let Some(node) = frame_snap.to_node() {
+                let ser = String::from_utf8_lossy(node.serialize().as_ref()).to_string();
+                assert!(
+                    !ser.contains("cairo {"),
+                    "Reveal nodes must use GSK only, no cairo at t={t}"
+                );
+                if step == 60 {
+                    assert!(
+                        ser.contains("clip {"),
+                        "Reveal overlay must clip effects above mask to window bounds"
+                    );
+                }
+                let total_nodes = ser.matches('{').count();
+                assert!(
+                    total_nodes < 150,
+                    "Total reveal GSK node count at t={t} must stay < 150, got {total_nodes}"
+                );
+                max_total_nodes = max_total_nodes.max(total_nodes);
+            }
+        }
+        assert!(
+            max_total_nodes > 50,
+            "Expected peak reveal frame with sparkles to emit > 50 GSK nodes, got {max_total_nodes}"
+        );
+
         // Trigger the unlock sequence: overlay sits on top while Stage skin swaps immediately underneath
         ctrl2.trigger_unlock();
+        let swap_time = Instant::now();
 
         let reveal_widget = ov2.last_child().expect("reveal overlay added");
         assert!(
@@ -265,9 +360,50 @@ fn test_skin_overlay_widgets_and_thin_shimmer_strip() {
             "Stage skin ForceLight scheme must already be applied beneath the reveal overlay"
         );
         assert!(ctrl2.is_effects_active());
+        assert!(
+            ctrl2.is_header_flash_active(),
+            "Reveal must trigger one-shot header flash at start"
+        );
+        assert!(
+            btn_shine.has_css_class("stage-shine"),
+            "Build and Flash shine target must receive stage-shine on swap"
+        );
+        assert!(
+            row_a.has_css_class("stage-pre")
+                && row_b.has_css_class("stage-pre")
+                && row_c.has_css_class("stage-pre")
+                && card2.has_css_class("stage-pre"),
+            "Visible rows and card must receive stage-pre on swap"
+        );
 
-        let start = Instant::now();
-        while reveal_widget.parent().is_some() && start.elapsed() < Duration::from_millis(2000) {
+        // Destroy/remove one row mid-stagger to verify weak-ref safety
+        list2.remove(&row_ephemeral);
+        drop(row_ephemeral);
+
+        // Pump up to 600 ms after swap and verify every row/card has stage-pre removed
+        while swap_time.elapsed() < Duration::from_millis(600) {
+            glib::MainContext::default().iteration(false);
+            if !card2.has_css_class("stage-pre")
+                && !row_a.has_css_class("stage-pre")
+                && !row_b.has_css_class("stage-pre")
+                && !row_c.has_css_class("stage-pre")
+            {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        while glib::MainContext::default().iteration(false) {}
+        assert!(
+            !card2.has_css_class("stage-pre")
+                && !row_a.has_css_class("stage-pre")
+                && !row_b.has_css_class("stage-pre")
+                && !row_c.has_css_class("stage-pre"),
+            "Every row and card must lose stage-pre within 600 ms of swap"
+        );
+
+        while (reveal_widget.parent().is_some() || btn_shine.has_css_class("stage-shine"))
+            && swap_time.elapsed() < Duration::from_millis(2000)
+        {
             glib::MainContext::default().iteration(false);
             std::thread::sleep(Duration::from_millis(10));
         }
@@ -277,6 +413,10 @@ fn test_skin_overlay_widgets_and_thin_shimmer_strip() {
         assert!(
             reveal_widget.parent().is_none(),
             "RevealOverlay must be removed from overlay after 750ms animation"
+        );
+        assert!(
+            !btn_shine.has_css_class("stage-shine"),
+            "stage-shine must be removed cleanly after 700 ms"
         );
         assert_eq!(
             ov2.last_child().as_ref(),
