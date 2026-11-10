@@ -409,12 +409,16 @@ dropdown button {{
         let header = p.header.hex();
         let header_fg = p.header_fg.hex();
         let gold = p.gold.hex();
+        let sky = p.sky.hex();
+        let azure = p.azure.hex();
         css.push_str(&format!(
             r#"
 @define-color bg_raised {bg_raised};
 @define-color header {header};
 @define-color header_fg {header_fg};
 @define-color gold {gold};
+@define-color sky {sky};
+@define-color azure {azure};
 
 @define-color window_bg_color @bg_void;
 @define-color window_fg_color @text_primary;
@@ -459,8 +463,29 @@ dropdown button {{
 
 window, dialog {{
     background-color: @bg_void;
-    background-image: linear-gradient(180deg, @bg_panel 0%, @bg_void 45%, mix(@bg_void, @accent, 0.12) 100%);
+    background-image: linear-gradient(180deg, @bg_panel 0%, mix(@bg_void, @azure, 0.28) 100%);
     color: @text_primary;
+}}
+
+.title-3,
+.title-4 {{
+    background-image: linear-gradient(90deg, alpha(@sky, 0.65), alpha(@sky, 0));
+    border-left: 3px solid @gold;
+    padding: 4px 10px;
+    border-radius: 4px;
+    color: @text_primary;
+}}
+
+.card,
+box.card,
+list.boxed-list,
+frame,
+scrolledwindow.card {{
+    background-color: @bg_panel;
+    border: 1px solid @sky;
+    box-shadow: inset 0 2px 0 @azure,
+                0 1px 2px alpha(@text_primary, 0.08),
+                0 8px 20px alpha(@azure, 0.18);
 }}
 
 list, listview {{
@@ -471,6 +496,30 @@ list, listview {{
 row, listboxrow, actionrow {{
     background-color: @card_bg_color;
     color: @card_fg_color;
+    border-bottom: 1px solid @border_hair;
+    transition: background-color 180ms cubic-bezier(0.0, 0.0, 0.2, 1.0),
+                box-shadow 180ms cubic-bezier(0.0, 0.0, 0.2, 1.0);
+}}
+
+row:nth-child(even) {{
+    background-color: alpha(@sky, 0.18);
+}}
+
+row:hover,
+listboxrow:hover,
+row.activatable:hover,
+.clickable-row:hover {{
+    background-color: alpha(@azure, 0.14);
+    box-shadow: inset 3px 0 0 @accent;
+}}
+
+row:selected,
+listboxrow:selected,
+row:selected:hover,
+listboxrow:selected:hover,
+row.activatable:selected:hover {{
+    background-color: alpha(@azure, 0.22);
+    box-shadow: inset 3px 0 0 @accent;
 }}
 
 row .title,
@@ -486,6 +535,62 @@ row .subtitle label,
 row label.subtitle {{
     opacity: 1;
     color: @text_muted;
+}}
+
+label.card,
+.status-chip {{
+    border-radius: 2px;
+    padding: 2px 8px;
+    box-shadow: none;
+    font-weight: 600;
+}}
+
+.status-idle,
+label.card.status-idle,
+.status-chip.status-idle {{
+    background-color: mix(@bg_panel, @sky, 0.28);
+    border: 1px solid @text_muted;
+    color: @text_muted;
+    border-radius: 2px;
+    padding: 2px 8px;
+    box-shadow: none;
+}}
+
+.status-ready,
+.status-ok,
+label.card.status-ready,
+.status-chip.status-ready {{
+    background-color: mix(@bg_panel, @state_ready, 0.16);
+    border: 1px solid @state_ready;
+    color: mix(@state_ready, @text_primary, 0.25);
+    border-radius: 2px;
+    padding: 2px 8px;
+    box-shadow: none;
+}}
+
+.status-active,
+.status-busy,
+.status-warning,
+label.card.status-active,
+.status-chip.status-active {{
+    background-color: mix(@bg_panel, @state_active, 0.16);
+    border: 1px solid @state_active;
+    color: mix(@state_active, @text_primary, 0.25);
+    border-radius: 2px;
+    padding: 2px 8px;
+    box-shadow: none;
+}}
+
+.status-error,
+.status-fault,
+label.card.status-error,
+.status-chip.status-error {{
+    background-color: mix(@bg_panel, @state_error, 0.16);
+    border: 1px solid @state_error;
+    color: mix(@state_error, @text_primary, 0.25);
+    border-radius: 2px;
+    padding: 2px 8px;
+    box-shadow: none;
 }}
 
 toast,
@@ -547,7 +652,57 @@ button.stakhal-btn.flat:disabled {{
 
 button.stakhal-btn {{
     transition: background-color 180ms cubic-bezier(0.0, 0.0, 0.2, 1.0),
-                border-color 180ms cubic-bezier(0.0, 0.0, 0.2, 1.0);
+                border-color 180ms cubic-bezier(0.0, 0.0, 0.2, 1.0),
+                color 180ms cubic-bezier(0.0, 0.0, 0.2, 1.0);
+}}
+
+button.stakhal-btn:not(.suggested-action) {{
+    background-color: @bg_panel;
+    border: 1px solid @sky;
+    color: @accent;
+}}
+
+button.stakhal-btn.flat {{
+    background-color: alpha(@bg_panel, 0.78);
+    border: 1px solid alpha(@sky, 0.65);
+    color: @accent;
+}}
+
+button.stakhal-btn:not(.suggested-action):hover,
+button.stakhal-btn.flat:hover {{
+    background-color: @bg_panel;
+    background-image: linear-gradient(alpha(@sky, 0.35), alpha(@sky, 0.35));
+    border-color: @accent;
+    color: @accent;
+}}
+
+button.stakhal-btn image,
+button.flat image {{
+    color: @accent;
+}}
+
+button.stakhal-btn.suggested-action {{
+    border: 1px solid @accent;
+    background-color: @accent;
+    background-image: linear-gradient(180deg, mix(@accent, @bg_panel, 0.06), @accent);
+    color: @bg_panel;
+}}
+
+button.stakhal-btn.suggested-action image {{
+    color: @bg_panel;
+}}
+
+button.stakhal-btn.suggested-action:hover {{
+    border-color: {accent_hover};
+    background-image: none;
+    background-color: {accent_hover};
+    color: @bg_panel;
+}}
+
+button.stakhal-btn.suggested-action:active {{
+    background-image: none;
+    background-color: {accent_pressed};
+    color: @bg_panel;
 }}
 
 button.stakhal-btn:hover,
@@ -558,18 +713,24 @@ button.stakhal-btn:focus-visible {{
 
 headerbar {{
     background-color: @header;
+    background-image: linear-gradient(90deg, @header 0%, mix(@header, @accent, 0.6) 100%);
     color: @header_fg;
-    border-bottom: 1px solid @gold;
+    border-bottom: 2px solid @gold;
     box-shadow: none;
 }}
 
-headerbar .subtitle {{
+headerbar label,
+headerbar .title,
+headerbar .subtitle,
+headerbar button,
+headerbar image {{
     opacity: 1;
     color: @header_fg;
 }}
 
 headerbar:backdrop {{
     background-color: @header;
+    background-image: linear-gradient(90deg, @header 0%, mix(@header, @accent, 0.6) 100%);
 }}
 "#
         ));
@@ -1916,13 +2077,11 @@ dropdown button {
             "Stage CSS must override libadwaita :root custom properties"
         );
         assert!(
-            css.contains(
-                "linear-gradient(180deg, @bg_panel 0%, @bg_void 45%, mix(@bg_void, @accent, 0.12) 100%)"
-            ),
+            css.contains("linear-gradient(180deg, @bg_panel 0%, mix(@bg_void, @azure, 0.28) 100%)"),
             "Stage CSS must include static vertical window gradient via mix()"
         );
         assert!(
-            css.contains("border-bottom: 1px solid @gold;"),
+            css.contains("border-bottom: 2px solid @gold;"),
             "Stage CSS must style headerbar bottom border from gold"
         );
     }
@@ -1942,6 +2101,17 @@ dropdown button {
             "entry:focus-within",
             "entry > text > placeholder",
             "opacity: 1;",
+            "linear-gradient(90deg, @header 0%, mix(@header, @accent, 0.6) 100%)",
+            ".title-3,",
+            "inset 0 2px 0 @azure",
+            "row:nth-child(even)",
+            "inset 3px 0 0 @accent;",
+            ".status-idle,",
+            ".status-ready,",
+            ".status-active,",
+            ".status-error,",
+            "mix(@accent, @bg_panel, 0.06)",
+            "button.stakhal-btn image",
         ] {
             assert!(
                 css.contains(needle),
