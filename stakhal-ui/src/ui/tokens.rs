@@ -73,6 +73,8 @@ pub struct Palette {
     pub accent_hover: ColorToken,
     pub accent_pressed: ColorToken,
     pub gold: ColorToken,
+    pub gold_light: ColorToken,
+    pub gold_deep: ColorToken,
     pub header: ColorToken,
     pub header_fg: ColorToken,
     pub line: ColorToken,
@@ -99,6 +101,8 @@ impl Palette {
         accent_hover: ColorToken::new("#5FE3D7", (95.0 / 255.0, 227.0 / 255.0, 215.0 / 255.0)),
         accent_pressed: ColorToken::new("#3BB3A8", (59.0 / 255.0, 179.0 / 255.0, 168.0 / 255.0)),
         gold: ColorToken::new(color::STATE_ACTIVE_HEX, color::STATE_ACTIVE),
+        gold_light: ColorToken::new(color::STATE_ACTIVE_HEX, color::STATE_ACTIVE),
+        gold_deep: ColorToken::new(color::ACCENT_HEX, color::ACCENT),
         header: ColorToken::new(color::BG_PANEL_HEX, color::BG_PANEL),
         header_fg: ColorToken::new(color::TEXT_PRIMARY_HEX, color::TEXT_PRIMARY),
         line: ColorToken::new(color::BORDER_HAIR_HEX, color::BORDER_HAIR),
@@ -124,6 +128,8 @@ impl Palette {
         accent_hover: ColorToken::new("#285FA0", (40.0 / 255.0, 95.0 / 255.0, 160.0 / 255.0)),
         accent_pressed: ColorToken::new("#1F4E86", (31.0 / 255.0, 78.0 / 255.0, 134.0 / 255.0)),
         gold: ColorToken::new("#C9A24F", (201.0 / 255.0, 162.0 / 255.0, 79.0 / 255.0)),
+        gold_light: ColorToken::new("#F5E3A8", (245.0 / 255.0, 227.0 / 255.0, 168.0 / 255.0)),
+        gold_deep: ColorToken::new("#A8770F", (168.0 / 255.0, 119.0 / 255.0, 15.0 / 255.0)),
         header: ColorToken::new("#1F2960", (31.0 / 255.0, 41.0 / 255.0, 96.0 / 255.0)),
         header_fg: ColorToken::new("#F4F9FD", (244.0 / 255.0, 249.0 / 255.0, 253.0 / 255.0)),
         line: ColorToken::new("#4F76AE", (79.0 / 255.0, 118.0 / 255.0, 174.0 / 255.0)),
@@ -321,6 +327,8 @@ mod tests {
         assert_eq!(def.accent_pressed.hex(), "#3BB3A8");
         assert_eq!(def.gold.hex(), color::STATE_ACTIVE_HEX);
         assert_eq!(def.gold.rgb(), color::STATE_ACTIVE);
+        assert_eq!(def.gold_light, def.gold);
+        assert_eq!(def.gold_deep, def.accent);
         assert_eq!(def.header.hex(), color::BG_PANEL_HEX);
         assert_eq!(def.header.rgb(), color::BG_PANEL);
         assert_eq!(def.header_fg.hex(), color::TEXT_PRIMARY_HEX);
@@ -343,6 +351,8 @@ mod tests {
         assert_eq!(stage.sky.hex(), "#A0D3EA");
         assert_eq!(stage.azure.hex(), "#59A0CF");
         assert_eq!(stage.pin_active, stage.accent);
+        assert_eq!(stage.gold_light.hex(), "#F5E3A8");
+        assert_eq!(stage.gold_deep.hex(), "#A8770F");
 
         // Thread local get and set
         assert_eq!(palette(), Palette::DEFAULT);
@@ -503,6 +513,24 @@ mod tests {
                 4.5,
             ),
             ("gold vs header", s.gold.rgb(), s.header.rgb(), 3.0),
+            (
+                "gold_deep vs bg_void",
+                s.gold_deep.rgb(),
+                s.bg_void.rgb(),
+                3.0,
+            ),
+            (
+                "gold_deep vs bg_panel",
+                s.gold_deep.rgb(),
+                s.bg_panel.rgb(),
+                3.0,
+            ),
+            (
+                "gold_deep vs bg_raised",
+                s.gold_deep.rgb(),
+                s.bg_raised.rgb(),
+                3.0,
+            ),
         ];
 
         for (label, fg, bg, min_ratio) in checks {
