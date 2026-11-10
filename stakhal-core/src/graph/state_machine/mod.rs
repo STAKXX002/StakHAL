@@ -1568,4 +1568,89 @@ mod tests {
             "Spurious self-loop HATCH_CLOSING -> HATCH_CLOSING must not exist"
         );
     }
+
+    fn load_hatch_deadtime_sm() -> AppStateMachine {
+        let fixture_main_c = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/fixtures/hatch_deadtime/Core/Src/main.c");
+        let candidates = discover_state_machines_in_project(&fixture_main_c)
+            .expect("discovery across hatch_deadtime project files should succeed");
+        let cand = candidates
+            .into_iter()
+            .find(|c| c.enum_def.name == "HatchState")
+            .expect("HatchState candidate should exist");
+        let hatch_file = Path::new(&cand.var.file_path);
+        extract_state_machine_transitions(&cand, hatch_file)
+            .expect("HatchState transitions extraction should succeed")
+    }
+
+    #[test]
+    fn test_hatch_deadtime_layout_determinism_64_runs() {
+        let sm = load_hatch_deadtime_sm();
+        let baseline = compute_state_machine_layout(&sm);
+        let baseline_coords: Vec<(String, f64, f64)> = {
+            let mut v: Vec<_> = baseline
+                .nodes
+                .values()
+                .map(|n| (n.id.clone(), n.x, n.y))
+                .collect();
+            v.sort_by(|a, b| a.0.cmp(&b.0));
+            v
+        };
+
+        for run in 1..64 {
+            let layout = compute_state_machine_layout(&sm);
+            let mut coords: Vec<(String, f64, f64)> = layout
+                .nodes
+                .values()
+                .map(|n| (n.id.clone(), n.x, n.y))
+                .collect();
+            coords.sort_by(|a, b| a.0.cmp(&b.0));
+            assert_eq!(
+                coords, baseline_coords,
+                "Layout node coordinates changed on run {run}: expected {baseline_coords:?}, got {coords:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_hatch_deadtime_opening_closing_declaration_order() {
+        let sm = load_hatch_deadtime_sm();
+        let open_decl = sm
+            .states
+            .iter()
+            .position(|s| s == "HATCH_OPENING")
+            .expect("HATCH_OPENING in states");
+        let close_decl = sm
+            .states
+            .iter()
+            .position(|s| s == "HATCH_CLOSING")
+            .expect("HATCH_CLOSING in states");
+        assert!(
+            open_decl < close_decl,
+            "Fixture enum must declare HATCH_OPENING before HATCH_CLOSING"
+        );
+
+        let layout = compute_state_machine_layout(&sm);
+        let opening = layout
+            .nodes
+            .get("HATCH_OPENING")
+            .expect("HATCH_OPENING layout missing");
+        let closing = layout
+            .nodes
+            .get("HATCH_CLOSING")
+            .expect("HATCH_CLOSING layout missing");
+
+        assert!(
+            (opening.y - closing.y).abs() < 1e-6,
+            "HATCH_OPENING and HATCH_CLOSING should share the same horizontal lane (got y={} vs y={})",
+            opening.y,
+            closing.y
+        );
+        assert!(
+            opening.x < closing.x,
+            "HATCH_OPENING (x={}) must appear left of HATCH_CLOSING (x={}) per declaration order",
+            opening.x,
+            closing.x
+        );
+    }
 }
