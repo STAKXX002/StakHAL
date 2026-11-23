@@ -199,7 +199,7 @@ fn test_stage_css_parses_cleanly_and_colors_adwaita_surfaces() {
 
     let bottom_px = sample_widget_rgba(&win, win.width() / 2, win.height() - 16);
     assert!(
-        bottom_px.2 > bottom_px.0 + 10 && bottom_px.0 >= 200 && bottom_px.2 >= 230,
+        bottom_px.2 as i32 > bottom_px.0 as i32 + 10 && bottom_px.0 >= 200 && bottom_px.2 >= 230,
         "Window bottom gradient pixel {:?} must show pale azure Stage tint",
         bottom_px
     );

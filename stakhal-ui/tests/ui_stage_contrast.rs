@@ -513,7 +513,7 @@ fn test_stage_rendered_wcag_contrast() {
         (sec_outer.y0 + sec_outer.y1) / 2,
     );
     assert!(
-        sec_gold_px.0 > sec_gold_px.2 + 40,
+        sec_gold_px.0 as i32 > sec_gold_px.2 as i32 + 40,
         "section title left border {sec_gold_px:?} must render @gold"
     );
     let (norm_fg, _, _) =
@@ -599,7 +599,7 @@ fn test_stage_rendered_wcag_contrast() {
     );
     let sel_bar_rgb = (sel_bar_px.0, sel_bar_px.1, sel_bar_px.2);
     assert!(
-        sel_bar_rgb.2 > sel_bar_rgb.0 + 40 && sel_bar_rgb.0 < 120,
+        sel_bar_rgb.2 as i32 > sel_bar_rgb.0 as i32 + 40 && sel_bar_rgb.0 < 120,
         "selected row left edge {sel_bar_rgb:?} must render @accent inset bar"
     );
 
@@ -677,7 +677,7 @@ fn test_stage_rendered_wcag_contrast() {
     let (icon_fg, _, _) =
         assert_min_contrast(&mut surface, &icon_btn, &win, 2, 4.5, "accent icon button");
     assert!(
-        icon_fg.2 > icon_fg.0 + 40,
+        icon_fg.2 as i32 > icon_fg.0 as i32 + 40,
         "icon button glyph {icon_fg:?} must be accent blue"
     );
 
@@ -738,7 +738,8 @@ fn test_stage_rendered_wcag_contrast() {
         "bottom gradient muted label",
     );
     assert!(
-        grad_p_bg.2 > grad_p_bg.0 + 10 && grad_m_bg.2 > grad_m_bg.0 + 10,
+        grad_p_bg.2 as i32 > grad_p_bg.0 as i32 + 10
+            && grad_m_bg.2 as i32 > grad_m_bg.0 as i32 + 10,
         "bottom labels must sit on tinted azure window gradient (got {grad_p_bg:?}, {grad_m_bg:?})"
     );
 
