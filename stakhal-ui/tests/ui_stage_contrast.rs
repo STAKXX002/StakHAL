@@ -501,6 +501,13 @@ fn test_stage_rendered_wcag_contrast() {
     // Wait until rendered window frame is stable across consecutive iterations.
     let mut surface = wait_for_stable_surface(&win);
 
+    let tmp_dir = std::path::PathBuf::from(env!("CARGO_TARGET_TMPDIR"));
+    let _ = std::fs::create_dir_all(&tmp_dir);
+    let png_path = tmp_dir.join("stage_contrast_window.png");
+    if let Ok(mut f) = std::fs::File::create(&png_path) {
+        let _ = surface.write_to_png(&mut f);
+    }
+
     let toast_widget = find_descendant(toast_overlay.upcast_ref(), &|w| w.css_name() == "toast")
         .expect("ToastOverlay must contain mapped toast widget");
     assert!(

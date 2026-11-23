@@ -204,6 +204,29 @@ fn test_stage_css_parses_cleanly_and_colors_adwaita_surfaces() {
         bottom_px
     );
 
+    let tmp_dir = std::path::PathBuf::from(env!("CARGO_TARGET_TMPDIR"));
+    let _ = std::fs::create_dir_all(&tmp_dir);
+    let png_path = tmp_dir.join("stage_surfaces_window.png");
+    let w = win.width().max(1);
+    let h = win.height().max(1);
+    let paintable = gtk4::WidgetPaintable::new(Some(&win));
+    let snapshot = gtk4::Snapshot::new();
+    paintable.snapshot(&snapshot, w as f64, h as f64);
+    if let Some(mut node) = snapshot.to_node() {
+        if let Some(tn) = node.downcast_ref::<gsk::TransformNode>() {
+            node = tn.child();
+        }
+        if let Ok(surface) = cairo::ImageSurface::create(cairo::Format::ARgb32, w, h) {
+            if let Ok(cr) = cairo::Context::new(&surface) {
+                gsk::RenderNode::draw(&node, &cr);
+            }
+            surface.flush();
+            if let Ok(mut f) = std::fs::File::create(&png_path) {
+                let _ = surface.write_to_png(&mut f);
+            }
+        }
+    }
+
     if let Some(settings) = gtk4::Settings::default() {
         settings.set_gtk_enable_animations(true);
     }
