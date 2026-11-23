@@ -30,24 +30,29 @@ fn wcag_contrast_rgb(a: (u8, u8, u8), b: (u8, u8, u8)) -> f64 {
     (hi + 0.05) / (lo + 0.05)
 }
 
-fn render_widget_to_surface(widget: &impl IsA<gtk4::Widget>) -> cairo::ImageSurface {
+fn try_render_widget_to_surface(widget: &impl IsA<gtk4::Widget>) -> Option<cairo::ImageSurface> {
     let w = widget.width().max(1);
     let h = widget.height().max(1);
     let paintable = gtk4::WidgetPaintable::new(Some(widget));
     let snapshot = gtk4::Snapshot::new();
     paintable.snapshot(&snapshot, w as f64, h as f64);
-    let node = snapshot
-        .to_node()
-        .expect("widget paintable produced render node");
+    let mut node = snapshot.to_node()?;
 
-    let surface =
-        cairo::ImageSurface::create(cairo::Format::ARgb32, w, h).expect("create image surface");
+    // Under X11 without a compositor, GtkWindow/AdwApplicationWindow allocates CSD shadow
+    // margins, so WidgetPaintable wraps the window's root node in a TransformNode to translate
+    // and scale to fit. Unwrapping the child node restores 1:1 coordinate alignment between
+    // widget bounds and rendered surface pixels across both X11 and Wayland.
+    if let Some(tn) = node.downcast_ref::<gsk::TransformNode>() {
+        node = tn.child();
+    }
+
+    let surface = cairo::ImageSurface::create(cairo::Format::ARgb32, w, h).ok()?;
     {
-        let cr = cairo::Context::new(&surface).expect("create cairo context");
+        let cr = cairo::Context::new(&surface).ok()?;
         gsk::RenderNode::draw(&node, &cr);
     }
     surface.flush();
-    surface
+    Some(surface)
 }
 
 fn surface_pixel(surface: &mut cairo::ImageSurface, x: i32, y: i32) -> (u8, u8, u8, u8) {
@@ -147,13 +152,31 @@ where
     None
 }
 
-fn pump_events(duration: Duration) {
+fn wait_for_stable_surface(win: &impl IsA<gtk4::Widget>) -> cairo::ImageSurface {
     let start = Instant::now();
-    while start.elapsed() < duration {
+    let timeout = Duration::from_secs(3);
+    let mut prev_surface: Option<cairo::ImageSurface> = None;
+    let mut consecutive_matches = 0;
+
+    while start.elapsed() < timeout {
         while glib::MainContext::default().iteration(false) {}
-        std::thread::sleep(Duration::from_millis(10));
+        if let Some(mut cur_surface) = try_render_widget_to_surface(win) {
+            if let Some(mut prev) = prev_surface {
+                let matches = cur_surface.data().as_deref().ok() == prev.data().as_deref().ok();
+                if matches {
+                    consecutive_matches += 1;
+                    if consecutive_matches >= 5 {
+                        return cur_surface;
+                    }
+                } else {
+                    consecutive_matches = 0;
+                }
+            }
+            prev_surface = Some(cur_surface);
+        }
+        std::thread::yield_now();
     }
-    while glib::MainContext::default().iteration(false) {}
+    prev_surface.expect("surface must stabilize within timeout")
 }
 
 fn assert_min_contrast(
@@ -187,11 +210,22 @@ fn test_stage_rendered_wcag_contrast() {
     let _ = adw::init();
 
     let provider = gtk4::CssProvider::new();
+    provider.connect_parsing_error(|_, section, error| {
+        eprintln!(
+            "CSS parse error at lines {}-{}: {}",
+            section.start_location().lines() + 1,
+            section.end_location().lines() + 1,
+            error
+        );
+    });
     gtk4::style_context_add_provider_for_display(
         &display,
         &provider,
         gtk4::STYLE_PROVIDER_PRIORITY_APPLICATION,
     );
+    if let Some(settings) = gtk4::Settings::default() {
+        settings.set_gtk_enable_animations(false);
+    }
     apply_skin(&provider, ui::tokens::Palette::STAGE);
 
     let header_bar = adw::HeaderBar::new();
@@ -448,9 +482,6 @@ fn test_stage_rendered_wcag_contrast() {
         .build();
     toast_overlay.add_toast(toast);
 
-    // Wait long enough for libadwaita toast show transition and layout to settle completely.
-    pump_events(Duration::from_millis(500));
-
     let find_lbl = |parent: &gtk4::Widget, txt: &str| {
         find_descendant(parent, &|w| {
             w.downcast_ref::<gtk4::Label>()
@@ -467,6 +498,9 @@ fn test_stage_rendered_wcag_contrast() {
     let sel_sub_lbl = find_lbl(row_selected.upcast_ref(), "Loopback Mode");
     let sug_btn_lbl = find_lbl(btn_suggested.upcast_ref(), "Suggested Action TEXT");
 
+    // Wait until rendered window frame is stable across consecutive iterations.
+    let mut surface = wait_for_stable_surface(&win);
+
     let toast_widget = find_descendant(toast_overlay.upcast_ref(), &|w| w.css_name() == "toast")
         .expect("ToastOverlay must contain mapped toast widget");
     assert!(
@@ -478,8 +512,6 @@ fn test_stage_rendered_wcag_contrast() {
 
     let toast_label = find_lbl(&toast_widget, "Stage Skin Activated");
     let toast_btn_label = find_lbl(&toast_widget, "Dismiss");
-
-    let mut surface = render_widget_to_surface(&win);
 
     // 1. Section title (.title-4): sky gradient fill, gold left accent, primary text (>= 4.5)
     let sec_outer = widget_bounds_in(&lbl_section, &win, 0, 0);
@@ -778,6 +810,9 @@ fn test_stage_rendered_wcag_contrast() {
         "Toast top-left corner {corner_rgb:?} must show rounded pill transparency over light background, not header navy {header_rgb:?}"
     );
 
+    if let Some(settings) = gtk4::Settings::default() {
+        settings.set_gtk_enable_animations(true);
+    }
     win.close();
     gtk4::style_context_remove_provider_for_display(&display, &provider);
     apply_skin(&provider, ui::tokens::Palette::DEFAULT);
