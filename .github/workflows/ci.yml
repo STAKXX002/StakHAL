@@ -22,10 +22,21 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Print GTK and libadwaita versions
+        run: pkg-config --modversion gtk4 libadwaita-1
+
       - name: Run stakhal-core tests
         run: cargo test -p stakhal-core
 
-      - name: Run stakhal-ui smoke tests
-        run: xvfb-run -a -s "-screen 0 1920x1080x24" cargo test -p stakhal-ui -- --test-threads=1
+      - name: Run stakhal-ui tests
+        run: xvfb-run -a -s "-screen 0 1920x1080x24" cargo test -p stakhal-ui --no-fail-fast -- --test-threads=1 --nocapture
         env:
           GDK_BACKEND: x11
+
+      - name: Upload rendered window artifacts
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: rendered-windows
+          path: target/tmp/**/*.png
+          if-no-files-found: ignore

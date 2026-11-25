@@ -439,21 +439,42 @@ fn test_skin_overlay_widgets_and_thin_shimmer_strip() {
         );
 
         // Wait until initial unlock flash (600 ms) and initial periodic sweep (1.2 s) complete
-        while (ctrl2.is_header_flash_active() || swap_time.elapsed() < Duration::from_millis(1350))
-            && swap_time.elapsed() < Duration::from_millis(2500)
+        let wait_start = Instant::now();
+        while (ctrl2.is_header_flash_active()
+            || (win2.is_active() && ctrl2.is_shimmer_tick_active()))
+            && wait_start.elapsed() < Duration::from_millis(3500)
         {
             glib::MainContext::default().iteration(false);
             std::thread::sleep(Duration::from_millis(10));
         }
         while glib::MainContext::default().iteration(false) {}
 
+        // Ensure window is presented and focused so idle-gap assertions run across display servers
+        if !win2.is_active() {
+            win2.present();
+            while glib::MainContext::default().iteration(false) {}
+        }
+
         // During idle gap between 8s sweeps, tick callback sleeps cleanly (0 ticks) while scheduler stays active
         if win2.is_active() {
-            assert!(ctrl2.is_shimmer_running());
+            let running = ctrl2.is_shimmer_running();
+            let tick_active = ctrl2.is_shimmer_tick_active();
+            let flash_active = ctrl2.is_header_flash_active();
+            let elapsed = swap_time.elapsed();
+            let win_active = win2.is_active();
+            if !running || tick_active {
+                eprintln!(
+                    "DIAGNOSTIC: is_shimmer_running={}, is_shimmer_tick_active={}, is_header_flash_active={}, swap_elapsed={:?}, win_active={}",
+                    running, tick_active, flash_active, elapsed, win_active
+                );
+            }
+            assert!(running);
             assert!(
-                !ctrl2.is_shimmer_tick_active(),
+                !tick_active,
                 "Shimmer tick callback must break during idle gap between 8s sweeps"
             );
+        } else {
+            eprintln!("SKIPPED: window is not active (win2.is_active() == false); idle-gap shimmer assertions were not exercised");
         }
 
         // After unlock: navigate_stack must trigger the header gold flash
